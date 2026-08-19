@@ -1,0 +1,322 @@
+import 'dart:io';
+
+import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/ui/editor/editor_screen.dart';
+import 'package:dayseven/ui/editor/rich_controller.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// Renders the editor over a real Knowledge Base in a temporary folder, so the
+/// save path exercises actual files.
+///
+/// All of the setup touches the disk and SQLite, so it runs inside
+/// [WidgetTester.runAsync]: real I/O futures never complete in the fake-async
+/// zone a widget test otherwise runs in.
+Future<(ProviderContainer, KnowledgeBase, String)> openEditor(
+  WidgetTester tester,
+  Directory temp, {
+  BlockDocument? seed,
+}) async {
+  final container = ProviderContainer();
+  addTearDown(container.dispose);
+
+  late KnowledgeBase kb;
+  late String path;
+
+  await tester.runAsync(() async {
+    await container
+        .read(kbControllerProvider.notifier)
+        .openFolder(temp.path, createWithName: 'MyWorld');
+    final session = container.read(kbSessionProvider)!;
+    kb = session.kb;
+
+    path = await kb.createDocument(title: 'Aldenmoor');
+    if (seed != null) {
+      await kb.writeDocument(path, seed);
+    }
+    await container.read(documentControllerProvider.notifier).open(path);
+  });
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: dsTheme(Brightness.dark),
+        home: const Scaffold(body: EditorScreen()),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+
+  return (container, kb, path);
+}
+
+BlockDocument seedWith(String text) => BlockDocument(
+  id: 'doc-1',
+  title: 'Aldenmoor',
+  blocks: [
+    ParagraphBlock(
+      id: 'b1',
+      spans: [TextSpanNode(text: text)],
+    ),
+  ],
+);
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late Directory temp;
+  late Directory support;
+
+  setUp(() async {
+    temp = await Directory.systemTemp.createTemp('dayseven_editor_test');
+    support = await Directory.systemTemp.createTemp('dayseven_support');
+
+    // The app keeps its recent-files list in the application support directory,
+    // which has no platform implementation under `flutter test`.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async => call.method == 'getApplicationSupportDirectory'
+              ? support.path
+              : null,
+        );
+  });
+
+  tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+    if (await temp.exists()) await temp.delete(recursive: true);
+    if (await support.exists()) await support.delete(recursive: true);
+  });
+
+  testWidgets('typing lands in the document and is saved to the file', (
+    tester,
+  ) async {
+    final (container, kb, path) = await openEditor(tester, temp);
+
+    await tester.enterText(
+      find.byType(TextField).last,
+      'Fog sits low over the fen.',
+    );
+    await tester.pump();
+
+    late BlockDocument onDisk;
+    await tester.runAsync(() async {
+      await container.read(documentControllerProvider.notifier).flush();
+      onDisk = await kb.readDocument(path);
+    });
+
+    expect(onDisk.plainText, 'Fog sits low over the fen.');
+  });
+
+  testWidgets('Return splits a paragraph into two blocks', (tester) async {
+    final (container, _, _) = await openEditor(
+      tester,
+      temp,
+      seed: seedWith('First. Second.'),
+    );
+
+    final field = find.byType(TextField).last;
+    await tester.tap(field);
+    await tester.pump();
+
+    // Place the caret between the two sentences, then press Return.
+    final controller =
+        tester.widget<TextField>(field).controller! as RichTextController;
+    controller.selection = const TextSelection.collapsed(offset: 7);
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    final document = container.read(documentControllerProvider)!.document;
+    expect(document.blocks, hasLength(2));
+    expect(document.blocks[0].plainText, 'First. ');
+    expect(document.blocks[1].plainText, 'Second.');
+
+    // Settle the pending save so the debounce timer does not outlive the test.
+    await tester.runAsync(
+      () => container.read(documentControllerProvider.notifier).flush(),
+    );
+  });
+
+  testWidgets('the block model keeps one paragraph per block', (tester) async {
+    final (container, _, _) = await openEditor(
+      tester,
+      temp,
+      seed: BlockDocument(
+        id: 'doc-1',
+        title: 'Aldenmoor',
+        blocks: [
+          ParagraphBlock(
+            id: 'b1',
+            spans: const [TextSpanNode(text: 'One')],
+          ),
+          ParagraphBlock(
+            id: 'b2',
+            spans: const [TextSpanNode(text: 'Two')],
+          ),
+          ParagraphBlock(
+            id: 'b3',
+            spans: const [TextSpanNode(text: 'Three')],
+          ),
+        ],
+      ),
+    );
+
+    // Title field plus one field per paragraph block.
+    expect(find.byType(TextField), findsNWidgets(4));
+    expect(
+      container.read(documentControllerProvider)!.document.blocks,
+      hasLength(3),
+    );
+  });
+
+  testWidgets('the title is editable and saved', (tester) async {
+    final (container, kb, path) = await openEditor(tester, temp);
+
+    await tester.enterText(find.byType(TextField).first, 'The Fen Road');
+    await tester.pump();
+
+    late BlockDocument onDisk;
+    await tester.runAsync(() async {
+      await container.read(documentControllerProvider.notifier).flush();
+      onDisk = await kb.readDocument(path);
+    });
+
+    expect(onDisk.title, 'The Fen Road');
+  });
+
+  group('rich text controller', () {
+    test('bold applied to a selection survives editing elsewhere', () {
+      final controller = RichTextController(
+        spans: const [TextSpanNode(text: 'The moor is wide.')],
+      );
+
+      // Bold "moor".
+      controller.applyToRange(
+        const TextRange(start: 4, end: 8),
+        (f) => TextSpanNode(
+          text: f.text,
+          bold: true,
+          italic: f.italic,
+          strikethrough: f.strikethrough,
+          underline: f.underline,
+          color: f.color,
+          highlight: f.highlight,
+          font: f.font,
+        ),
+      );
+
+      expect(controller.toSpans().where((s) => s.bold).single.text, 'moor');
+
+      // Now rewrite the tail; the bold run must be untouched.
+      controller.value = const TextEditingValue(
+        text: 'The moor is bitter.',
+        selection: TextSelection.collapsed(offset: 19),
+      );
+
+      final spans = controller.toSpans();
+      expect(spans.map((s) => s.text).join(), 'The moor is bitter.');
+      expect(spans.where((s) => s.bold).single.text, 'moor');
+    });
+
+    test('typing at the end of a bold run stays bold', () {
+      final controller = RichTextController(
+        spans: const [
+          TextSpanNode(text: 'The '),
+          TextSpanNode(text: 'moor', bold: true),
+        ],
+      );
+
+      controller.value = const TextEditingValue(
+        text: 'The moors',
+        selection: TextSelection.collapsed(offset: 9),
+      );
+
+      expect(controller.toSpans().where((s) => s.bold).single.text, 'moors');
+    });
+
+    test('deleting a formatted run removes its formatting too', () {
+      final controller = RichTextController(
+        spans: const [
+          TextSpanNode(text: 'Keep '),
+          TextSpanNode(text: 'drop', bold: true),
+        ],
+      );
+
+      controller.value = const TextEditingValue(
+        text: 'Keep ',
+        selection: TextSelection.collapsed(offset: 5),
+      );
+
+      expect(controller.toSpans().any((s) => s.bold), isFalse);
+    });
+
+    test('rangeSatisfies drives toggling rather than only setting', () {
+      final controller = RichTextController(
+        spans: const [TextSpanNode(text: 'All bold', bold: true)],
+      );
+
+      expect(
+        controller.rangeSatisfies(
+          const TextRange(start: 0, end: 8),
+          (f) => f.bold,
+        ),
+        isTrue,
+      );
+      expect(
+        controller.rangeSatisfies(
+          const TextRange(start: 0, end: 8),
+          (f) => f.italic,
+        ),
+        isFalse,
+      );
+    });
+
+    test(
+      'every specified inline format round-trips through the controller',
+      () {
+        const original = [
+          TextSpanNode(text: 'plain '),
+          TextSpanNode(
+            text: 'everything',
+            bold: true,
+            italic: true,
+            strikethrough: true,
+            underline: true,
+            color: '#8A3B12',
+            highlight: '#F2E7C9',
+            font: 'Georgia',
+          ),
+        ];
+
+        final spans = RichTextController(spans: original).toSpans();
+        expect(spans, hasLength(2));
+        expect(spans[1].bold, isTrue);
+        expect(spans[1].italic, isTrue);
+        expect(spans[1].strikethrough, isTrue);
+        expect(spans[1].underline, isTrue);
+        expect(spans[1].color, '#8A3B12');
+        expect(spans[1].highlight, '#F2E7C9');
+        expect(spans[1].font, 'Georgia');
+      },
+    );
+
+    test('a malformed colour is ignored rather than crashing', () {
+      expect(parseColor('#GGGGGG'), isNull);
+      expect(parseColor('nonsense'), isNull);
+      expect(parseColor(null), isNull);
+      expect(parseColor('#8A3B12'), const Color(0xFF8A3B12));
+    });
+  });
+}

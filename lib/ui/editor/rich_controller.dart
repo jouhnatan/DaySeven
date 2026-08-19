@@ -1,0 +1,219 @@
+/// A text controller that keeps inline formatting attached to the characters
+/// it applies to.
+///
+/// Flutter's TextEditingController holds plain text, so formatting has to be
+/// maintained alongside it. Keeping one format per character — rather than a
+/// list of ranges — means an insertion in the middle of a bold word cannot
+/// silently detach the formatting that follows it, and it is the same shape the
+/// three-way merge works in.
+library;
+
+import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
+import 'package:flutter/material.dart';
+
+import '../../domain/blocks.dart';
+
+/// A zero-length span carrying only formatting.
+typedef Format = TextSpanNode;
+
+const Format kPlainFormat = TextSpanNode(text: '');
+
+class RichTextController extends TextEditingController {
+  RichTextController({List<TextSpanNode> spans = const []})
+    : _formats = _explode(spans),
+      super(text: spans.map((s) => s.text).join());
+
+  List<Format> _formats;
+
+  static List<Format> _explode(List<TextSpanNode> spans) => [
+    for (final span in spans)
+      for (var i = 0; i < span.text.length; i++) span,
+  ];
+
+  /// The current content as document spans, with adjacent like-formatted runs
+  /// merged so the saved JSON stays compact.
+  List<TextSpanNode> toSpans() {
+    final out = <TextSpanNode>[];
+    final buffer = StringBuffer();
+    Format? current;
+
+    void flush() {
+      if (current != null && buffer.isNotEmpty) {
+        out.add(current.copyWith(text: buffer.toString()));
+      }
+      buffer.clear();
+    }
+
+    for (var i = 0; i < text.length; i++) {
+      final format = i < _formats.length ? _formats[i] : kPlainFormat;
+      if (current == null || !current.sameFormatting(format)) {
+        flush();
+        current = format;
+      }
+      buffer.write(text[i]);
+    }
+    flush();
+    return out;
+  }
+
+  /// Replaces the content wholesale, e.g. when the open document changes under
+  /// the editor after a proposal is approved.
+  void setSpans(List<TextSpanNode> spans) {
+    _formats = _explode(spans);
+    super.value = TextEditingValue(
+      text: spans.map((s) => s.text).join(),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+  }
+
+  @override
+  set value(TextEditingValue newValue) {
+    if (newValue.text != text) {
+      _formats = _reflow(text, newValue.text, _formats);
+    }
+    super.value = newValue;
+  }
+
+  /// Carries formatting across an edit. Surviving characters keep their own
+  /// format; inserted characters inherit from the character to their left,
+  /// which is what makes typing at the end of a bold word stay bold.
+  static List<Format> _reflow(
+    String oldText,
+    String newText,
+    List<Format> oldFormats,
+  ) {
+    final diffs = dmp.diff(oldText, newText);
+    final out = <Format>[];
+    var oldIndex = 0;
+
+    for (final d in diffs) {
+      switch (d.operation) {
+        case dmp.DIFF_EQUAL:
+          for (var i = 0; i < d.text.length; i++) {
+            out.add(
+              oldIndex < oldFormats.length
+                  ? oldFormats[oldIndex]
+                  : kPlainFormat,
+            );
+            oldIndex++;
+          }
+        case dmp.DIFF_DELETE:
+          oldIndex += d.text.length;
+        case dmp.DIFF_INSERT:
+          final inherited = out.isNotEmpty
+              ? out.last
+              : (oldIndex < oldFormats.length
+                    ? oldFormats[oldIndex]
+                    : kPlainFormat);
+          for (var i = 0; i < d.text.length; i++) {
+            out.add(inherited);
+          }
+      }
+    }
+    return out;
+  }
+
+  /// Applies [transform] to every character in [range].
+  void applyToRange(TextRange range, Format Function(Format) transform) {
+    if (!range.isValid || range.isCollapsed) return;
+    final end = range.end.clamp(0, _formats.length);
+    for (var i = range.start.clamp(0, _formats.length); i < end; i++) {
+      _formats[i] = transform(_formats[i]);
+    }
+    notifyListeners();
+  }
+
+  /// True when every character in [range] already satisfies [test], which is
+  /// what makes a formatting shortcut toggle rather than only ever set.
+  bool rangeSatisfies(TextRange range, bool Function(Format) test) {
+    if (!range.isValid || range.isCollapsed) return false;
+    final end = range.end.clamp(0, _formats.length);
+    for (var i = range.start.clamp(0, _formats.length); i < end; i++) {
+      if (!test(_formats[i])) return false;
+    }
+    return true;
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final base = style ?? const TextStyle();
+    final children = <TextSpan>[];
+    final buffer = StringBuffer();
+    Format? current;
+
+    void flush() {
+      if (current != null && buffer.isNotEmpty) {
+        children.add(
+          TextSpan(text: buffer.toString(), style: styleFor(current, base)),
+        );
+      }
+      buffer.clear();
+    }
+
+    for (var i = 0; i < text.length; i++) {
+      final format = i < _formats.length ? _formats[i] : kPlainFormat;
+      if (current == null || !current.sameFormatting(format)) {
+        flush();
+        current = format;
+      }
+      buffer.write(text[i]);
+    }
+    flush();
+
+    return TextSpan(style: base, children: children);
+  }
+}
+
+/// Turns a document span's formatting into a Flutter style.
+TextStyle styleFor(TextSpanNode format, TextStyle base) {
+  final decorations = <TextDecoration>[
+    if (format.underline) TextDecoration.underline,
+    if (format.strikethrough) TextDecoration.lineThrough,
+  ];
+
+  return base.copyWith(
+    fontFamily: format.font ?? base.fontFamily,
+    fontWeight: format.bold ? FontWeight.w700 : base.fontWeight,
+    fontVariations: [FontVariation('wght', format.bold ? 700 : 400)],
+    fontStyle: format.italic ? FontStyle.italic : FontStyle.normal,
+    decoration: decorations.isEmpty
+        ? TextDecoration.none
+        : TextDecoration.combine(decorations),
+    decorationColor: parseColor(format.color) ?? base.color,
+    color: parseColor(format.color) ?? base.color,
+    backgroundColor: parseColor(format.highlight),
+  );
+}
+
+/// Parses `#RRGGBB`. Returns null for null or malformed input rather than
+/// throwing, so a hand-edited document cannot crash the editor.
+Color? parseColor(String? hex) {
+  if (hex == null) return null;
+  final cleaned = hex.replaceFirst('#', '').trim();
+  if (cleaned.length != 6) return null;
+  final value = int.tryParse(cleaned, radix: 16);
+  return value == null ? null : Color(0xFF000000 | value);
+}
+
+/// The colours offered for text and highlight. A small fixed set rather than a
+/// colour picker, to keep the editor's surface area to what is specified.
+const List<String> kTextColors = [
+  '#1D2025',
+  '#8A3B12',
+  '#1C5B3A',
+  '#123B8A',
+  '#6B2D6B',
+  '#8A1220',
+];
+
+const List<String> kHighlightColors = [
+  '#F2E7C9',
+  '#DCEBDA',
+  '#D9E4F2',
+  '#EFDCE8',
+  '#E7E7E7',
+];

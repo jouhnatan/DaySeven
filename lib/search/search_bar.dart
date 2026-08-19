@@ -1,0 +1,252 @@
+/// The persistent search bar above the workspace.
+///
+/// Shaped after Spotlight: a single rounded field, wider than it is tall, set
+/// on its own rather than stretched across the window. Results come from the
+/// Knowledge Base's local FTS index and update on every keystroke, so matching
+/// files appear while the user is still typing a word.
+library;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../app/state.dart';
+import '../app/theme.dart';
+import 'search_index.dart';
+import 'search_state.dart';
+
+/// A little narrower and shorter than macOS Spotlight, which is roughly
+/// 680 x 60.
+const double kSearchWidth = 560;
+const double kSearchHeight = 40;
+
+class DsSearchBar extends ConsumerStatefulWidget {
+  const DsSearchBar({super.key});
+
+  @override
+  ConsumerState<DsSearchBar> createState() => _DsSearchBarState();
+}
+
+class _DsSearchBarState extends ConsumerState<DsSearchBar> {
+  final _controller = TextEditingController();
+  final _focus = FocusNode();
+  final _layerLink = LayerLink();
+  OverlayEntry? _overlay;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _hideResults();
+    });
+  }
+
+  @override
+  void dispose() {
+    _hideResults();
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _showResults() {
+    if (_overlay != null) return;
+    // The panel hangs directly under the field, matching its width.
+    final width =
+        (context.findRenderObject() as RenderBox?)?.size.width ?? kSearchWidth;
+    _overlay = OverlayEntry(
+      builder: (context) => Positioned(
+        width: width,
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: const Offset(0, 4),
+          child: _ResultsPanel(
+            onOpen: (hit) {
+              _controller.clear();
+              ref.read(searchQueryProvider.notifier).state = '';
+              _hideResults();
+              _focus.unfocus();
+              _open(hit);
+            },
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context).insert(_overlay!);
+  }
+
+  void _hideResults() {
+    _overlay?.remove();
+    _overlay = null;
+  }
+
+  Future<void> _open(SearchHit hit) async {
+    await ref.read(documentControllerProvider.notifier).open(hit.relativePath);
+    ref.read(serviceProvider.notifier).state = DsService.editor;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: kSearchWidth),
+      child: CompositedTransformTarget(
+        link: _layerLink,
+        child: Container(
+          height: kSearchHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: colors.island,
+            borderRadius: const BorderRadius.all(DsRadius.control),
+            border: Border.all(color: colors.border, width: 1),
+          ),
+          alignment: Alignment.centerLeft,
+          child: TextField(
+            controller: _controller,
+            focusNode: _focus,
+            style: aleo(size: 15, color: colors.text),
+            cursorColor: colors.text,
+            cursorWidth: 1.5,
+            decoration: InputDecoration(
+              isCollapsed: true,
+              border: InputBorder.none,
+              hintText: 'Search',
+              hintStyle: aleo(size: 15, color: colors.muted),
+            ),
+            onChanged: (value) {
+              ref.read(searchQueryProvider.notifier).state = value;
+              if (value.trim().isEmpty) {
+                _hideResults();
+              } else {
+                _showResults();
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultsPanel extends ConsumerWidget {
+  const _ResultsPanel({required this.onOpen});
+
+  final void Function(SearchHit hit) onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.ds;
+    final results = ref.watch(searchResultsProvider);
+    if (results.isEmpty) return const SizedBox.shrink();
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 340),
+        decoration: BoxDecoration(
+          color: colors.island,
+          borderRadius: const BorderRadius.all(DsRadius.island),
+          border: Border.all(color: colors.border, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(4),
+          shrinkWrap: true,
+          itemCount: results.length,
+          itemBuilder: (context, i) =>
+              _ResultRow(hit: results[i], onTap: () => onOpen(results[i])),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultRow extends StatefulWidget {
+  const _ResultRow({required this.hit, required this.onTap});
+
+  final SearchHit hit;
+  final VoidCallback onTap;
+
+  @override
+  State<_ResultRow> createState() => _ResultRowState();
+}
+
+class _ResultRowState extends State<_ResultRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: _hovered ? colors.selection : Colors.transparent,
+            borderRadius: const BorderRadius.all(DsRadius.row),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.hit.title.isEmpty
+                    ? widget.hit.relativePath
+                    : widget.hit.title,
+                style: aleo(size: 13, weight: 500, color: colors.text),
+              ),
+              if (widget.hit.snippet.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                _Snippet(widget.hit.snippet),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Renders the FTS snippet, emphasising the matched terms the index marked.
+class _Snippet extends StatelessWidget {
+  const _Snippet(this.snippet);
+
+  final String snippet;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    final base = aleo(size: 12, color: colors.muted);
+    final spans = <TextSpan>[];
+    var rest = snippet;
+
+    while (true) {
+      final start = rest.indexOf(SearchHit.matchOpen);
+      if (start < 0) break;
+      final end = rest.indexOf(SearchHit.matchClose, start);
+      if (end < 0) break;
+
+      if (start > 0) spans.add(TextSpan(text: rest.substring(0, start)));
+      spans.add(
+        TextSpan(
+          text: rest.substring(start + 1, end),
+          style: aleo(size: 12, weight: 600, color: colors.text),
+        ),
+      );
+      rest = rest.substring(end + 1);
+    }
+    if (rest.isNotEmpty) spans.add(TextSpan(text: rest));
+
+    return Text.rich(
+      TextSpan(style: base, children: spans),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
