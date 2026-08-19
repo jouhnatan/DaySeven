@@ -2,8 +2,9 @@
 ///
 /// Three surface tones, each a subtle step apart: the application background,
 /// the island/panel, and the editor surface. Flat — no gradients, no shadows
-/// beyond a hairline border, no coloured fills. Follows the system light/dark
-/// setting, which adds no control to the interface.
+/// beyond a hairline border, and one coloured fill: the paragraph being edited.
+/// Follows the system light/dark setting, which adds no control to the
+/// interface.
 library;
 
 import 'package:flutter/material.dart';
@@ -31,6 +32,7 @@ class DsColors extends ThemeExtension<DsColors> {
     required this.text,
     required this.muted,
     required this.selection,
+    required this.editingBlock,
     required this.pending,
     required this.addition,
     required this.removal,
@@ -53,6 +55,11 @@ class DsColors extends ThemeExtension<DsColors> {
   /// Row hover/selection wash in lists and the tree.
   final Color selection;
 
+  /// The wash behind the paragraph being edited. The one coloured fill in the
+  /// interface: it marks where typing is going, which the caret alone does not
+  /// do well in a page of evenly spaced blocks.
+  final Color editingBlock;
+
   /// The dot on the Differences button when a proposal is waiting.
   final Color pending;
 
@@ -69,6 +76,7 @@ class DsColors extends ThemeExtension<DsColors> {
     text: Color(0xFFD6D9DF),
     muted: Color(0xFF868D99),
     selection: Color(0xFF23262D),
+    editingBlock: Color(0xFF1A1F2B),
     pending: Color(0xFFC8A45C),
     addition: Color(0xFF1E2A22),
     removal: Color(0xFF2A1E20),
@@ -83,6 +91,7 @@ class DsColors extends ThemeExtension<DsColors> {
     text: Color(0xFF1D2025),
     muted: Color(0xFF6B7280),
     selection: Color(0xFFE3E5EA),
+    editingBlock: Color(0xFFEFF3FC),
     pending: Color(0xFF9A7526),
     addition: Color(0xFFE7F1E9),
     removal: Color(0xFFF6E8E9),
@@ -102,6 +111,9 @@ class DsRadius {
   static const island = Radius.circular(10);
   static const control = Radius.circular(8);
   static const row = Radius.circular(6);
+
+  /// The wash behind the paragraph being edited.
+  static const block = Radius.circular(5);
 }
 
 class DsSpace {

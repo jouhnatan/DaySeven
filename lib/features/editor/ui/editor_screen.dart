@@ -275,12 +275,15 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
     return Focus(
       onKeyEvent: (node, event) => KeyEventResult.ignored,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(56, 40, 56, 120),
+        padding: const EdgeInsets.fromLTRB(48, 40, 48, 120),
         children: [
-          _TitleField(
-            title: _document.title,
-            onChanged: (title) =>
-                _commit(_document.copyWith(title: title), rebuild: false),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: _TitleField(
+              title: _document.title,
+              onChanged: (title) =>
+                  _commit(_document.copyWith(title: title), rebuild: false),
+            ),
           ),
           const SizedBox(height: 20),
           for (final block in _document.blocks)
@@ -295,26 +298,34 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
                   onMergeBack: () => _mergeIntoPrevious(block.id),
                   onMenu: (position) => _showBlockMenu(position, block),
                 ),
-                ImageBlock() => _ImageView(
-                  block: block,
-                  onCaptionChanged: (caption) => _updateBlock(
-                    block.id,
-                    (b) => (b as ImageBlock).copyWith(caption: caption),
+                ImageBlock() => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: _ImageView(
+                    block: block,
+                    onCaptionChanged: (caption) => _updateBlock(
+                      block.id,
+                      (b) => (b as ImageBlock).copyWith(caption: caption),
+                    ),
+                    onMenu: (position) => _showBlockMenu(position, block),
                   ),
-                  onMenu: (position) => _showBlockMenu(position, block),
                 ),
               },
             ),
           const SizedBox(height: 24),
-          _AddParagraph(
-            onTap: () {
-              final block = ParagraphBlock(id: newId(), spans: const []);
-              _commit(_document.copyWith(blocks: [..._document.blocks, block]));
-              WidgetsBinding.instance.addPostFrameCallback(
-                (_) => _focusFor(block.id).requestFocus(),
-              );
-            },
-            color: colors.muted,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: _AddParagraph(
+              onTap: () {
+                final block = ParagraphBlock(id: newId(), spans: const []);
+                _commit(
+                  _document.copyWith(blocks: [..._document.blocks, block]),
+                );
+                WidgetsBinding.instance.addPostFrameCallback(
+                  (_) => _focusFor(block.id).requestFocus(),
+                );
+              },
+              color: colors.muted,
+            ),
           ),
         ],
       ),
@@ -664,18 +675,38 @@ class _ParagraphView extends StatelessWidget {
               }
               return KeyEventResult.ignored;
             },
-            child: TextField(
-              controller: controller,
-              focusNode: focusNode,
-              maxLines: null,
-              textAlign: _align,
-              cursorColor: colors.text,
-              cursorWidth: 1.5,
-              style: aleo(size: 15, height: 1.6, color: colors.text),
-              decoration: const InputDecoration(
-                isCollapsed: true,
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 2),
+            // The wash follows the caret, so it has to repaint when this
+            // block gains or loses focus rather than only when the document
+            // changes.
+            child: ListenableBuilder(
+              listenable: focusNode,
+              builder: (context, child) => AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOut,
+                // Constant padding: only the colour changes with focus, so
+                // the text does not shift as it is clicked into.
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: focusNode.hasFocus
+                      ? colors.editingBlock
+                      : Colors.transparent,
+                  borderRadius: const BorderRadius.all(DsRadius.block),
+                ),
+                child: child,
+              ),
+              child: TextField(
+                controller: controller,
+                focusNode: focusNode,
+                maxLines: null,
+                textAlign: _align,
+                cursorColor: colors.text,
+                cursorWidth: 1.5,
+                style: aleo(size: 15, height: 1.6, color: colors.text),
+                decoration: const InputDecoration(
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(vertical: 2),
+                ),
               ),
             ),
           ),
