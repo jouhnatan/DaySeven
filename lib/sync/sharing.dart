@@ -13,7 +13,9 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/auth/auth_repository.dart';
-import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/features/editor/data/document_repository.dart';
+import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
+import 'package:dayseven/features/review/data/change_set_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 
 enum KbRole {

@@ -20,7 +20,7 @@ import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/auth/auth_repository.dart';
 import 'package:dayseven/sync/sharing.dart';
-import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/ui/shell/invite_dialog.dart';
 import 'package:dayseven/ui/shell/name_prompt.dart';

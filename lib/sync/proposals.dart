@@ -14,7 +14,7 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/domain/revision.dart';
 import 'package:dayseven/auth/auth_repository.dart';
-import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/features/review/data/change_set_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 
 /// Subscribes to the open Knowledge Base's private channel. Emits each time a
