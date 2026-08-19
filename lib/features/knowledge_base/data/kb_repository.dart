@@ -5,7 +5,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:dayseven/features/auth/data/auth_repository.dart';
+import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 
 class KbRepository {

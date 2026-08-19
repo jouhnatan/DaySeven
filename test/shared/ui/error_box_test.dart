@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'test_fonts.dart';
+import '../../support/test_fonts.dart';
 
 Widget harness(Widget child) => MaterialApp(
   theme: dsTheme(Brightness.dark),

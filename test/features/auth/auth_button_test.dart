@@ -1,12 +1,12 @@
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/auth/ui/auth_button.dart';
-import 'package:dayseven/features/auth/data/auth_repository.dart';
+import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../ui/test_fonts.dart';
+import '../../support/test_fonts.dart';
 
 Widget harness({List<Override> overrides = const []}) => ProviderScope(
   overrides: overrides,

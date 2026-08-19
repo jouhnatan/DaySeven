@@ -13,7 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/blocks/revision.dart';
-import 'package:dayseven/features/auth/data/auth_repository.dart';
+import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/features/review/data/change_set_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 

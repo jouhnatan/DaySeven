@@ -15,7 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'test_fonts.dart';
+import '../support/test_fonts.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

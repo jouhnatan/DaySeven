@@ -27,24 +27,51 @@ Knowledge Base is a folder, and only collaboration needs the network.
 
 ```
 lib/
-  app/         Theme tokens and application state (Riverpod)
-  domain/      Block model, revisions, change sets, three-way merge — pure Dart
-  kb/          Knowledge Base bundle: the folder on disk
-  auth/        Signing in: the repository and the top-right button
-  search/      The whole of search: FTS5 index, query state, the bar
-  convert/     ODT and DOCX import/export
-  sync/        Supabase client, repositories, Realtime, sharing
-  ui/          shell, home, editor, diff
-  platform/    Install-location check
+  main.dart      Boots Supabase and runs the app
+  app/           The composition root — the one place features meet
+    app.dart       MaterialApp and the first-run install check
+    service.dart   Which service the rail is showing
+    app_store.dart Per-installation state: recents, pane widths
+    shell/         The three-pane frame and its service rail
+    workspace/     What is currently open: the Knowledge Base, the document,
+                   and the sharing that syncs them
+  features/      One folder per feature: ui/, plus state/, data/ or domain/
+    auth/          The sign-in button
+    editor/        The document editor and its rich-text controller
+    home/          The landing screen
+    knowledge_base/The KB island, invite and rename dialogs, KB repository
+    review/        Diff view, three-way merge, proposals, change sets
+    search/        Query state and the search bar
+  shared/        Used by more than one feature; depends on no feature
+    blocks/        Block model, revisions, the FTS5 search index — pure Dart
+    kb/            Knowledge Base bundle: the folder on disk
+    documents/     ODT and DOCX import/export
+    auth/          Who is signed in
+    backend/       Supabase client, error vocabulary, document repository
+    platform/      Install-location check
+    ui/            Theme tokens, dialogs, error box, span styling
 supabase/
-  migrations/  Schema, RLS, RPCs, Realtime trigger, Storage bucket
-scripts/       Packaging for macOS (DMG) and Windows (MSIX)
+  migrations/    Schema, RLS, RPCs, Realtime trigger, Storage bucket
+scripts/         Packaging for macOS (DMG) and Windows (MSIX)
 ```
 
-Most of the tree is organised by layer. `auth/` and `search/` are the
-exceptions: each is a feature folder holding everything that feature needs, so
-its state, its logic and its controls stay together rather than being spread
-across three layers.
+### Where new code goes
+
+Three rules, checked by `scripts/check_layers.sh`:
+
+- **`shared/` imports nothing from `app/` or `features/`.** It is the bottom of
+  the stack. Something belongs here once a second feature needs it — not in
+  anticipation of one.
+- **No feature imports another feature.** If two features need to talk, the
+  thing they are talking about is usually neither one's: it goes in `shared/`
+  if it is a model or a helper, or in `app/` if it coordinates them.
+- **`app/` may import anything.** It composes the features into an application,
+  so it is allowed to know about all of them.
+
+`app/workspace/` holds the open Knowledge Base and the open document. They live
+there rather than in a feature because nearly every feature reads them: the
+editor edits the open document, but search, review, home and the KB island all
+read it too.
 
 ## How a document is stored
 
@@ -146,6 +173,7 @@ Developer membership and an Authenticode certificate respectively.
 
 ```bash
 flutter test
+./scripts/check_layers.sh
 ```
 
 Covers the block model's JSON round-trip, the three-way merge (including
@@ -155,11 +183,11 @@ search, ODT/DOCX round-trips in
 both directions and across formats, the rich text controller, the editor's block
 behaviour, and the shell's layout rules.
 
-`test/ui/appearance_test.dart` renders the shell to `test/ui/goldens/`. Those
+`test/app/appearance_test.dart` renders the shell to `test/app/goldens/`. Those
 images are how the layout is meant to look — they caught a real misalignment
 between the islands — but like all golden tests they are sensitive to the
 Flutter and font versions that produced them. Refresh with:
 
 ```bash
-flutter test test/ui/appearance_test.dart --update-goldens
+flutter test test/app/appearance_test.dart --update-goldens
 ```

@@ -17,7 +17,7 @@ import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/features/review/domain/merge.dart';
 import 'package:dayseven/shared/blocks/revision.dart';
 import 'package:dayseven/features/review/data/proposals.dart';
-import 'package:dayseven/features/editor/data/document_repository.dart';
+import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/features/review/data/change_set_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
