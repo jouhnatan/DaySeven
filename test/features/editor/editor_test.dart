@@ -23,6 +23,7 @@ Future<(ProviderContainer, KnowledgeBase, String)> openEditor(
   WidgetTester tester,
   Directory temp, {
   BlockDocument? seed,
+  Brightness brightness = Brightness.dark,
 }) async {
   final container = ProviderContainer();
   addTearDown(container.dispose);
@@ -48,7 +49,7 @@ Future<(ProviderContainer, KnowledgeBase, String)> openEditor(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
-        theme: dsTheme(Brightness.dark),
+        theme: dsTheme(brightness),
         home: const Scaffold(body: EditorScreen()),
       ),
     ),

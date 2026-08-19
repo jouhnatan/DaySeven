@@ -687,9 +687,13 @@ class _ParagraphView extends StatelessWidget {
                 // the text does not shift as it is clicked into.
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
+                  // Fading to Colors.transparent would fade through
+                  // transparent *black*, greying the block on the way in and
+                  // out. Only the alpha should move, so the far end of the
+                  // animation is this same colour at zero alpha.
                   color: focusNode.hasFocus
                       ? colors.editingBlock
-                      : Colors.transparent,
+                      : colors.editingBlock.withAlpha(0),
                   borderRadius: const BorderRadius.all(DsRadius.block),
                 ),
                 child: child,
