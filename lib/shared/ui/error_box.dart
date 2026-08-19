@@ -7,7 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 class DsErrorBox extends StatelessWidget {
   const DsErrorBox(this.message, {super.key});

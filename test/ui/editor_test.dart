@@ -1,11 +1,12 @@
 import 'dart:io';
 
 import 'package:dayseven/app/state.dart';
-import 'package:dayseven/app/theme.dart';
-import 'package:dayseven/domain/blocks.dart';
-import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/shared/ui/theme.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/ui/editor/editor_screen.dart';
 import 'package:dayseven/ui/editor/rich_controller.dart';
+import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

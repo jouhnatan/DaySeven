@@ -8,7 +8,7 @@ library;
 import 'dart:io';
 
 import 'package:dayseven/app/state.dart';
-import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/ui/shell/shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

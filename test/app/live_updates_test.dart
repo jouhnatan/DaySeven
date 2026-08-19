@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:dayseven/app/state.dart';
-import 'package:dayseven/domain/blocks.dart';
-import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

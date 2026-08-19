@@ -14,9 +14,9 @@ import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import 'package:xml/xml.dart';
 
-import 'package:dayseven/domain/blocks.dart';
-import 'package:dayseven/kb/bundle.dart';
-import 'package:dayseven/convert/docx.dart' show ImportedDocument;
+import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/shared/documents/docx.dart' show ImportedDocument;
 
 const String _office = 'urn:oasis:names:tc:opendocument:xmlns:office:1.0';
 const String _text = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0';

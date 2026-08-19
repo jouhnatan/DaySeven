@@ -1,38 +1,18 @@
-/// Supabase wiring: the client, and the repositories that move Knowledge Bases,
-/// documents, revisions and change sets between the local folder and Postgres.
+/// The repositories that move Knowledge Bases, documents, revisions and change
+/// sets between the local folder and Postgres.
 ///
-/// Signing in lives in `lib/auth/` — this file only needs the client.
+/// The client itself and the error vocabulary live in
+/// `lib/shared/backend/supabase_client.dart`; signing in lives in `lib/auth/`.
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:dayseven/auth/auth_repository.dart';
+import 'package:dayseven/shared/backend/supabase_client.dart';
 
-import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/domain/revision.dart';
-
-/// Supplied at build time with `--dart-define-from-file=env/supabase.json`.
-const String kSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
-const String kSupabasePublishableKey = String.fromEnvironment(
-  'SUPABASE_PUBLISHABLE_KEY',
-);
-
-/// True when the app was built with Supabase credentials. Without them the
-/// application still runs entirely locally — a Knowledge Base is a folder, and
-/// only collaboration needs the network.
-bool get isSupabaseConfigured =>
-    kSupabaseUrl.isNotEmpty && kSupabasePublishableKey.isNotEmpty;
-
-Future<void> initSupabase() async {
-  if (!isSupabaseConfigured) return;
-  await Supabase.initialize(
-    url: kSupabaseUrl,
-    publishableKey: kSupabasePublishableKey,
-  );
-}
-
-SupabaseClient get supabase => Supabase.instance.client;
 
 // ------------------------------------------------------------ knowledge base --
 
@@ -268,56 +248,3 @@ class ChangeSetRepository {
 }
 
 final changeSetRepositoryProvider = Provider((ref) => ChangeSetRepository());
-
-/// Renders an error as something worth pasting: the message plus whatever
-/// codes the failure carries, rather than just a class name.
-String describeError(Object error) {
-  if (error is AuthException) {
-    final parts = <String>[
-      error.message,
-      if (error.statusCode != null) 'status ${error.statusCode}',
-      if (error.code != null) 'code ${error.code}',
-    ];
-    final detail = 'Auth: ${parts.join(' · ')}';
-
-    // Two failures here are project settings rather than anything the person
-    // typed, and say so in terms of an email they never entered.
-    final explanation = switch (error.code) {
-      'email_not_confirmed' || 'over_email_send_rate_limit' =>
-        'DaySeven accounts are username-only, but this project still has email '
-            'confirmation switched on, so signing up tries to send mail. Turn '
-            'off Authentication → Sign In / Providers → Email → "Confirm '
-            'email" in the Supabase dashboard.',
-      _ => null,
-    };
-
-    return explanation == null ? detail : '$explanation\n\n$detail';
-  }
-
-  if (error is PostgrestException) {
-    final parts = <String>[
-      error.message,
-      if (error.code != null) 'code ${error.code}',
-      if (error.details != null) 'details ${error.details}',
-      if (error.hint != null) 'hint ${error.hint}',
-    ];
-    return 'Database: ${parts.join(' · ')}';
-  }
-
-  if (error is StorageException) {
-    return 'Storage: ${error.message}'
-        '${error.statusCode == null ? '' : ' · status ${error.statusCode}'}';
-  }
-
-  if (error is SyncException) return error.message;
-
-  return '$error';
-}
-
-class SyncException implements Exception {
-  const SyncException(this.message);
-  final String message;
-
-  @override
-  String toString() => message;
-}

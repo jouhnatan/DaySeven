@@ -1,4 +1,4 @@
-import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/auth/auth_button.dart';
 import 'package:dayseven/auth/auth_repository.dart';
 import 'package:flutter/material.dart';

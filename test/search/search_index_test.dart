@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:dayseven/domain/blocks.dart';
-import 'package:dayseven/kb/bundle.dart';
-import 'package:dayseven/search/search_index.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/shared/blocks/search_index.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

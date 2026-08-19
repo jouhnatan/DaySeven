@@ -15,7 +15,7 @@ library;
 
 import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
 
-import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
 
 class MergeResult {
   const MergeResult({required this.document, required this.conflictedBlockIds});

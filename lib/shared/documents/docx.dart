@@ -16,8 +16,8 @@ import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import 'package:xml/xml.dart';
 
-import 'package:dayseven/domain/blocks.dart';
-import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
 
 /// Marks a paragraph as an image caption, so a round-trip through Word keeps
 /// the caption attached to its image.

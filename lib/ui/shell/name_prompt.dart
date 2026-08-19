@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 Future<String?> askForName(
   BuildContext context, {

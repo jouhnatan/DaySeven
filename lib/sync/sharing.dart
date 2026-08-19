@@ -10,9 +10,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:dayseven/app/state.dart';
-import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/auth/auth_repository.dart';
 import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/shared/backend/supabase_client.dart';
 
 enum KbRole {
   /// Not signed in, or this Knowledge Base was never shared.

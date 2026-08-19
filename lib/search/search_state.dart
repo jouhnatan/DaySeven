@@ -7,7 +7,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/state.dart';
-import 'package:dayseven/search/search_index.dart';
+import 'package:dayseven/shared/blocks/search_index.dart';
 
 /// The live query behind the top search bar.
 final searchQueryProvider = StateProvider<String>((ref) => '');

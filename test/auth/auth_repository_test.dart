@@ -1,5 +1,5 @@
 import 'package:dayseven/auth/auth_repository.dart';
-import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

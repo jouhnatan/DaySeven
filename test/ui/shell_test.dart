@@ -1,4 +1,4 @@
-import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/search/search_bar.dart';
 import 'package:dayseven/ui/shell/shell.dart';
 import 'package:flutter/material.dart';

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/app/theme.dart';
-import 'package:dayseven/platform/install_location.dart';
-import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/shared/ui/theme.dart';
+import 'package:dayseven/shared/platform/install_location.dart';
+import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/ui/shell/shell.dart';
 
 Future<void> main() async {

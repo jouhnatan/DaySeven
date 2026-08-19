@@ -1,4 +1,4 @@
-import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/domain/merge.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,6 +1,6 @@
-import 'package:dayseven/app/theme.dart';
-import 'package:dayseven/sync/supabase.dart';
-import 'package:dayseven/ui/error_box.dart';
+import 'package:dayseven/shared/ui/theme.dart';
+import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/ui/error_box.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';

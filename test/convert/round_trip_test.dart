@@ -3,9 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
-import 'package:dayseven/convert/docx.dart';
-import 'package:dayseven/convert/odt.dart';
-import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/shared/documents/docx.dart';
+import 'package:dayseven/shared/documents/odt.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 

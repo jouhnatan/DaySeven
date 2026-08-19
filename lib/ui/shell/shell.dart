@@ -7,8 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/state.dart';
 import 'package:dayseven/auth/auth_button.dart';
-import 'package:dayseven/sync/supabase.dart';
-import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/sync/proposals.dart';
 import 'package:dayseven/ui/diff/diff_screen.dart';
 import 'package:dayseven/ui/editor/editor_screen.dart';

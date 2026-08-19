@@ -11,12 +11,8 @@ library;
 import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
 import 'package:flutter/material.dart';
 
-import 'package:dayseven/domain/blocks.dart';
-
-/// A zero-length span carrying only formatting.
-typedef Format = TextSpanNode;
-
-const Format kPlainFormat = TextSpanNode(text: '');
+import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/ui/block_text_style.dart';
 
 class RichTextController extends TextEditingController {
   RichTextController({List<TextSpanNode> spans = const []})
@@ -166,37 +162,6 @@ class RichTextController extends TextEditingController {
 
     return TextSpan(style: base, children: children);
   }
-}
-
-/// Turns a document span's formatting into a Flutter style.
-TextStyle styleFor(TextSpanNode format, TextStyle base) {
-  final decorations = <TextDecoration>[
-    if (format.underline) TextDecoration.underline,
-    if (format.strikethrough) TextDecoration.lineThrough,
-  ];
-
-  return base.copyWith(
-    fontFamily: format.font ?? base.fontFamily,
-    fontWeight: format.bold ? FontWeight.w700 : base.fontWeight,
-    fontVariations: [FontVariation('wght', format.bold ? 700 : 400)],
-    fontStyle: format.italic ? FontStyle.italic : FontStyle.normal,
-    decoration: decorations.isEmpty
-        ? TextDecoration.none
-        : TextDecoration.combine(decorations),
-    decorationColor: parseColor(format.color) ?? base.color,
-    color: parseColor(format.color) ?? base.color,
-    backgroundColor: parseColor(format.highlight),
-  );
-}
-
-/// Parses `#RRGGBB`. Returns null for null or malformed input rather than
-/// throwing, so a hand-edited document cannot crash the editor.
-Color? parseColor(String? hex) {
-  if (hex == null) return null;
-  final cleaned = hex.replaceFirst('#', '').trim();
-  if (cleaned.length != 6) return null;
-  final value = int.tryParse(cleaned, radix: 16);
-  return value == null ? null : Color(0xFF000000 | value);
 }
 
 /// The colours offered for text and highlight. A small fixed set rather than a

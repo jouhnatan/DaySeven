@@ -4,7 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 class DsDialog extends StatelessWidget {
   const DsDialog({super.key, required this.actions, required this.children});
