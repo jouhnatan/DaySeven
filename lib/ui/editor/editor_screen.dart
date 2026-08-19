@@ -13,7 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/workspace/kb_session.dart';
+import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/sync/sharing.dart';

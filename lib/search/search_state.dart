@@ -6,7 +6,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/shared/blocks/search_index.dart';
 
 /// The live query behind the top search bar.

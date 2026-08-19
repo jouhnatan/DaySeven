@@ -5,7 +5,9 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/service.dart';
+import 'package:dayseven/app/shell/pane_widths.dart';
+import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/auth/auth_button.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/theme.dart';

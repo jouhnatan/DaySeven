@@ -1,6 +1,8 @@
 import 'dart:io';
 
-import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/shell/pane_widths.dart';
+import 'package:dayseven/app/workspace/kb_session.dart';
+import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:flutter/services.dart';

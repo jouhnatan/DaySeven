@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/service.dart';
+import 'package:dayseven/app/workspace/kb_session.dart';
+import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class HomeScreen extends ConsumerWidget {

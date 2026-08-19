@@ -9,7 +9,8 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/workspace/kb_session.dart';
+import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/auth/auth_repository.dart';
 import 'package:dayseven/sync/supabase.dart';
