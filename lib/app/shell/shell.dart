@@ -8,16 +8,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dayseven/app/service.dart';
 import 'package:dayseven/app/shell/pane_widths.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
-import 'package:dayseven/auth/auth_button.dart';
+import 'package:dayseven/features/auth/ui/auth_button.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/theme.dart';
-import 'package:dayseven/sync/proposals.dart';
-import 'package:dayseven/ui/diff/diff_screen.dart';
-import 'package:dayseven/ui/editor/editor_screen.dart';
-import 'package:dayseven/ui/home/home_screen.dart';
-import 'package:dayseven/ui/shell/kb_island.dart';
-import 'package:dayseven/search/search_bar.dart';
-import 'package:dayseven/ui/shell/service_rail.dart';
+import 'package:dayseven/features/review/data/proposals.dart';
+import 'package:dayseven/features/review/ui/diff_screen.dart';
+import 'package:dayseven/features/editor/ui/editor_screen.dart';
+import 'package:dayseven/features/home/ui/home_screen.dart';
+import 'package:dayseven/features/knowledge_base/ui/kb_island.dart';
+import 'package:dayseven/features/search/ui/search_bar.dart';
+import 'package:dayseven/app/shell/service_rail.dart';
 
 class DsShell extends ConsumerWidget {
   const DsShell({super.key});

@@ -1,5 +1,5 @@
 import 'package:dayseven/shared/blocks/blocks.dart';
-import 'package:dayseven/domain/merge.dart';
+import 'package:dayseven/features/review/domain/merge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 ParagraphBlock p(String id, String text, {bool bold = false, String? color}) =>

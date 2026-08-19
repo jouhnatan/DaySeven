@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/service.dart';
 import 'package:dayseven/shared/ui/theme.dart';
-import 'package:dayseven/ui/shell/shell.dart';
+import 'package:dayseven/app/shell/shell.dart';
 
 class ServiceRail extends ConsumerWidget {
   const ServiceRail({super.key});

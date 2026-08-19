@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
-import 'package:dayseven/domain/revision.dart';
+import 'package:dayseven/shared/blocks/revision.dart';
 
 class DocumentRepository {
   /// Publishes a local document as a document row plus its first revision.

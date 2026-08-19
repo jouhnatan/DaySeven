@@ -1,6 +1,6 @@
 import 'package:dayseven/shared/ui/theme.dart';
-import 'package:dayseven/search/search_bar.dart';
-import 'package:dayseven/ui/shell/shell.dart';
+import 'package:dayseven/features/search/ui/search_bar.dart';
+import 'package:dayseven/app/shell/shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

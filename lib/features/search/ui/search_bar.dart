@@ -13,7 +13,7 @@ import 'package:dayseven/app/service.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/blocks/search_index.dart';
-import 'package:dayseven/search/search_state.dart';
+import 'package:dayseven/features/search/state/search_state.dart';
 
 /// A little narrower and shorter than macOS Spotlight, which is roughly
 /// 680 x 60.

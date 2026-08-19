@@ -17,11 +17,11 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/documents/documents.dart';
-import 'package:dayseven/sync/sharing.dart';
+import 'package:dayseven/features/knowledge_base/data/sharing.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
-import 'package:dayseven/ui/editor/rich_controller.dart';
+import 'package:dayseven/features/editor/ui/rich_controller.dart';
 
 class EditorScreen extends ConsumerWidget {
   const EditorScreen({super.key});

@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/shared/ui/theme.dart';
-import 'package:dayseven/sync/sharing.dart';
+import 'package:dayseven/features/knowledge_base/data/sharing.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/error_box.dart';

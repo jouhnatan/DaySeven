@@ -18,13 +18,13 @@ import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
-import 'package:dayseven/auth/auth_repository.dart';
-import 'package:dayseven/sync/sharing.dart';
+import 'package:dayseven/features/auth/data/auth_repository.dart';
+import 'package:dayseven/features/knowledge_base/data/sharing.dart';
 import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
-import 'package:dayseven/ui/shell/invite_dialog.dart';
-import 'package:dayseven/ui/shell/name_prompt.dart';
-import 'package:dayseven/ui/shell/shell.dart';
+import 'package:dayseven/features/knowledge_base/ui/invite_dialog.dart';
+import 'package:dayseven/features/knowledge_base/ui/name_prompt.dart';
+import 'package:dayseven/app/shell/shell.dart';
 
 class KbIsland extends ConsumerWidget {
   const KbIsland({super.key});

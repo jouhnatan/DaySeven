@@ -9,7 +9,7 @@ import 'dart:io';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/shared/ui/theme.dart';
-import 'package:dayseven/ui/shell/shell.dart';
+import 'package:dayseven/app/shell/shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
