@@ -107,6 +107,30 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
         return controller;
       });
 
+  /// One controller per cell, keyed by block id and position so a table's
+  /// cells behave like any other block: independent, and undisturbed by edits
+  /// elsewhere in the table.
+  RichTextController _cellControllerFor(TableBlock block, int row, int col) =>
+      _controllers.putIfAbsent('${block.id}:$row:$col', () {
+        final controller = RichTextController(spans: block.rows[row][col]);
+        controller.addListener(() => _onCellChanged(block.id, row, col));
+        return controller;
+      });
+
+  void _onCellChanged(String blockId, int row, int col) {
+    final controller = _controllers['$blockId:$row:$col'];
+    if (controller == null) return;
+
+    final index = _document.blocks.indexWhere((b) => b.id == blockId);
+    if (index < 0) return;
+    final block = _document.blocks[index];
+    if (block is! TableBlock) return;
+
+    final blocks = [..._document.blocks];
+    blocks[index] = block.withCell(row, col, controller.toSpans());
+    _commit(_document.copyWith(blocks: blocks), rebuild: false);
+  }
+
   FocusNode _focusFor(String blockId) => _focusNodes.putIfAbsent(blockId, () {
     final node = FocusNode();
     node.addListener(() => _publishFocus(blockId));
@@ -338,6 +362,104 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     if (index < 0) return;
     final blocks = [..._document.blocks]..insert(index + 1, block);
     _commit(_document.copyWith(blocks: blocks));
+  }
+
+  void _insertTable(String afterBlockId) {
+    List<TextSpanNode> cell() => const [];
+    _insertAfter(
+      afterBlockId,
+      TableBlock(
+        id: newId(),
+        rows: [
+          [cell(), cell()],
+          [cell(), cell()],
+        ],
+      ),
+    );
+  }
+
+  void _addTableRow(String blockId) => _updateBlock(blockId, (b) {
+    final t = b as TableBlock;
+    return t.copyWith(
+      rows: [
+        ...t.rows,
+        [for (var c = 0; c < t.columnCount; c++) const <TextSpanNode>[]],
+      ],
+    );
+  });
+
+  void _addTableColumn(String blockId) => _updateBlock(blockId, (b) {
+    final t = b as TableBlock;
+    return t.copyWith(
+      rows: [
+        for (final row in t.rows) [...row, const <TextSpanNode>[]],
+      ],
+    );
+  });
+
+  /// Puts a reference at the caret and its note at the end of the document.
+  void _insertFootnote(String blockId) {
+    final controller = _controllers[blockId];
+    final index = _document.blocks.indexWhere((b) => b.id == blockId);
+    if (controller == null || index < 0) return;
+
+    final used = <String>{
+      for (final b in _document.blocks)
+        if (b is FootnoteBlock) b.label,
+    };
+    var n = 1;
+    while (used.contains('$n')) {
+      n++;
+    }
+    final label = '$n';
+
+    final at = controller.selection.isValid
+        ? controller.selection.end
+        : controller.text.length;
+    final spans = controller.toSpans();
+    final marker = TextSpanNode(text: '[^$label]', footnote: label);
+    final rebuilt = [
+      ..._sliceSpans(spans, 0, at),
+      marker,
+      ..._sliceSpans(spans, at, controller.text.length),
+    ];
+
+    controller.setSpans(rebuilt);
+
+    final block = _document.blocks[index] as TextBlock;
+    final blocks = [..._document.blocks]
+      ..[index] = block.withSpans(rebuilt)
+      ..add(FootnoteBlock(id: newId(), label: label, spans: const []));
+    _commit(_document.copyWith(blocks: blocks));
+  }
+
+  Future<void> _insertImageUrl(String afterBlockId) async {
+    final field = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) => DsDialog(
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Cancel',
+              style: aleo(size: 13, color: context.ds.muted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(field.text.trim()),
+            child: Text(
+              'Insert',
+              style: aleo(size: 13, color: context.ds.text),
+            ),
+          ),
+        ],
+        children: [DsField(controller: field, hint: 'https://…/image.png')],
+      ),
+    );
+
+    if (url == null || url.isEmpty) return;
+    _insertAfter(afterBlockId, ImageBlock(id: newId(), url: url));
   }
 
   Future<void> _setLink(String blockId) async {
@@ -613,6 +735,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
                     child: Divider(color: colors.border, height: 24),
                   ),
                 ),
+                TableBlock() => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: _TableView(
+                    block: block,
+                    controllerFor: _cellControllerFor,
+                    onMenu: (position) => _showBlockMenu(position, block),
+                  ),
+                ),
                 ImageBlock() => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: _ImageView(
@@ -865,12 +995,21 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
               ),
             ),
         ],
+        if (block is TableBlock) ...[
+          const PopupMenuDivider(height: 1),
+          item('Add row', () => _addTableRow(block.id)),
+          item('Add column', () => _addTableColumn(block.id)),
+        ],
         const PopupMenuDivider(height: 1),
         item(
           'Insert divider',
           () => _insertAfter(block.id, DividerBlock(id: newId())),
         ),
+        item('Insert table', () => _insertTable(block.id)),
+        if (isParagraph)
+          item('Insert footnote', () => _insertFootnote(block.id)),
         item('Insert image…', () => _insertImage(block.id)),
+        item('Insert image by URL…', () => _insertImageUrl(block.id)),
         const PopupMenuDivider(height: 1),
         item('Export as .docx…', () => _export(DocumentFormat.docx)),
         item('Export as .odt…', () => _export(DocumentFormat.odt)),
@@ -1166,6 +1305,22 @@ class _TextBlockView extends StatelessWidget {
       );
     }
 
+    if (b is FootnoteBlock) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 3, right: 6),
+            child: Text(
+              '[${b.label}]',
+              style: aleo(size: 12, weight: 500, color: colors.link),
+            ),
+          ),
+          Expanded(child: field),
+        ],
+      );
+    }
+
     if (b is ListItemBlock) {
       return Padding(
         padding: EdgeInsets.only(left: 20.0 * b.depth),
@@ -1255,7 +1410,9 @@ class _ImageView extends ConsumerWidget {
     final session = ref.watch(kbSessionProvider);
     if (session == null) return const SizedBox.shrink();
 
-    final file = File(session.kb.assetPathFor(block.assetId));
+    final file = block.isExternal
+        ? null
+        : File(session.kb.assetPathFor(block.assetId));
     final alignment = switch (block.align) {
       BlockAlign.left => CrossAxisAlignment.start,
       BlockAlign.center => CrossAxisAlignment.center,
@@ -1271,7 +1428,23 @@ class _ImageView extends ConsumerWidget {
           children: [
             ClipRRect(
               borderRadius: const BorderRadius.all(DsRadius.control),
-              child: file.existsSync()
+              child: block.isExternal
+                  ? Image.network(
+                      block.url!,
+                      fit: BoxFit.contain,
+                      // A URL can fail for reasons the document knows nothing
+                      // about, so it must not take the editor down with it.
+                      errorBuilder: (context, _, _) => Container(
+                        height: 80,
+                        alignment: Alignment.center,
+                        color: colors.selection,
+                        child: Text(
+                          'Image unavailable',
+                          style: aleo(size: 13, color: colors.muted),
+                        ),
+                      ),
+                    )
+                  : file!.existsSync()
                   ? Image.file(file, fit: BoxFit.contain)
                   : Container(
                       height: 80,
@@ -1345,6 +1518,99 @@ class _TitleFieldState extends State<_TitleField> {
         border: InputBorder.none,
         hintText: 'Untitled',
         hintStyle: aleo(size: 24, weight: 600, color: colors.muted),
+      ),
+    );
+  }
+}
+
+/// A table. Each cell is an ordinary rich-text field, so formatting inside one
+/// works exactly as it does in a paragraph.
+class _TableView extends StatelessWidget {
+  const _TableView({
+    required this.block,
+    required this.controllerFor,
+    required this.onMenu,
+  });
+
+  final TableBlock block;
+  final RichTextController Function(TableBlock, int, int) controllerFor;
+  final void Function(Offset position) onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    final columns = block.columnCount;
+    if (columns == 0) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onSecondaryTapUp: (details) => onMenu(details.globalPosition),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: colors.border),
+          borderRadius: const BorderRadius.all(DsRadius.control),
+        ),
+        child: Column(
+          children: [
+            for (var r = 0; r < block.rows.length; r++)
+              Container(
+                decoration: BoxDecoration(
+                  border: r == 0
+                      ? Border(bottom: BorderSide(color: colors.border))
+                      : null,
+                  color: r == 0 ? colors.selection : null,
+                ),
+                // Stretch needs a bounded height, and a row's height is its
+                // tallest cell — which is exactly what IntrinsicHeight
+                // measures. It is what makes the column rules run full height.
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var c = 0; c < columns; c++)
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: c == 0
+                                  ? null
+                                  : Border(
+                                      left: BorderSide(color: colors.border),
+                                    ),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            child: c < block.rows[r].length
+                                ? TextField(
+                                    controller: controllerFor(block, r, c),
+                                    maxLines: null,
+                                    textAlign: switch (block.alignOf(c)) {
+                                      BlockAlign.left => TextAlign.left,
+                                      BlockAlign.center => TextAlign.center,
+                                      BlockAlign.right => TextAlign.right,
+                                    },
+                                    cursorColor: colors.text,
+                                    cursorWidth: 1.5,
+                                    style: aleo(
+                                      size: 14,
+                                      height: 1.5,
+                                      weight: r == 0 ? 600 : 400,
+                                      color: colors.text,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      isCollapsed: true,
+                                      border: InputBorder.none,
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

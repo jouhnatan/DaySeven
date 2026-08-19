@@ -42,6 +42,9 @@ TextStyle headingStyle(int level, Color color) => aleo(
 /// outranks the default.
 TextStyle styleFor(TextSpanNode format, TextStyle base, {Color? linkColor}) {
   final isLink = format.href != null && linkColor != null;
+  // A reference is a marker, not prose: smaller, lifted, and in the link
+  // colour so it reads as something to follow.
+  final isFootnote = format.footnote != null;
   final decorations = <TextDecoration>[
     if (format.underline || isLink) TextDecoration.underline,
     if (format.strikethrough) TextDecoration.lineThrough,
@@ -58,8 +61,12 @@ TextStyle styleFor(TextSpanNode format, TextStyle base, {Color? linkColor}) {
     decorationColor:
         parseColor(format.color) ?? (isLink ? linkColor : null) ?? base.color,
     color:
-        parseColor(format.color) ?? (isLink ? linkColor : null) ?? base.color,
+        parseColor(format.color) ??
+        (isLink || isFootnote ? linkColor : null) ??
+        base.color,
     backgroundColor: parseColor(format.highlight),
+    fontSize: isFootnote ? (base.fontSize ?? 14) * 0.75 : base.fontSize,
+    fontFeatures: isFootnote ? const [FontFeature.superscripts()] : null,
   );
 }
 

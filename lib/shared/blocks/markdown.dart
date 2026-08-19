@@ -86,9 +86,47 @@ String _encodeBody(Block block) => switch (block) {
   ParagraphBlock() => _encodeSpans(block.normalized().spans),
   CodeBlock() => _encodeCode(block),
   DividerBlock() => '---',
+  TableBlock() => _encodeTable(block.normalized()),
+  FootnoteBlock() =>
+    '[^${block.label}]: ${_encodeSpans(block.normalized().spans)}',
   ImageBlock() =>
-    '![${_escapeCaption(block.caption)}]($_assetDirectory/${block.assetId})',
+    '![${_escapeCaption(block.caption)}](${block.isExternal ? _escapeUrl(block.url!) : '$_assetDirectory/${block.assetId}'})',
 };
+
+String _encodeTable(TableBlock block) {
+  final columns = block.columnCount;
+  if (columns == 0 || block.rows.isEmpty) return '';
+
+  String row(List<List<TextSpanNode>> cells) {
+    final out = [
+      for (var c = 0; c < columns; c++)
+        c < cells.length ? _encodeCell(cells[c]) : '',
+    ];
+    return '| ${out.join(' | ')} |';
+  }
+
+  final rule = [
+    for (var c = 0; c < columns; c++)
+      switch (block.alignOf(c)) {
+        BlockAlign.center => ':---:',
+        BlockAlign.right => '---:',
+        BlockAlign.left => '---',
+      },
+  ];
+
+  return [
+    row(block.rows.first),
+    '| ${rule.join(' | ')} |',
+    for (final r in block.rows.skip(1)) row(r),
+  ].join('\n');
+}
+
+/// A cell is inline content on one line, so a pipe has to be escaped and a
+/// newline cannot survive as one.
+String _encodeCell(List<TextSpanNode> spans) => _encodeSpans([
+  for (final span in spans)
+    span.copyWith(text: span.text.replaceAll('\n', ' ')),
+]).replaceAll('|', r'\|');
 
 String _encodeListItem(ListItemBlock block) {
   // Ordered items are always written `1.`; every renderer numbers them by
@@ -123,6 +161,10 @@ String _encodeSpan(TextSpanNode span, {required bool firstInBlock}) {
   if (span.text.isEmpty) return '';
 
   var out = _escapeText(span.text, firstInBlock: firstInBlock);
+
+  // A reference is written as its marker, not its text, so the file reads the
+  // way a Markdown footnote is supposed to.
+  if (span.footnote != null) return '[^${span.footnote}]';
 
   // Innermost, so `**[text](url)**` rather than `[**text**](url)`; both read
   // back the same, and this keeps one shape.
@@ -257,6 +299,11 @@ BlockDocument decodeMarkdown(String source) {
         body.add(lines[i]);
         i++;
       }
+    } else if (i < lines.length && _tableRowPattern.hasMatch(lines[i])) {
+      while (i < lines.length && _tableRowPattern.hasMatch(lines[i])) {
+        body.add(lines[i]);
+        i++;
+      }
     } else {
       while (i < lines.length &&
           lines[i].trim().isNotEmpty &&
@@ -295,12 +342,24 @@ final RegExp _fencePattern = RegExp(r'^(`{3,}|~{3,})(.*)$');
 /// hand-written files, where consecutive lines are not separated by blanks the
 /// way this encoder separates them.
 bool _startsBlock(String line) =>
+    _tableRowPattern.hasMatch(line) ||
+    _footnotePattern.hasMatch(line) ||
     _listPattern.hasMatch(line) ||
     _quotePattern.hasMatch(line) ||
     _headingPattern.hasMatch(line) ||
     _dividerPattern.hasMatch(line) ||
     _fencePattern.hasMatch(line);
 final RegExp _dividerPattern = RegExp(r'^\s*(-{3,}|\*{3,}|_{3,})\s*$');
+final RegExp _tableRowPattern = RegExp(r'^\s*\|.*\|\s*$');
+final RegExp _tableRulePattern = RegExp(r'^\s*\|[\s:|-]+\|\s*$');
+final RegExp _footnotePattern = RegExp(
+  r'^\[\^([^\]]+)\]:\s*(.*)$',
+  dotAll: true,
+);
+final RegExp _footnoteRefPattern = RegExp(r'^\[\^([^\]]+)\]');
+
+/// A scheme or an absolute path means the image is not in the bundle.
+final RegExp _externalUrlPattern = RegExp(r'^([a-zA-Z][a-zA-Z0-9+.-]*:|/)');
 final RegExp _quotePattern = RegExp(r'^>\s?(.*)$', dotAll: true);
 final RegExp _listPattern = RegExp(
   r'^([ \t]*)([-*+]|\d+[.)])\s+(\[([ xX])\]\s+)?(.*)$',
@@ -347,6 +406,21 @@ Block _decodeBlock(Map<String, String> attributes, List<String> body) {
     return DividerBlock(id: id, align: align, spaceBefore: space);
   }
 
+  if (body.length > 1 && body.every(_tableRowPattern.hasMatch)) {
+    return _decodeTable(id, body, align, space);
+  }
+
+  final footnote = _footnotePattern.firstMatch(text);
+  if (footnote != null) {
+    return FootnoteBlock(
+      id: id,
+      label: footnote.group(1)!,
+      spans: decodeInlineSpans(footnote.group(2)!),
+      align: align,
+      spaceBefore: space,
+    );
+  }
+
   final list = _listPattern.firstMatch(text);
   if (list != null) {
     final marker = list.group(2)!;
@@ -377,11 +451,14 @@ Block _decodeBlock(Map<String, String> attributes, List<String> body) {
 
   final image = _imagePattern.firstMatch(text);
   if (image != null) {
+    final url = _unescapeUrl(image.group(2)!);
+    final external = _externalUrlPattern.hasMatch(url);
     return ImageBlock(
       id: id,
-      // Only the file name, so moving a document between folders never has to
-      // rewrite the path.
-      assetId: _basename(image.group(2)!),
+      // For a bundled image, only the file name: moving a document between
+      // folders then never has to rewrite the path.
+      assetId: external ? '' : _basename(url),
+      url: external ? url : null,
       caption: _unescapeCaption(image.group(1)!),
       align: align,
       spaceBefore: space,
@@ -402,6 +479,62 @@ Block _decodeBlock(Map<String, String> attributes, List<String> body) {
   return ParagraphBlock(
     id: id,
     spans: decodeInlineSpans(text),
+    align: align,
+    spaceBefore: space,
+  );
+}
+
+TableBlock _decodeTable(
+  String id,
+  List<String> body,
+  BlockAlign align,
+  double space,
+) {
+  List<String> cells(String line) {
+    final trimmed = line.trim();
+    final inner = trimmed.substring(1, trimmed.length - 1);
+    final out = <String>[];
+    final buffer = StringBuffer();
+    for (var i = 0; i < inner.length; i++) {
+      if (inner[i] == r'\' && i + 1 < inner.length && inner[i + 1] == '|') {
+        buffer.write('|');
+        i++;
+      } else if (inner[i] == '|') {
+        out.add(buffer.toString().trim());
+        buffer.clear();
+      } else {
+        buffer.write(inner[i]);
+      }
+    }
+    out.add(buffer.toString().trim());
+    return out;
+  }
+
+  final columnAlign = <BlockAlign>[];
+  final rows = <List<List<TextSpanNode>>>[];
+
+  for (final line in body) {
+    if (_tableRulePattern.hasMatch(line) && rows.length == 1) {
+      for (final cell in cells(line)) {
+        final left = cell.startsWith(':');
+        final right = cell.endsWith(':');
+        columnAlign.add(
+          right && left
+              ? BlockAlign.center
+              : right
+              ? BlockAlign.right
+              : BlockAlign.left,
+        );
+      }
+      continue;
+    }
+    rows.add([for (final cell in cells(line)) decodeInlineSpans(cell)]);
+  }
+
+  return TableBlock(
+    id: id,
+    rows: rows,
+    columnAlign: columnAlign,
     align: align,
     spaceBefore: space,
   );
@@ -514,6 +647,18 @@ List<TextSpanNode> decodeInlineSpans(String source) {
       continue;
     }
 
+    if (source[i] == '[') {
+      final reference = _footnoteRefPattern.matchAsPrefix(rest);
+      if (reference != null) {
+        flush();
+        out.add(
+          _withFootnote(format, reference.group(1)!, reference.group(0)!),
+        );
+        i += reference.group(0)!.length;
+        continue;
+      }
+    }
+
     // `[label](url)`. An unescaped `[` only ever starts a link, because a
     // literal bracket in the text was escaped on the way out.
     if (source[i] == '[') {
@@ -599,6 +744,20 @@ final List<(String, TextSpanNode Function(TextSpanNode))> _htmlTags = [
 
 String _unescapeUrl(String url) =>
     url.replaceAll('%28', '(').replaceAll('%29', ')').replaceAll('%20', ' ');
+
+TextSpanNode _withFootnote(TextSpanNode f, String label, String text) =>
+    TextSpanNode(
+      text: text,
+      bold: f.bold,
+      italic: f.italic,
+      strikethrough: f.strikethrough,
+      underline: f.underline,
+      color: f.color,
+      highlight: f.highlight,
+      font: f.font,
+      href: f.href,
+      footnote: label,
+    );
 
 /// Folds a link label's own formatting onto the formatting around the link.
 TextSpanNode _merge(TextSpanNode outer, TextSpanNode inner, String href) =>

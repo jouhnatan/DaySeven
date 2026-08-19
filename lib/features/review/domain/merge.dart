@@ -195,6 +195,14 @@ _MergedBlock _mergeBlock({
         );
       }
 
+      if (base is FootnoteBlock &&
+          local is FootnoteBlock &&
+          proposed is FootnoteBlock) {
+        merged = (merged as FootnoteBlock).copyWith(
+          label: _pick(base.label, local.label, proposed.label),
+        );
+      }
+
       if (base is ListItemBlock &&
           local is ListItemBlock &&
           proposed is ListItemBlock) {
@@ -209,6 +217,45 @@ _MergedBlock _mergeBlock({
 
       return _MergedBlock(merged, text.conflicted);
     }
+  }
+
+  if (base is TableBlock && local is TableBlock && proposed is TableBlock) {
+    // Cell by cell, so two people editing different cells of the same table
+    // do not collide. A change of shape is taken whole.
+    final b = base.normalized();
+    final l = local.normalized();
+    final p = proposed.normalized();
+
+    if (_sameShape(b, l) && _sameShape(b, p)) {
+      var conflicted = false;
+      final rows = <List<List<TextSpanNode>>>[];
+      for (var r = 0; r < b.rows.length; r++) {
+        final row = <List<TextSpanNode>>[];
+        for (var c = 0; c < b.rows[r].length; c++) {
+          final cell = _mergeSpans(
+            ParagraphBlock(id: '', spans: b.rows[r][c]),
+            ParagraphBlock(id: '', spans: l.rows[r][c]),
+            ParagraphBlock(id: '', spans: p.rows[r][c]),
+          );
+          if (cell.conflicted) conflicted = true;
+          row.add(cell.spans);
+        }
+        rows.add(row);
+      }
+
+      return _MergedBlock(
+        TableBlock(
+          id: local.id,
+          rows: rows,
+          columnAlign: _pick(b.columnAlign, l.columnAlign, p.columnAlign),
+          align: align,
+          spaceBefore: spaceBefore,
+        ),
+        conflicted,
+      );
+    }
+
+    return _MergedBlock(proposed, true);
   }
 
   if (base is CodeBlock && local is CodeBlock && proposed is CodeBlock) {
@@ -252,6 +299,16 @@ _MergedBlock _mergeBlock({
 
   // The block changed type on at least one side; the proposal wins.
   return _MergedBlock(proposed, true);
+}
+
+/// True when two tables have the same rows and columns, so their cells can be
+/// merged one against another.
+bool _sameShape(TableBlock a, TableBlock b) {
+  if (a.rows.length != b.rows.length) return false;
+  for (var r = 0; r < a.rows.length; r++) {
+    if (a.rows[r].length != b.rows[r].length) return false;
+  }
+  return true;
 }
 
 /// Standard three-way pick for a scalar attribute.

@@ -371,6 +371,16 @@ class _DiffBlock extends ConsumerWidget {
         ).copyWith(fontFamily: 'Courier New'),
       ),
       DividerBlock() => Divider(color: colors.border, height: 12),
+      final TableBlock t => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final row in t.rows)
+            Text(
+              row.map((c) => c.map((s) => s.text).join()).join('  |  '),
+              style: aleo(size: 13, height: 1.6, color: colors.text),
+            ),
+        ],
+      ),
       final ImageBlock i => Text(
         i.caption.isEmpty ? '[image]' : '[image] ${i.caption}',
         style: aleo(size: 13, italic: true, color: colors.muted),

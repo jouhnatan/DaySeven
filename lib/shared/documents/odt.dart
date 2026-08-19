@@ -378,6 +378,19 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
       align: block.align,
       spaceBefore: block.spaceBefore,
     ),
+    // One line per row keeps the words; see the note in docx.dart.
+    TableBlock() => ParagraphBlock(
+      id: block.id,
+      spans: [
+        TextSpanNode(
+          text: block.rows
+              .map((r) => r.map((c) => c.map((s) => s.text).join()).join('\t'))
+              .join('\n'),
+        ),
+      ],
+      align: block.align,
+      spaceBefore: block.spaceBefore,
+    ),
     _ => block,
   };
 
@@ -403,9 +416,10 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
             textStyleNames: const [],
           ),
         );
-      // Unreachable: asParagraph has already replaced both.
+      // Unreachable: asParagraph has already replaced these.
       case CodeBlock():
       case DividerBlock():
+      case TableBlock():
         break;
     }
   }
@@ -580,9 +594,10 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
                         },
                       );
                     }
-                  // Unreachable: asParagraph has already replaced both.
+                  // Unreachable: asParagraph has already replaced these.
                   case CodeBlock():
                   case DividerBlock():
+                  case TableBlock():
                     break;
                 }
               }

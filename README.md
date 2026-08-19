@@ -90,7 +90,9 @@ MyWorld/
     .index/            search index (derived; safe to delete)
 ```
 
-A document opens in any editor:
+Headings, paragraphs, lists (bulleted, numbered, nested and task), quotes,
+fenced code, tables, footnotes, links, horizontal rules and images — bundled or
+by URL. A document opens in any editor:
 
 ```markdown
 ---
@@ -107,7 +109,20 @@ title: "Aldenmoor"
 The moor is **wide** and <u>cold</u>.
 
 <!-- d7 p2 align=center space=16 -->
-<span style="color:#8A3B12">Aldenmoor</span>, the last free hold.
+<span style="color:#8A3B12">Aldenmoor</span>, the last free hold.[^1]
+
+<!-- d7 l1 -->
+- reeds
+<!-- d7 l2 -->
+  - [x] standing water
+
+<!-- d7 t1 -->
+| Place | Holder |
+| --- | ---: |
+| Aldenmoor | Aldric |
+
+<!-- d7 f1 -->
+[^1]: Or so the ledger says.
 ```
 
 Two things Markdown has no syntax for are handled differently, and the split is
@@ -185,7 +200,11 @@ since they belong to the Knowledge Base rather than to the account.
 Formatting comes from the toolbar in the bottom bar — headings, bold, italic,
 strikethrough, underline and the three alignments — from keyboard shortcuts
 (⌘/Ctrl+B, I, U, ⇧⌘X), and from a context menu on a block for the rest: colour,
-highlight, font, spacing, images and export.
+highlight, font, spacing, block kind, images, tables, footnotes and export.
+
+Typing `## `, `- `, `1. ` or `> ` at the head of a paragraph turns it into that
+kind of block. It fires only as the space is typed, so a pasted line stays
+text.
 
 The toolbar acts on whatever the caret is in. Its formatting buttons need a
 selection, so they are muted until there is one; alignment and headings apply to

@@ -650,4 +650,221 @@ Text.
       expect(encodeMarkdown(decodeMarkdown(once)), once);
     });
   });
+
+  group('tables', () {
+    TableBlock table() => TableBlock(
+      id: 't',
+      columnAlign: const [BlockAlign.left, BlockAlign.center, BlockAlign.right],
+      rows: [
+        [
+          [const TextSpanNode(text: 'Place')],
+          [const TextSpanNode(text: 'Holder', bold: true)],
+          [const TextSpanNode(text: 'Year')],
+        ],
+        [
+          [const TextSpanNode(text: 'Aldenmoor')],
+          [const TextSpanNode(text: 'Aldric')],
+          [const TextSpanNode(text: '412')],
+        ],
+      ],
+    );
+
+    test('rows, header formatting and column alignment survive', () {
+      expectSurvives(docOf([table()]));
+    });
+
+    test('a cell containing a pipe survives', () {
+      expectSurvives(
+        docOf([
+          TableBlock(
+            id: 't',
+            rows: [
+              [
+                [const TextSpanNode(text: 'a | b')],
+                [const TextSpanNode(text: 'c')],
+              ],
+              [
+                [const TextSpanNode(text: 'd')],
+                [const TextSpanNode(text: 'e')],
+              ],
+            ],
+          ),
+        ]),
+      );
+    });
+
+    test('is written the way a Markdown table is written', () {
+      final text = encodeMarkdown(docOf([table()]));
+      expect(text, contains('| Place | **Holder** | Year |'));
+      expect(text, contains('| --- | :---: | ---: |'));
+      expect(text, contains('| Aldenmoor | Aldric | 412 |'));
+    });
+
+    test('a hand-written table is read', () {
+      final decoded = decodeMarkdown(
+        '| a | b |\n| --- | ---: |\n| 1 | 2 |\n| 3 | 4 |\n',
+      );
+      final t = decoded.blocks.single as TableBlock;
+      expect(t.rows, hasLength(3));
+      expect(t.columnCount, 2);
+      expect(t.alignOf(1), BlockAlign.right);
+      expect(t.rows[2][1].single.text, '4');
+    });
+
+    test('a ragged table keeps what is there', () {
+      expectSurvives(
+        docOf([
+          TableBlock(
+            id: 't',
+            rows: [
+              [
+                [const TextSpanNode(text: 'a')],
+                [const TextSpanNode(text: 'b')],
+              ],
+              [
+                [const TextSpanNode(text: 'c')],
+                const [],
+              ],
+            ],
+          ),
+        ]),
+      );
+    });
+  });
+
+  group('footnotes', () {
+    test('a reference and its note survive', () {
+      expectSurvives(
+        docOf([
+          para(const [
+            TextSpanNode(text: 'The causeway held'),
+            TextSpanNode(text: '[^1]', footnote: '1'),
+            TextSpanNode(text: ' that winter.'),
+          ], id: 'p'),
+          FootnoteBlock(
+            id: 'f',
+            label: '1',
+            spans: const [TextSpanNode(text: 'Or so the ledger says.')],
+          ),
+        ]),
+      );
+    });
+
+    test('a note carries inline formatting', () {
+      expectSurvives(
+        docOf([
+          FootnoteBlock(
+            id: 'f',
+            label: 'source',
+            spans: const [
+              TextSpanNode(text: 'See '),
+              TextSpanNode(text: 'the ledger', italic: true),
+            ],
+          ),
+        ]),
+      );
+    });
+
+    test('is written the way a Markdown footnote is written', () {
+      final text = encodeMarkdown(
+        docOf([
+          FootnoteBlock(
+            id: 'f',
+            label: '1',
+            spans: const [TextSpanNode(text: 'A note.')],
+          ),
+        ]),
+      );
+      expect(text, contains('[^1]: A note.'));
+    });
+
+    test('bracketed text that is not a reference is left alone', () {
+      expectSurvives(
+        docOf([
+          para(const [TextSpanNode(text: 'a [^ not a note] b')]),
+        ]),
+      );
+    });
+  });
+
+  group('images by url', () {
+    test('an external image survives', () {
+      expectSurvives(
+        docOf([
+          ImageBlock(
+            id: 'i',
+            url: 'https://example.com/fen.png',
+            caption: 'The fen',
+          ),
+        ]),
+      );
+    });
+
+    test('a bundled image is still stored by file name', () {
+      final back = cycle(docOf([ImageBlock(id: 'i', assetId: 'fen.png')]));
+      final image = back.blocks.single as ImageBlock;
+      expect(image.assetId, 'fen.png');
+      expect(image.url, isNull);
+      expect(image.isExternal, isFalse);
+    });
+
+    test('a url is told from a bundled file by its scheme', () {
+      final decoded = decodeMarkdown(
+        '<!-- d7 a -->\n![x](https://e.com/a.png)\n\n'
+        '<!-- d7 b -->\n![y](.settings/assets/b.png)\n',
+      );
+      expect((decoded.blocks[0] as ImageBlock).isExternal, isTrue);
+      expect((decoded.blocks[1] as ImageBlock).assetId, 'b.png');
+    });
+  });
+
+  group('a document using every block type', () {
+    test('survives and is idempotent', () {
+      final document = docOf([
+        HeadingBlock(
+          id: 'h',
+          level: 2,
+          spans: const [TextSpanNode(text: 'Aldenmoor')],
+        ),
+        para(const [
+          TextSpanNode(text: 'The fen'),
+          TextSpanNode(text: '[^1]', footnote: '1'),
+        ], id: 'p'),
+        QuoteBlock(
+          id: 'q',
+          spans: const [TextSpanNode(text: 'It waits.')],
+        ),
+        ListItemBlock(
+          id: 'l',
+          spans: const [TextSpanNode(text: 'reeds')],
+        ),
+        TableBlock(
+          id: 't',
+          columnAlign: const [BlockAlign.left, BlockAlign.right],
+          rows: [
+            [
+              [const TextSpanNode(text: 'a')],
+              [const TextSpanNode(text: 'b')],
+            ],
+            [
+              [const TextSpanNode(text: '1')],
+              [const TextSpanNode(text: '2')],
+            ],
+          ],
+        ),
+        CodeBlock(id: 'c', language: 'sh', text: 'echo hi'),
+        DividerBlock(id: 'd'),
+        ImageBlock(id: 'i', url: 'https://e.com/a.png', caption: 'dusk'),
+        FootnoteBlock(
+          id: 'f',
+          label: '1',
+          spans: const [TextSpanNode(text: 'A note.')],
+        ),
+      ]);
+
+      expectSurvives(document);
+      final once = encodeMarkdown(document);
+      expect(encodeMarkdown(decodeMarkdown(once)), once);
+    });
+  });
 }

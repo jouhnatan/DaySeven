@@ -374,4 +374,91 @@ void main() {
       expect(restored.contentHash, original.contentHash);
     });
   });
+
+  group('three-way merge — tables', () {
+    TableBlock table(String a, String b, String c, String d) => TableBlock(
+      id: 't',
+      rows: [
+        [
+          [TextSpanNode(text: a)],
+          [TextSpanNode(text: b)],
+        ],
+        [
+          [TextSpanNode(text: c)],
+          [TextSpanNode(text: d)],
+        ],
+      ],
+    );
+
+    String cell(BlockDocument document, int r, int c) =>
+        (document.blocks.single as TableBlock).rows[r][c]
+            .map((s) => s.text)
+            .join();
+
+    test('two people editing different cells both get their edit', () {
+      final base = doc([table('a', 'b', 'c', 'd')]);
+      final result = threeWayMerge(
+        base: base,
+        local: doc([table('a', 'LOCAL', 'c', 'd')]),
+        proposed: doc([table('a', 'b', 'c', 'PROPOSED')]),
+      );
+
+      expect(cell(result.document, 0, 1), 'LOCAL');
+      expect(cell(result.document, 1, 1), 'PROPOSED');
+      expect(result.hasConflicts, isFalse);
+    });
+
+    test('the same cell edited differently conflicts', () {
+      final base = doc([table('a', 'b', 'c', 'd')]);
+      final result = threeWayMerge(
+        base: base,
+        local: doc([table('a', 'LOCAL', 'c', 'd')]),
+        proposed: doc([table('a', 'PROPOSED', 'c', 'd')]),
+      );
+
+      expect(result.hasConflicts, isTrue);
+    });
+
+    test('a row added on one side is taken whole', () {
+      final base = doc([table('a', 'b', 'c', 'd')]);
+      final grown = TableBlock(
+        id: 't',
+        rows: [
+          ...table('a', 'b', 'c', 'd').rows,
+          [
+            [const TextSpanNode(text: 'e')],
+            [const TextSpanNode(text: 'f')],
+          ],
+        ],
+      );
+
+      final result = threeWayMerge(
+        base: base,
+        local: base,
+        proposed: doc([grown]),
+      );
+
+      expect((result.document.blocks.single as TableBlock).rows, hasLength(3));
+    });
+  });
+
+  group('three-way merge — footnotes', () {
+    test('a note merges like any other text block', () {
+      FootnoteBlock note(String text) => FootnoteBlock(
+        id: 'f',
+        label: '1',
+        spans: [TextSpanNode(text: text)],
+      );
+
+      final base = doc([note('As recorded.')]);
+      final result = threeWayMerge(
+        base: base,
+        local: doc([note('As recorded in the ledger.')]),
+        proposed: base,
+      );
+
+      expect(textOf(result.document, 'f'), 'As recorded in the ledger.');
+      expect(result.document.blocks.single, isA<FootnoteBlock>());
+    });
+  });
 }

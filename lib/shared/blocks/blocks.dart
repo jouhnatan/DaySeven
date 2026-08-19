@@ -40,6 +40,7 @@ class TextSpanNode {
     this.highlight,
     this.font,
     this.href,
+    this.footnote,
   });
 
   final String text;
@@ -60,6 +61,11 @@ class TextSpanNode {
   /// Link target, or null for ordinary text.
   final String? href;
 
+  /// The label of the footnote this span refers to, or null. A reference's
+  /// text is its own marker, so it stays searchable and diffable like any
+  /// other run of characters.
+  final String? footnote;
+
   bool get isEmpty => text.isEmpty;
 
   /// True when two spans differ only in their text, and so can be concatenated.
@@ -71,7 +77,8 @@ class TextSpanNode {
       color == other.color &&
       highlight == other.highlight &&
       font == other.font &&
-      href == other.href;
+      href == other.href &&
+      footnote == other.footnote;
 
   TextSpanNode copyWith({String? text}) => TextSpanNode(
     text: text ?? this.text,
@@ -83,6 +90,7 @@ class TextSpanNode {
     highlight: highlight,
     font: font,
     href: href,
+    footnote: footnote,
   );
 
   /// Omits every default so documents stay small and diffs stay readable.
@@ -96,6 +104,7 @@ class TextSpanNode {
     if (highlight != null) 'highlight': highlight,
     if (font != null) 'font': font,
     if (href != null) 'href': href,
+    if (footnote != null) 'footnote': footnote,
   };
 
   static TextSpanNode fromJson(Map<String, Object?> json) => TextSpanNode(
@@ -108,6 +117,7 @@ class TextSpanNode {
     highlight: json['highlight'] as String?,
     font: json['font'] as String?,
     href: json['href'] as String?,
+    footnote: json['footnote'] as String?,
   );
 
   @override
@@ -125,6 +135,7 @@ class TextSpanNode {
     highlight,
     font,
     href,
+    footnote,
   );
 }
 
@@ -162,6 +173,8 @@ sealed class Block {
       'quote' => QuoteBlock.fromJson(json),
       'code' => CodeBlock.fromJson(json),
       'divider' => DividerBlock.fromJson(json),
+      'table' => TableBlock.fromJson(json),
+      'footnote' => FootnoteBlock.fromJson(json),
       _ => ParagraphBlock.fromJson(json),
     };
   }
@@ -527,18 +540,196 @@ class DividerBlock extends Block {
   );
 }
 
+/// A table. The first row is the header, as it is in Markdown.
+class TableBlock extends Block {
+  const TableBlock({
+    required super.id,
+    required this.rows,
+    this.columnAlign = const [],
+    super.align,
+    super.spaceBefore,
+  });
+
+  /// `rows[r][c]` is one cell's formatted text.
+  final List<List<List<TextSpanNode>>> rows;
+
+  /// Per-column alignment; shorter than the row is treated as left.
+  final List<BlockAlign> columnAlign;
+
+  int get columnCount => rows.isEmpty
+      ? 0
+      : rows.map((r) => r.length).reduce((a, b) => a > b ? a : b);
+
+  BlockAlign alignOf(int column) =>
+      column < columnAlign.length ? columnAlign[column] : BlockAlign.left;
+
+  @override
+  String get plainText => [
+    for (final row in rows)
+      row.map((cell) => cell.map((s) => s.text).join()).join(' '),
+  ].join('\n');
+
+  @override
+  TableBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      copyWith(align: align, spaceBefore: spaceBefore);
+
+  TableBlock copyWith({
+    List<List<List<TextSpanNode>>>? rows,
+    List<BlockAlign>? columnAlign,
+    BlockAlign? align,
+    double? spaceBefore,
+  }) => TableBlock(
+    id: id,
+    rows: rows ?? this.rows,
+    columnAlign: columnAlign ?? this.columnAlign,
+    align: align ?? this.align,
+    spaceBefore: spaceBefore ?? this.spaceBefore,
+  );
+
+  /// The same table with one cell replaced.
+  TableBlock withCell(int row, int column, List<TextSpanNode> spans) {
+    final next = [
+      for (final r in rows) [for (final c in r) c],
+    ];
+    if (row < next.length && column < next[row].length) {
+      next[row][column] = spans;
+    }
+    return copyWith(rows: next);
+  }
+
+  /// Cells with their adjacent same-formatting spans merged, and an all-left
+  /// [columnAlign] dropped. Markdown states an alignment for every column, so
+  /// "all left" and "unspecified" have to be the same thing or a save would
+  /// change the document's hash.
+  TableBlock normalized() => TableBlock(
+    id: id,
+    columnAlign: columnAlign.every((a) => a == BlockAlign.left)
+        ? const []
+        : columnAlign,
+    rows: [
+      for (final row in rows)
+        [
+          for (final cell in row)
+            ParagraphBlock(id: '', spans: cell).normalized().spans,
+        ],
+    ],
+    align: align,
+    spaceBefore: spaceBefore,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    ..._common(),
+    'type': 'table',
+    if (columnAlign.any((a) => a != BlockAlign.left))
+      'columnAlign': columnAlign.map((a) => a.name).toList(),
+    'rows': [
+      for (final row in rows)
+        [for (final cell in row) cell.map((s) => s.toJson()).toList()],
+    ],
+  };
+
+  static TableBlock fromJson(Map<String, Object?> json) => TableBlock(
+    id: json['id'] as String,
+    columnAlign: [
+      for (final a in (json['columnAlign'] as List<Object?>? ?? const []))
+        _alignFrom(a),
+    ],
+    rows: [
+      for (final row in (json['rows'] as List<Object?>? ?? const []))
+        [
+          for (final cell in (row as List<Object?>))
+            [
+              for (final span in (cell as List<Object?>))
+                TextSpanNode.fromJson(span as Map<String, Object?>),
+            ],
+        ],
+    ],
+    align: _alignFrom(json['align']),
+    spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// A footnote's text. The references that point at it are spans carrying the
+/// same [label].
+class FootnoteBlock extends TextBlock {
+  const FootnoteBlock({
+    required super.id,
+    required this.label,
+    required this.spans,
+    super.align,
+    super.spaceBefore,
+  });
+
+  final String label;
+
+  @override
+  final List<TextSpanNode> spans;
+
+  @override
+  FootnoteBlock withSpans(List<TextSpanNode> spans) => copyWith(spans: spans);
+
+  @override
+  FootnoteBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      copyWith(align: align, spaceBefore: spaceBefore);
+
+  @override
+  FootnoteBlock normalized() => super.normalized() as FootnoteBlock;
+
+  FootnoteBlock copyWith({
+    String? label,
+    List<TextSpanNode>? spans,
+    BlockAlign? align,
+    double? spaceBefore,
+  }) => FootnoteBlock(
+    id: id,
+    label: label ?? this.label,
+    spans: spans ?? this.spans,
+    align: align ?? this.align,
+    spaceBefore: spaceBefore ?? this.spaceBefore,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    ..._common(),
+    'type': 'footnote',
+    'label': label,
+    'spans': spans.map((s) => s.toJson()).toList(),
+  };
+
+  static FootnoteBlock fromJson(Map<String, Object?> json) => FootnoteBlock(
+    id: json['id'] as String,
+    label: json['label'] as String? ?? '1',
+    spans: (json['spans'] as List<Object?>? ?? const [])
+        .map((s) => TextSpanNode.fromJson(s as Map<String, Object?>))
+        .toList(),
+    align: _alignFrom(json['align']),
+    spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
+  );
+}
+
 class ImageBlock extends Block {
   const ImageBlock({
     required super.id,
-    required this.assetId,
+    this.assetId = '',
+    this.url,
     this.caption = '',
     super.align,
     super.spaceBefore,
   });
 
-  /// Names a file in the Knowledge Base's `assets/` folder.
+  /// Names a file in the Knowledge Base's `assets/` folder. Empty for an
+  /// image that lives at [url] instead.
   final String assetId;
+
+  /// An address the image is fetched from rather than a file in the bundle.
+  /// Exactly one of this and [assetId] is set.
+  final String? url;
+
   final String caption;
+
+  /// True when the image is not stored in the Knowledge Base.
+  bool get isExternal => url != null;
 
   @override
   String get plainText => caption;
@@ -549,12 +740,14 @@ class ImageBlock extends Block {
 
   ImageBlock copyWith({
     String? assetId,
+    String? url,
     String? caption,
     BlockAlign? align,
     double? spaceBefore,
   }) => ImageBlock(
     id: id,
     assetId: assetId ?? this.assetId,
+    url: url ?? this.url,
     caption: caption ?? this.caption,
     align: align ?? this.align,
     spaceBefore: spaceBefore ?? this.spaceBefore,
@@ -565,12 +758,14 @@ class ImageBlock extends Block {
     ..._common(),
     'type': 'image',
     'assetId': assetId,
+    if (url != null) 'url': url,
     if (caption.isNotEmpty) 'caption': caption,
   };
 
   static ImageBlock fromJson(Map<String, Object?> json) => ImageBlock(
     id: json['id'] as String,
     assetId: json['assetId'] as String? ?? '',
+    url: json['url'] as String?,
     caption: json['caption'] as String? ?? '',
     align: _alignFrom(json['align']),
     spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
@@ -608,7 +803,12 @@ class BlockDocument {
   BlockDocument normalized() => copyWith(
     blocks: [
       for (final block in blocks)
-        if (block is TextBlock) block.normalized() else block,
+        if (block is TextBlock)
+          block.normalized()
+        else if (block is TableBlock)
+          block.normalized()
+        else
+          block,
     ],
   );
 

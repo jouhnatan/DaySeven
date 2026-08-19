@@ -398,6 +398,25 @@ String _documentXml(
                     spaceBefore: block.spaceBefore,
                   ),
                 );
+              // A .docx table is a different shape entirely; one paragraph per
+              // row keeps the words, which is the honest limit here.
+              case TableBlock():
+                for (final row in block.rows) {
+                  _buildParagraph(
+                    builder,
+                    ParagraphBlock(
+                      id: block.id,
+                      spans: [
+                        TextSpanNode(
+                          text: row
+                              .map((c) => c.map((s) => s.text).join())
+                              .join('\t'),
+                        ),
+                      ],
+                      align: block.align,
+                    ),
+                  );
+                }
               case ImageBlock():
                 final image = images[block.assetId];
                 if (image != null) _buildImageParagraph(builder, block, image);
