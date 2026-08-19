@@ -401,13 +401,10 @@ id: "d"
 title: "T"
 ---
 
-- a bullet we do not support yet
+| a | table |
 ''');
         expect(decoded.blocks.single, isA<ParagraphBlock>());
-        expect(
-          decoded.blocks.single.plainText,
-          '- a bullet we do not support yet',
-        );
+        expect(decoded.blocks.single.plainText, '| a | table |');
       },
     );
 
@@ -460,6 +457,197 @@ Text.
       // Canonicalised first, it holds — and that is what the import path does.
       final safe = loose.normalized();
       expect(cycle(safe).contentHash, safe.contentHash);
+    });
+  });
+  group('links', () {
+    test('a link survives, with and without other formatting', () {
+      expectSurvives(
+        docOf([
+          para(const [
+            TextSpanNode(text: 'see '),
+            TextSpanNode(text: 'the fen', href: 'https://example.com/fen'),
+            TextSpanNode(text: ' and '),
+            TextSpanNode(
+              text: 'this',
+              href: 'a/b.md',
+              bold: true,
+              italic: true,
+            ),
+          ]),
+        ]),
+      );
+    });
+
+    test('a url containing brackets and spaces survives', () {
+      expectSurvives(
+        docOf([
+          para(const [TextSpanNode(text: 'x', href: 'https://e.com/a (b) c')]),
+        ]),
+      );
+    });
+
+    test('bracketed text that is not a link is not turned into one', () {
+      expectSurvives(
+        docOf([
+          para(const [TextSpanNode(text: 'an [aside] here')]),
+        ]),
+      );
+    });
+  });
+
+  group('lists', () {
+    test('bullets, numbers, nesting and tasks all survive', () {
+      expectSurvives(
+        docOf([
+          ListItemBlock(
+            id: 'l1',
+            spans: const [TextSpanNode(text: 'one')],
+          ),
+          ListItemBlock(
+            id: 'l2',
+            spans: const [TextSpanNode(text: 'nested')],
+            depth: 1,
+          ),
+          ListItemBlock(
+            id: 'l3',
+            spans: const [TextSpanNode(text: 'numbered')],
+            style: ListStyle.ordered,
+          ),
+          ListItemBlock(
+            id: 'l4',
+            spans: const [TextSpanNode(text: 'todo')],
+            checked: false,
+          ),
+          ListItemBlock(
+            id: 'l5',
+            spans: const [TextSpanNode(text: 'done')],
+            checked: true,
+          ),
+        ]),
+      );
+    });
+
+    test('inline formatting works inside an item', () {
+      expectSurvives(
+        docOf([
+          ListItemBlock(
+            id: 'l1',
+            spans: const [
+              TextSpanNode(text: 'bold', bold: true),
+              TextSpanNode(text: ' and plain'),
+            ],
+            depth: 2,
+            style: ListStyle.ordered,
+          ),
+        ]),
+      );
+    });
+
+    test('a hand-written list is read', () {
+      final decoded = decodeMarkdown(
+        '- one\n* two\n1. three\n2) four\n  - nested\n'
+        '- [ ] todo\n- [x] done\n',
+      );
+      final items = decoded.blocks.cast<ListItemBlock>();
+      expect(items, hasLength(7));
+      expect(items[0].style, ListStyle.bullet);
+      expect(items[2].style, ListStyle.ordered);
+      expect(items[3].style, ListStyle.ordered);
+      expect(items[4].depth, 1);
+      expect(items[5].checked, isFalse);
+      expect(items[6].checked, isTrue);
+    });
+  });
+
+  group('quotes, code and rules', () {
+    test('a quote survives, formatting included', () {
+      expectSurvives(
+        docOf([
+          QuoteBlock(
+            id: 'q',
+            spans: const [
+              TextSpanNode(text: 'The moor '),
+              TextSpanNode(text: 'remembers', italic: true),
+            ],
+          ),
+        ]),
+      );
+    });
+
+    test('a divider survives', () {
+      expectSurvives(
+        docOf([
+          para(const [TextSpanNode(text: 'above')], id: 'a'),
+          DividerBlock(id: 'd'),
+          para(const [TextSpanNode(text: 'below')], id: 'b'),
+        ]),
+      );
+    });
+
+    test('code survives, including blank lines and its language', () {
+      expectSurvives(
+        docOf([
+          CodeBlock(
+            id: 'c',
+            language: 'dart',
+            text: 'void main() {\n\n  print("hi");\n}',
+          ),
+        ]),
+      );
+    });
+
+    test('code with no language survives', () {
+      expectSurvives(docOf([CodeBlock(id: 'c', text: 'plain')]));
+    });
+
+    /// Code is verbatim, so none of the usual escaping applies inside it.
+    test('code containing markup is left exactly as written', () {
+      const source = '# not a heading\n- not a list\n**not bold** <u>x</u>';
+      final back = cycle(docOf([CodeBlock(id: 'c', text: source)]));
+      expect((back.blocks.single as CodeBlock).text, source);
+      expectSurvives(docOf([CodeBlock(id: 'c', text: source)]));
+    });
+
+    test('code containing a fence gets a longer one', () {
+      expectSurvives(docOf([CodeBlock(id: 'c', text: 'a\n```\nb')]));
+    });
+  });
+
+  group('a document using everything at once', () {
+    BlockDocument everything() => docOf([
+      HeadingBlock(
+        id: 'h',
+        level: 1,
+        spans: const [TextSpanNode(text: 'Aldenmoor')],
+      ),
+      para(const [
+        TextSpanNode(text: 'The '),
+        TextSpanNode(text: 'fen', bold: true, href: 'https://e.com'),
+      ], id: 'p'),
+      QuoteBlock(
+        id: 'q',
+        spans: const [TextSpanNode(text: 'It waits.')],
+      ),
+      ListItemBlock(
+        id: 'l',
+        spans: const [TextSpanNode(text: 'reeds')],
+      ),
+      ListItemBlock(
+        id: 'l2',
+        spans: const [TextSpanNode(text: 'water')],
+        depth: 1,
+        checked: true,
+      ),
+      CodeBlock(id: 'c', language: 'sh', text: 'echo hi'),
+      DividerBlock(id: 'd'),
+      ImageBlock(id: 'i', assetId: 'fen.png', caption: 'dusk'),
+    ]);
+
+    test('survives', () => expectSurvives(everything()));
+
+    test('is idempotent', () {
+      final once = encodeMarkdown(everything());
+      expect(encodeMarkdown(decodeMarkdown(once)), once);
     });
   });
 }

@@ -195,8 +195,46 @@ _MergedBlock _mergeBlock({
         );
       }
 
+      if (base is ListItemBlock &&
+          local is ListItemBlock &&
+          proposed is ListItemBlock) {
+        merged = (merged as ListItemBlock).copyWith(
+          style: _pick(base.style, local.style, proposed.style),
+          depth: _pick(base.depth, local.depth, proposed.depth),
+          checked: _pick(base.checked, local.checked, proposed.checked),
+          clearChecked:
+              _pick(base.checked, local.checked, proposed.checked) == null,
+        );
+      }
+
       return _MergedBlock(merged, text.conflicted);
     }
+  }
+
+  if (base is CodeBlock && local is CodeBlock && proposed is CodeBlock) {
+    // Code is plain text with no per-character formatting, so a scalar pick is
+    // the whole of it.
+    return _MergedBlock(
+      CodeBlock(
+        id: local.id,
+        text: _pick(base.text, local.text, proposed.text),
+        language: _pick(base.language, local.language, proposed.language),
+        align: align,
+        spaceBefore: spaceBefore,
+      ),
+      local.text != base.text &&
+          proposed.text != base.text &&
+          local.text != proposed.text,
+    );
+  }
+
+  if (base is DividerBlock &&
+      local is DividerBlock &&
+      proposed is DividerBlock) {
+    return _MergedBlock(
+      DividerBlock(id: local.id, align: align, spaceBefore: spaceBefore),
+      false,
+    );
   }
 
   if (base is ImageBlock && local is ImageBlock && proposed is ImageBlock) {

@@ -351,6 +351,7 @@ class _DiffBlock extends ConsumerWidget {
                   t is HeadingBlock
                       ? headingStyle(t.level, colors.text)
                       : aleo(size: 14, height: 1.6, color: colors.text),
+                  linkColor: colors.link,
                 ),
               ),
           ],
@@ -361,6 +362,15 @@ class _DiffBlock extends ConsumerWidget {
           BlockAlign.right => TextAlign.right,
         },
       ),
+      final CodeBlock c => Text(
+        c.text,
+        style: aleo(
+          size: 13,
+          height: 1.5,
+          color: colors.text,
+        ).copyWith(fontFamily: 'Courier New'),
+      ),
+      DividerBlock() => Divider(color: colors.border, height: 12),
       final ImageBlock i => Text(
         i.caption.isEmpty ? '[image]' : '[image] ${i.caption}',
         style: aleo(size: 13, italic: true, color: colors.muted),

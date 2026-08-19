@@ -81,10 +81,35 @@ String _number(double v) =>
 String _encodeBody(Block block) => switch (block) {
   HeadingBlock() =>
     '${'#' * block.level} ${_encodeSpans(block.normalized().spans)}',
+  ListItemBlock() => _encodeListItem(block.normalized()),
+  QuoteBlock() => '> ${_encodeSpans(block.normalized().spans)}',
   ParagraphBlock() => _encodeSpans(block.normalized().spans),
+  CodeBlock() => _encodeCode(block),
+  DividerBlock() => '---',
   ImageBlock() =>
     '![${_escapeCaption(block.caption)}]($_assetDirectory/${block.assetId})',
 };
+
+String _encodeListItem(ListItemBlock block) {
+  // Ordered items are always written `1.`; every renderer numbers them by
+  // position, and a fixed marker keeps the output byte-stable.
+  final marker = block.style == ListStyle.ordered ? '1.' : '-';
+  final box = switch (block.checked) {
+    null => '',
+    true => '[x] ',
+    false => '[ ] ',
+  };
+  return '${'  ' * block.depth}$marker $box${_encodeSpans(block.spans)}';
+}
+
+String _encodeCode(CodeBlock block) {
+  // A fence long enough to survive backticks in the code itself.
+  var fence = '```';
+  while (block.text.contains(fence)) {
+    fence += '`';
+  }
+  return '$fence${block.language ?? ''}\n${block.text}\n$fence';
+}
 
 String _encodeSpans(List<TextSpanNode> spans) {
   final out = StringBuffer();
@@ -98,6 +123,10 @@ String _encodeSpan(TextSpanNode span, {required bool firstInBlock}) {
   if (span.text.isEmpty) return '';
 
   var out = _escapeText(span.text, firstInBlock: firstInBlock);
+
+  // Innermost, so `**[text](url)**` rather than `[**text**](url)`; both read
+  // back the same, and this keeps one shape.
+  if (span.href != null) out = '[$out](${_escapeUrl(span.href!)})';
 
   // `**text**` and `_text_` only work when the delimiters hug non-space
   // characters, and the character-per-format controller routinely produces
@@ -145,18 +174,26 @@ String _escapeText(String text, {required bool firstInBlock}) {
       .replaceAll('[', r'\[')
       .replaceAll(']', r'\]');
 
-  if (firstInBlock) out = _escapeLineStart(out);
+  // Every line of the output is a line start, not just the block's first, or a
+  // paragraph reading "a<newline>- b" would come back as a list.
+  final lines = out.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    if (i > 0 || firstInBlock) lines[i] = _escapeLineStart(lines[i]);
+  }
 
   // A newline inside a span becomes CommonMark's hard line break. The escaping
   // above has already doubled any real backslash, so the trailing one here is
   // unambiguous.
-  return out.replaceAll('\n', '\\\n');
+  return lines.join('\\\n');
 }
 
 final RegExp _lineStartActive = RegExp(r'^([#>+=|-]|\d+[.)])');
 
 String _escapeLineStart(String text) =>
     _lineStartActive.hasMatch(text) ? '\\$text' : text;
+
+String _escapeUrl(String url) =>
+    url.replaceAll('(', '%28').replaceAll(')', '%29').replaceAll(' ', '%20');
 
 /// Captions sit inside `![…]`, so brackets and parentheses matter; nothing is
 /// at a line start.
@@ -203,13 +240,31 @@ BlockDocument decodeMarkdown(String source) {
       i++;
     }
 
-    // Everything up to the next blank line or block comment is one block.
+    // A fenced block runs to its closing fence, blank lines and all; anything
+    // else ends at the next blank line or block comment.
     final body = <String>[];
-    while (i < lines.length &&
-        lines[i].trim().isNotEmpty &&
-        !_commentPattern.hasMatch(lines[i].trim())) {
+    // A comment can be the last line in the file — an empty final paragraph.
+    final fence = i < lines.length ? _fencePattern.firstMatch(lines[i]) : null;
+    if (fence != null) {
       body.add(lines[i]);
       i++;
+      while (i < lines.length &&
+          !lines[i].trimRight().startsWith(fence.group(1)!)) {
+        body.add(lines[i]);
+        i++;
+      }
+      if (i < lines.length) {
+        body.add(lines[i]);
+        i++;
+      }
+    } else {
+      while (i < lines.length &&
+          lines[i].trim().isNotEmpty &&
+          !_commentPattern.hasMatch(lines[i].trim()) &&
+          (body.isEmpty || !_startsBlock(lines[i]))) {
+        body.add(lines[i]);
+        i++;
+      }
     }
 
     blocks.add(_decodeBlock(attributes, body));
@@ -234,6 +289,23 @@ Object? _frontValue(String raw) {
 final RegExp _commentPattern = RegExp(r'^<!--\s*d7\s+(.*?)\s*-->$');
 final RegExp _headingPattern = RegExp(r'^(#{1,6})\s+(.*)$', dotAll: true);
 final RegExp _imagePattern = RegExp(r'^!\[(.*)\]\((.*)\)$', dotAll: true);
+final RegExp _fencePattern = RegExp(r'^(`{3,}|~{3,})(.*)$');
+
+/// True for a line that can only be the start of its own block. Used to split
+/// hand-written files, where consecutive lines are not separated by blanks the
+/// way this encoder separates them.
+bool _startsBlock(String line) =>
+    _listPattern.hasMatch(line) ||
+    _quotePattern.hasMatch(line) ||
+    _headingPattern.hasMatch(line) ||
+    _dividerPattern.hasMatch(line) ||
+    _fencePattern.hasMatch(line);
+final RegExp _dividerPattern = RegExp(r'^\s*(-{3,}|\*{3,}|_{3,})\s*$');
+final RegExp _quotePattern = RegExp(r'^>\s?(.*)$', dotAll: true);
+final RegExp _listPattern = RegExp(
+  r'^([ \t]*)([-*+]|\d+[.)])\s+(\[([ xX])\]\s+)?(.*)$',
+  dotAll: true,
+);
 
 Map<String, String> _parseAttributes(String raw) {
   final parts = raw.split(RegExp(r'\s+'));
@@ -256,6 +328,52 @@ Block _decodeBlock(Map<String, String> attributes, List<String> body) {
   };
   final space = double.tryParse(attributes['space'] ?? '') ?? 0;
   final text = _joinBody(body);
+
+  // Fenced code first: its contents must not be read as anything else.
+  if (body.isNotEmpty && _fencePattern.hasMatch(body.first)) {
+    final info = _fencePattern.firstMatch(body.first)!.group(2)!.trim();
+    final closed =
+        body.length > 1 && _fencePattern.hasMatch(body.last.trimRight());
+    return CodeBlock(
+      id: id,
+      language: info.isEmpty ? null : info,
+      text: body.sublist(1, closed ? body.length - 1 : body.length).join('\n'),
+      align: align,
+      spaceBefore: space,
+    );
+  }
+
+  if (body.length == 1 && _dividerPattern.hasMatch(body.first)) {
+    return DividerBlock(id: id, align: align, spaceBefore: space);
+  }
+
+  final list = _listPattern.firstMatch(text);
+  if (list != null) {
+    final marker = list.group(2)!;
+    final box = list.group(4);
+    return ListItemBlock(
+      id: id,
+      style: marker.endsWith('.') || marker.endsWith(')')
+          ? ListStyle.ordered
+          : ListStyle.bullet,
+      // Two spaces to a level, and a tab counts as one level.
+      depth: (list.group(1)!.replaceAll('\t', '  ').length ~/ 2).clamp(0, 8),
+      checked: box == null ? null : box.toLowerCase() == 'x',
+      spans: decodeInlineSpans(list.group(5)!),
+      align: align,
+      spaceBefore: space,
+    );
+  }
+
+  final quote = _quotePattern.firstMatch(text);
+  if (quote != null) {
+    return QuoteBlock(
+      id: id,
+      spans: decodeInlineSpans(quote.group(1)!),
+      align: align,
+      spaceBefore: space,
+    );
+  }
 
   final image = _imagePattern.firstMatch(text);
   if (image != null) {
@@ -396,6 +514,22 @@ List<TextSpanNode> decodeInlineSpans(String source) {
       continue;
     }
 
+    // `[label](url)`. An unescaped `[` only ever starts a link, because a
+    // literal bracket in the text was escaped on the way out.
+    if (source[i] == '[') {
+      final link = _linkAt(rest);
+      if (link != null) {
+        flush();
+        // The label is parsed in its own right, then folded onto whatever
+        // formatting encloses the link — `**[text](url)**` is bold.
+        for (final span in decodeInlineSpans(link.$1)) {
+          out.add(_merge(format, span, link.$2));
+        }
+        i += link.$3;
+        continue;
+      }
+    }
+
     if (rest.startsWith('**')) {
       flush();
       format = _withBold(format, !format.bold);
@@ -429,6 +563,56 @@ final List<(String, TextSpanNode Function(TextSpanNode))> _htmlTags = [
   ('del', (f) => _withStrike(f, true)),
   ('u', (f) => _withUnderline(f, true)),
 ];
+
+/// Matches `[label](url)` at the head of [rest], respecting escapes and nested
+/// brackets. Returns the label, the url, and how much source it consumed.
+(String, String, int)? _linkAt(String rest) {
+  var depth = 0;
+  var close = -1;
+  for (var i = 0; i < rest.length; i++) {
+    if (rest[i] == r'\') {
+      i++;
+      continue;
+    }
+    if (rest[i] == '[') depth++;
+    if (rest[i] == ']') {
+      depth--;
+      if (depth == 0) {
+        close = i;
+        break;
+      }
+    }
+  }
+  if (close == -1 || close + 1 >= rest.length || rest[close + 1] != '(') {
+    return null;
+  }
+
+  final end = rest.indexOf(')', close + 2);
+  if (end == -1) return null;
+
+  return (
+    rest.substring(1, close),
+    _unescapeUrl(rest.substring(close + 2, end)),
+    end + 1,
+  );
+}
+
+String _unescapeUrl(String url) =>
+    url.replaceAll('%28', '(').replaceAll('%29', ')').replaceAll('%20', ' ');
+
+/// Folds a link label's own formatting onto the formatting around the link.
+TextSpanNode _merge(TextSpanNode outer, TextSpanNode inner, String href) =>
+    TextSpanNode(
+      text: inner.text,
+      bold: outer.bold || inner.bold,
+      italic: outer.italic || inner.italic,
+      strikethrough: outer.strikethrough || inner.strikethrough,
+      underline: outer.underline || inner.underline,
+      color: inner.color ?? outer.color,
+      highlight: inner.highlight ?? outer.highlight,
+      font: inner.font ?? outer.font,
+      href: href,
+    );
 
 /// Returns the decoded character and how many source characters it spanned.
 (String, int)? _entityAt(String rest) {
@@ -472,6 +656,7 @@ TextSpanNode _withStyle(TextSpanNode f, String style) {
     color: color,
     highlight: highlight,
     font: font,
+    href: f.href,
   );
 }
 
@@ -484,6 +669,7 @@ TextSpanNode _withBold(TextSpanNode f, bool on) => TextSpanNode(
   color: f.color,
   highlight: f.highlight,
   font: f.font,
+  href: f.href,
 );
 
 TextSpanNode _withItalic(TextSpanNode f, bool on) => TextSpanNode(
@@ -495,6 +681,7 @@ TextSpanNode _withItalic(TextSpanNode f, bool on) => TextSpanNode(
   color: f.color,
   highlight: f.highlight,
   font: f.font,
+  href: f.href,
 );
 
 TextSpanNode _withStrike(TextSpanNode f, bool on) => TextSpanNode(
@@ -506,6 +693,7 @@ TextSpanNode _withStrike(TextSpanNode f, bool on) => TextSpanNode(
   color: f.color,
   highlight: f.highlight,
   font: f.font,
+  href: f.href,
 );
 
 TextSpanNode _withUnderline(TextSpanNode f, bool on) => TextSpanNode(
@@ -517,6 +705,7 @@ TextSpanNode _withUnderline(TextSpanNode f, bool on) => TextSpanNode(
   color: f.color,
   highlight: f.highlight,
   font: f.font,
+  href: f.href,
 );
 
 String _unescapeCaption(String raw) {

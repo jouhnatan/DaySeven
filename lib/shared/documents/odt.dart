@@ -363,11 +363,30 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
     return safe;
   }
 
+  /// ODF has no concept of either, so both export as their text and the words
+  /// survive a round trip through a word processor. See the note in docx.dart.
+  Block asParagraph(Block block) => switch (block) {
+    CodeBlock() => ParagraphBlock(
+      id: block.id,
+      spans: [TextSpanNode(text: block.text)],
+      align: block.align,
+      spaceBefore: block.spaceBefore,
+    ),
+    DividerBlock() => ParagraphBlock(
+      id: block.id,
+      spans: const [TextSpanNode(text: '———')],
+      align: block.align,
+      spaceBefore: block.spaceBefore,
+    ),
+    _ => block,
+  };
+
   // A first pass registers the styles the body will refer to.
   final bodyPlan = <_PlannedBlock>[];
-  for (final block in document.blocks) {
+  for (final original in document.blocks) {
+    final block = asParagraph(original);
     switch (block) {
-      // A heading plans as a paragraph; see the note in docx.dart.
+      // Headings plan as paragraphs too; see docx.dart.
       case TextBlock():
         bodyPlan.add(
           _PlannedBlock(
@@ -384,6 +403,10 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
             textStyleNames: const [],
           ),
         );
+      // Unreachable: asParagraph has already replaced both.
+      case CodeBlock():
+      case DividerBlock():
+        break;
     }
   }
 
@@ -557,6 +580,10 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
                         },
                       );
                     }
+                  // Unreachable: asParagraph has already replaced both.
+                  case CodeBlock():
+                  case DividerBlock():
+                    break;
                 }
               }
             },

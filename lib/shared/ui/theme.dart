@@ -33,6 +33,7 @@ class DsColors extends ThemeExtension<DsColors> {
     required this.muted,
     required this.selection,
     required this.editingBlock,
+    required this.link,
     required this.pending,
     required this.addition,
     required this.removal,
@@ -60,6 +61,10 @@ class DsColors extends ThemeExtension<DsColors> {
   /// do well in a page of evenly spaced blocks.
   final Color editingBlock;
 
+  /// Link text. The one place the interface uses colour to mean something
+  /// rather than to decorate.
+  final Color link;
+
   /// The dot on the Differences button when a proposal is waiting.
   final Color pending;
 
@@ -77,6 +82,7 @@ class DsColors extends ThemeExtension<DsColors> {
     muted: Color(0xFF868D99),
     selection: Color(0xFF23262D),
     editingBlock: Color(0xFF1A1F2B),
+    link: Color(0xFF7FA6D8),
     pending: Color(0xFFC8A45C),
     addition: Color(0xFF1E2A22),
     removal: Color(0xFF2A1E20),
@@ -92,6 +98,7 @@ class DsColors extends ThemeExtension<DsColors> {
     muted: Color(0xFF6B7280),
     selection: Color(0xFFE3E5EA),
     editingBlock: Color(0xFFEFF3FC),
+    link: Color(0xFF1F5FA8),
     pending: Color(0xFF9A7526),
     addition: Color(0xFFE7F1E9),
     removal: Color(0xFFF6E8E9),

@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 class RichTextController extends TextEditingController {
   RichTextController({List<TextSpanNode> spans = const []})
@@ -119,6 +120,12 @@ class RichTextController extends TextEditingController {
     notifyListeners();
   }
 
+  /// The formatting of the character at [offset], or null past the end. Lets a
+  /// caller read what is already there — the link a selection sits inside, say
+  /// — rather than only ask yes-or-no questions about it.
+  Format? formatAt(int offset) =>
+      offset >= 0 && offset < _formats.length ? _formats[offset] : null;
+
   /// True when every character in [range] already satisfies [test], which is
   /// what makes a formatting shortcut toggle rather than only ever set.
   bool rangeSatisfies(TextRange range, bool Function(Format) test) {
@@ -137,6 +144,7 @@ class RichTextController extends TextEditingController {
     required bool withComposing,
   }) {
     final base = style ?? const TextStyle();
+    final linkColor = context.ds.link;
     final children = <TextSpan>[];
     final buffer = StringBuffer();
     Format? current;
@@ -144,7 +152,10 @@ class RichTextController extends TextEditingController {
     void flush() {
       if (current != null && buffer.isNotEmpty) {
         children.add(
-          TextSpan(text: buffer.toString(), style: styleFor(current, base)),
+          TextSpan(
+            text: buffer.toString(),
+            style: styleFor(current, base, linkColor: linkColor),
+          ),
         );
       }
       buffer.clear();

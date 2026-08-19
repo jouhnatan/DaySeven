@@ -251,7 +251,7 @@ void main() {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 3);
 
-    await tester.tap(find.text('Body'));
+    await tester.tap(find.byIcon(Icons.title));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Heading 2'));
     await tester.pumpAndSettle();
@@ -276,7 +276,7 @@ void main() {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 3);
 
-    await tester.tap(find.text('Body'));
+    await tester.tap(find.byIcon(Icons.title));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Heading 1'));
     await tester.pumpAndSettle();

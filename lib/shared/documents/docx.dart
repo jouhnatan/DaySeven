@@ -376,6 +376,28 @@ String _documentXml(
               // heading styles are a later phase; this keeps the words.
               case TextBlock():
                 _buildParagraph(builder, block);
+              // Neither is a .docx concept; both export as their text so the
+              // words survive a round trip through Word.
+              case CodeBlock():
+                _buildParagraph(
+                  builder,
+                  ParagraphBlock(
+                    id: block.id,
+                    spans: [TextSpanNode(text: block.text)],
+                    align: block.align,
+                    spaceBefore: block.spaceBefore,
+                  ),
+                );
+              case DividerBlock():
+                _buildParagraph(
+                  builder,
+                  ParagraphBlock(
+                    id: block.id,
+                    spans: const [TextSpanNode(text: '———')],
+                    align: block.align,
+                    spaceBefore: block.spaceBefore,
+                  ),
+                );
               case ImageBlock():
                 final image = images[block.assetId];
                 if (image != null) _buildImageParagraph(builder, block, image);

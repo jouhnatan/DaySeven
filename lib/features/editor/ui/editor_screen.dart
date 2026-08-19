@@ -22,6 +22,7 @@ import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
+import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 
@@ -225,6 +226,22 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     _publishFocus(focus.blockId);
   }
 
+  /// An ordered item's number, counted from the start of the run it belongs
+  /// to, so inserting a line renumbers the ones below it.
+  int _ordinalOf(ListItemBlock item) {
+    final index = _document.blocks.indexOf(item);
+    var n = 1;
+    for (var i = index - 1; i >= 0; i--) {
+      final previous = _document.blocks[i];
+      if (previous is! ListItemBlock) break;
+      if (previous.depth < item.depth) break;
+      if (previous.depth > item.depth) continue;
+      if (previous.style != ListStyle.ordered) break;
+      n++;
+    }
+    return n;
+  }
+
   void _commit(BlockDocument document, {bool rebuild = true}) {
     _document = document;
     ref.read(documentControllerProvider.notifier).edit(document);
@@ -240,11 +257,133 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     final block = _document.blocks[index];
     if (block is! TextBlock) return;
 
+    if (_autoformat(index, block, controller)) return;
+
     final spans = controller.toSpans();
     final blocks = [..._document.blocks];
     blocks[index] = block.withSpans(spans);
     // No rebuild: the field is already showing this text.
     _commit(_document.copyWith(blocks: blocks), rebuild: false);
+  }
+
+  /// Turns a Markdown prefix typed at the head of a paragraph into the block
+  /// it describes: `## `, `- `, `1. `, `> `.
+  ///
+  /// Only fires with the caret sitting right after the prefix — that is, the
+  /// moment the space is typed — so the same characters typed anywhere else,
+  /// or pasted in, are left as text.
+  bool _autoformat(int index, TextBlock block, RichTextController controller) {
+    if (block is! ParagraphBlock) return false;
+
+    final selection = controller.selection;
+    if (!selection.isCollapsed || !selection.isValid) return false;
+
+    final text = controller.text;
+    final match = _autoformatPattern.firstMatch(text);
+    if (match == null) return false;
+
+    final prefix = match.group(1)!;
+    if (selection.baseOffset != prefix.length) return false;
+
+    final rest = _sliceSpans(controller.toSpans(), prefix.length, text.length);
+    final Block replacement = switch (prefix.trim()) {
+      '>' => QuoteBlock(
+        id: block.id,
+        spans: rest,
+        align: block.align,
+        spaceBefore: block.spaceBefore,
+      ),
+      '-' || '*' || '+' => ListItemBlock(
+        id: block.id,
+        spans: rest,
+        align: block.align,
+        spaceBefore: block.spaceBefore,
+      ),
+      final p when p.startsWith('#') => HeadingBlock(
+        id: block.id,
+        level: p.length,
+        spans: rest,
+        align: block.align,
+        spaceBefore: block.spaceBefore,
+      ),
+      _ => ListItemBlock(
+        id: block.id,
+        spans: rest,
+        style: ListStyle.ordered,
+        align: block.align,
+        spaceBefore: block.spaceBefore,
+      ),
+    };
+
+    controller.setSpans(rest);
+    controller.selection = const TextSelection.collapsed(offset: 0);
+
+    final blocks = [..._document.blocks];
+    blocks[index] = replacement;
+    _commit(_document.copyWith(blocks: blocks));
+    return true;
+  }
+
+  /// Replaces the focused block with one of another kind, keeping its id — and
+  /// therefore its controller and everything the merge knows about it.
+  void _convertBlock(String blockId, Block Function(TextBlock) build) {
+    _updateBlock(blockId, (b) => b is TextBlock ? build(b) : b);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _focusFor(blockId).requestFocus(),
+    );
+  }
+
+  void _insertAfter(String afterBlockId, Block block) {
+    final index = _document.blocks.indexWhere((b) => b.id == afterBlockId);
+    if (index < 0) return;
+    final blocks = [..._document.blocks]..insert(index + 1, block);
+    _commit(_document.copyWith(blocks: blocks));
+  }
+
+  Future<void> _setLink(String blockId) async {
+    final controller = _controllers[blockId];
+    if (controller == null) return;
+    final selection = controller.selection;
+    if (!selection.isValid || selection.isCollapsed) return;
+
+    final range = TextRange(start: selection.start, end: selection.end);
+    final existing = controller.formatAt(selection.start)?.href;
+    final field = TextEditingController(text: existing ?? '');
+
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) => DsDialog(
+        actions: [
+          if (existing != null)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(''),
+              child: Text(
+                'Remove',
+                style: aleo(size: 13, color: context.ds.muted),
+              ),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Cancel',
+              style: aleo(size: 13, color: context.ds.muted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(field.text.trim()),
+            child: Text('Link', style: aleo(size: 13, color: context.ds.text)),
+          ),
+        ],
+        children: [DsField(controller: field, hint: 'https://…')],
+      ),
+    );
+
+    if (url == null) return;
+    controller.applyToRange(
+      range,
+      (f) => _withHref(f, url.isEmpty ? null : url),
+    );
+    _focusFor(blockId).requestFocus();
   }
 
   // --------------------------------------------------------- block editing --
@@ -440,9 +579,39 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
                   style: t is HeadingBlock
                       ? headingStyle(t.level, colors.text)
                       : aleo(size: 15, height: 1.6, color: colors.text),
+                  ordinal: t is ListItemBlock && t.style == ListStyle.ordered
+                      ? _ordinalOf(t)
+                      : null,
+                  onToggleChecked: t is ListItemBlock && t.checked != null
+                      ? () => _updateBlock(
+                          t.id,
+                          (b) => (b as ListItemBlock).copyWith(
+                            checked: !(b.checked ?? false),
+                          ),
+                        )
+                      : null,
                   onSplit: () => _splitBlock(t.id),
                   onMergeBack: () => _mergeIntoPrevious(t.id),
                   onMenu: (position) => _showBlockMenu(position, t),
+                ),
+                CodeBlock() => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: _CodeView(
+                    block: block,
+                    onChanged: (text) => _updateBlock(
+                      block.id,
+                      (b) => (b as CodeBlock).copyWith(text: text),
+                    ),
+                    onMenu: (position) => _showBlockMenu(position, block),
+                  ),
+                ),
+                DividerBlock() => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: GestureDetector(
+                    onSecondaryTapUp: (d) =>
+                        _showBlockMenu(d.globalPosition, block),
+                    child: Divider(color: colors.border, height: 24),
+                  ),
                 ),
                 ImageBlock() => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -549,6 +718,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
             'Underline',
             () => _toggle(block.id, _withUnderline, (f) => f.underline),
           ),
+          item('Link…', () => _setLink(block.id)),
           const PopupMenuDivider(height: 1),
           PopupMenuItem<VoidCallback>(
             height: 34,
@@ -602,7 +772,104 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
             (b) => b.copyWithCommon(spaceBefore: b.spaceBefore > 0 ? 0 : 16),
           ),
         ),
+        if (block is TextBlock) ...[
+          const PopupMenuDivider(height: 1),
+          item(
+            'Body text',
+            () => _convertBlock(
+              block.id,
+              (b) => ParagraphBlock(
+                id: b.id,
+                spans: b.spans,
+                align: b.align,
+                spaceBefore: b.spaceBefore,
+              ),
+            ),
+          ),
+          item(
+            'Bulleted list',
+            () => _convertBlock(
+              block.id,
+              (b) => ListItemBlock(
+                id: b.id,
+                spans: b.spans,
+                align: b.align,
+                spaceBefore: b.spaceBefore,
+              ),
+            ),
+          ),
+          item(
+            'Numbered list',
+            () => _convertBlock(
+              block.id,
+              (b) => ListItemBlock(
+                id: b.id,
+                spans: b.spans,
+                style: ListStyle.ordered,
+                align: b.align,
+                spaceBefore: b.spaceBefore,
+              ),
+            ),
+          ),
+          item(
+            'Task',
+            () => _convertBlock(
+              block.id,
+              (b) => ListItemBlock(
+                id: b.id,
+                spans: b.spans,
+                checked: false,
+                align: b.align,
+                spaceBefore: b.spaceBefore,
+              ),
+            ),
+          ),
+          item(
+            'Quote',
+            () => _convertBlock(
+              block.id,
+              (b) => QuoteBlock(
+                id: b.id,
+                spans: b.spans,
+                align: b.align,
+                spaceBefore: b.spaceBefore,
+              ),
+            ),
+          ),
+          item(
+            'Code block',
+            () => _convertBlock(
+              block.id,
+              (b) => CodeBlock(
+                id: b.id,
+                text: b.plainText,
+                align: b.align,
+                spaceBefore: b.spaceBefore,
+              ),
+            ),
+          ),
+          if (block is ListItemBlock && block.depth < 8)
+            item(
+              'Indent',
+              () => _updateBlock(
+                block.id,
+                (b) => (b as ListItemBlock).copyWith(depth: b.depth + 1),
+              ),
+            ),
+          if (block is ListItemBlock && block.depth > 0)
+            item(
+              'Outdent',
+              () => _updateBlock(
+                block.id,
+                (b) => (b as ListItemBlock).copyWith(depth: b.depth - 1),
+              ),
+            ),
+        ],
         const PopupMenuDivider(height: 1),
+        item(
+          'Insert divider',
+          () => _insertAfter(block.id, DividerBlock(id: newId())),
+        ),
         item('Insert image…', () => _insertImage(block.id)),
         const PopupMenuDivider(height: 1),
         item('Export as .docx…', () => _export(DocumentFormat.docx)),
@@ -697,6 +964,20 @@ Format _withFont(Format f, String? font) => TextSpanNode(
   font: font,
 );
 
+final RegExp _autoformatPattern = RegExp(r'^(#{1,6} |[-*+] |\d+[.)] |> )');
+
+Format _withHref(Format f, String? href) => TextSpanNode(
+  text: f.text,
+  bold: f.bold,
+  italic: f.italic,
+  strikethrough: f.strikethrough,
+  underline: f.underline,
+  color: f.color,
+  highlight: f.highlight,
+  font: f.font,
+  href: href,
+);
+
 /// Splits a span list at character offsets, preserving each run's formatting.
 List<TextSpanNode> _sliceSpans(List<TextSpanNode> spans, int start, int end) {
   final out = <TextSpanNode>[];
@@ -729,6 +1010,8 @@ class _TextBlockView extends StatelessWidget {
     required this.focusNode,
     required this.style,
     required this.onSplit,
+    this.ordinal,
+    this.onToggleChecked,
     required this.onMergeBack,
     required this.onMenu,
   });
@@ -737,6 +1020,13 @@ class _TextBlockView extends StatelessWidget {
   final RichTextController controller;
   final FocusNode focusNode;
   final TextStyle style;
+
+  /// The number to draw beside an ordered list item.
+  final int? ordinal;
+
+  /// Set for a task item; toggles its checkbox.
+  final VoidCallback? onToggleChecked;
+
   final VoidCallback onSplit;
   final bool Function() onMergeBack;
   final void Function(Offset position) onMenu;
@@ -753,96 +1043,165 @@ class _TextBlockView extends StatelessWidget {
 
     return GestureDetector(
       onSecondaryTapUp: (details) => onMenu(details.globalPosition),
-      child: Shortcuts(
-        shortcuts: const {
-          SingleActivator(LogicalKeyboardKey.enter): _SplitIntent(),
-          SingleActivator(LogicalKeyboardKey.keyB, meta: true): _BoldIntent(),
-          SingleActivator(LogicalKeyboardKey.keyB, control: true):
-              _BoldIntent(),
-          SingleActivator(LogicalKeyboardKey.keyI, meta: true): _ItalicIntent(),
-          SingleActivator(LogicalKeyboardKey.keyI, control: true):
-              _ItalicIntent(),
-          SingleActivator(LogicalKeyboardKey.keyU, meta: true):
-              _UnderlineIntent(),
-          SingleActivator(LogicalKeyboardKey.keyU, control: true):
-              _UnderlineIntent(),
-          SingleActivator(LogicalKeyboardKey.keyX, meta: true, shift: true):
-              _StrikeIntent(),
-          SingleActivator(LogicalKeyboardKey.keyX, control: true, shift: true):
-              _StrikeIntent(),
-        },
-        child: Actions(
-          actions: {
-            _SplitIntent: CallbackAction<_SplitIntent>(
-              onInvoke: (_) => onSplit(),
-            ),
-            _BoldIntent: CallbackAction<_BoldIntent>(
-              onInvoke: (_) => _toggleHere(_withBold, (f) => f.bold),
-            ),
-            _ItalicIntent: CallbackAction<_ItalicIntent>(
-              onInvoke: (_) => _toggleHere(_withItalic, (f) => f.italic),
-            ),
-            _UnderlineIntent: CallbackAction<_UnderlineIntent>(
-              onInvoke: (_) => _toggleHere(_withUnderline, (f) => f.underline),
-            ),
-            _StrikeIntent: CallbackAction<_StrikeIntent>(
-              onInvoke: (_) => _toggleHere(_withStrike, (f) => f.strikethrough),
-            ),
+      child: _decorate(
+        context,
+        Shortcuts(
+          shortcuts: const {
+            SingleActivator(LogicalKeyboardKey.enter): _SplitIntent(),
+            SingleActivator(LogicalKeyboardKey.keyB, meta: true): _BoldIntent(),
+            SingleActivator(LogicalKeyboardKey.keyB, control: true):
+                _BoldIntent(),
+            SingleActivator(LogicalKeyboardKey.keyI, meta: true):
+                _ItalicIntent(),
+            SingleActivator(LogicalKeyboardKey.keyI, control: true):
+                _ItalicIntent(),
+            SingleActivator(LogicalKeyboardKey.keyU, meta: true):
+                _UnderlineIntent(),
+            SingleActivator(LogicalKeyboardKey.keyU, control: true):
+                _UnderlineIntent(),
+            SingleActivator(LogicalKeyboardKey.keyX, meta: true, shift: true):
+                _StrikeIntent(),
+            SingleActivator(
+              LogicalKeyboardKey.keyX,
+              control: true,
+              shift: true,
+            ): _StrikeIntent(),
           },
-          child: Focus(
-            onKeyEvent: (node, event) {
-              final isBackspace =
-                  event.logicalKey == LogicalKeyboardKey.backspace;
-              final atStart =
-                  controller.selection.isCollapsed &&
-                  controller.selection.baseOffset == 0;
-              if (event is KeyDownEvent && isBackspace && atStart) {
-                return onMergeBack()
-                    ? KeyEventResult.handled
-                    : KeyEventResult.ignored;
-              }
-              return KeyEventResult.ignored;
-            },
-            // The wash follows the caret, so it has to repaint when this
-            // block gains or loses focus rather than only when the document
-            // changes.
-            child: ListenableBuilder(
-              listenable: focusNode,
-              builder: (context, child) => AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                curve: Curves.easeOut,
-                // Constant padding: only the colour changes with focus, so
-                // the text does not shift as it is clicked into.
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  // Fading to Colors.transparent would fade through
-                  // transparent *black*, greying the block on the way in and
-                  // out. Only the alpha should move, so the far end of the
-                  // animation is this same colour at zero alpha.
-                  color: focusNode.hasFocus
-                      ? colors.editingBlock
-                      : colors.editingBlock.withAlpha(0),
-                  borderRadius: const BorderRadius.all(DsRadius.block),
-                ),
-                child: child,
+          child: Actions(
+            actions: {
+              _SplitIntent: CallbackAction<_SplitIntent>(
+                onInvoke: (_) => onSplit(),
               ),
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                maxLines: null,
-                textAlign: _align,
-                cursorColor: colors.text,
-                cursorWidth: 1.5,
-                style: style,
-                decoration: const InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 2),
+              _BoldIntent: CallbackAction<_BoldIntent>(
+                onInvoke: (_) => _toggleHere(_withBold, (f) => f.bold),
+              ),
+              _ItalicIntent: CallbackAction<_ItalicIntent>(
+                onInvoke: (_) => _toggleHere(_withItalic, (f) => f.italic),
+              ),
+              _UnderlineIntent: CallbackAction<_UnderlineIntent>(
+                onInvoke: (_) =>
+                    _toggleHere(_withUnderline, (f) => f.underline),
+              ),
+              _StrikeIntent: CallbackAction<_StrikeIntent>(
+                onInvoke: (_) =>
+                    _toggleHere(_withStrike, (f) => f.strikethrough),
+              ),
+            },
+            child: Focus(
+              onKeyEvent: (node, event) {
+                final isBackspace =
+                    event.logicalKey == LogicalKeyboardKey.backspace;
+                final atStart =
+                    controller.selection.isCollapsed &&
+                    controller.selection.baseOffset == 0;
+                if (event is KeyDownEvent && isBackspace && atStart) {
+                  return onMergeBack()
+                      ? KeyEventResult.handled
+                      : KeyEventResult.ignored;
+                }
+                return KeyEventResult.ignored;
+              },
+              // The wash follows the caret, so it has to repaint when this
+              // block gains or loses focus rather than only when the document
+              // changes.
+              child: ListenableBuilder(
+                listenable: focusNode,
+                builder: (context, child) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  curve: Curves.easeOut,
+                  // Constant padding: only the colour changes with focus, so
+                  // the text does not shift as it is clicked into.
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    // Fading to Colors.transparent would fade through
+                    // transparent *black*, greying the block on the way in and
+                    // out. Only the alpha should move, so the far end of the
+                    // animation is this same colour at zero alpha.
+                    color: focusNode.hasFocus
+                        ? colors.editingBlock
+                        : colors.editingBlock.withAlpha(0),
+                    borderRadius: const BorderRadius.all(DsRadius.block),
+                  ),
+                  child: child,
+                ),
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  maxLines: null,
+                  textAlign: _align,
+                  cursorColor: colors.text,
+                  cursorWidth: 1.5,
+                  style: style,
+                  decoration: const InputDecoration(
+                    isCollapsed: true,
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 2),
+                  ),
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Wraps the field in whatever the block kind puts around it: a list
+  /// marker and indent, or a quote's rule. A paragraph or heading gets
+  /// nothing, so those are laid out exactly as they were before.
+  Widget _decorate(BuildContext context, Widget field) {
+    final colors = context.ds;
+    final b = block;
+
+    if (b is QuoteBlock) {
+      return Container(
+        padding: const EdgeInsets.only(left: 12),
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: colors.border, width: 3)),
+        ),
+        child: field,
+      );
+    }
+
+    if (b is ListItemBlock) {
+      return Padding(
+        padding: EdgeInsets.only(left: 20.0 * b.depth),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 22, child: _marker(colors, b)),
+            Expanded(child: field),
+          ],
+        ),
+      );
+    }
+
+    return field;
+  }
+
+  Widget _marker(DsColors colors, ListItemBlock b) {
+    if (b.checked != null) {
+      return GestureDetector(
+        onTap: onToggleChecked,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Icon(
+            b.checked! ? Icons.check_box : Icons.check_box_outline_blank,
+            size: 15,
+            color: b.checked! ? colors.muted : colors.border,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        b.style == ListStyle.ordered ? '${ordinal ?? 1}.' : '•',
+        style: aleo(size: 15, height: 1.6, color: colors.muted),
       ),
     );
   }
@@ -986,6 +1345,69 @@ class _TitleFieldState extends State<_TitleField> {
         border: InputBorder.none,
         hintText: 'Untitled',
         hintStyle: aleo(size: 24, weight: 600, color: colors.muted),
+      ),
+    );
+  }
+}
+
+/// A fenced code block. Plain text on a tinted panel — no rich formatting,
+/// because none of it means anything inside code.
+class _CodeView extends StatelessWidget {
+  const _CodeView({
+    required this.block,
+    required this.onChanged,
+    required this.onMenu,
+  });
+
+  final CodeBlock block;
+  final ValueChanged<String> onChanged;
+  final void Function(Offset position) onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+
+    return GestureDetector(
+      onSecondaryTapUp: (details) => onMenu(details.globalPosition),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: colors.selection,
+          borderRadius: const BorderRadius.all(DsRadius.control),
+          border: Border.all(color: colors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (block.language != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  block.language!,
+                  style: aleo(size: 11, color: colors.muted),
+                ),
+              ),
+            TextField(
+              controller: TextEditingController(
+                text: block.text,
+              )..selection = TextSelection.collapsed(offset: block.text.length),
+              onChanged: onChanged,
+              maxLines: null,
+              cursorColor: colors.text,
+              cursorWidth: 1.5,
+              style: aleo(
+                size: 13,
+                height: 1.5,
+                color: colors.text,
+              ).copyWith(fontFamily: 'Courier New'),
+              decoration: const InputDecoration(
+                isCollapsed: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

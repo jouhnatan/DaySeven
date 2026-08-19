@@ -167,9 +167,21 @@ class _HeadingControl extends StatelessWidget {
         if (picked == null) return; // dismissed
         onPick(picked == 0 ? null : picked);
       },
-      child: Text(
-        level == null ? 'Body' : 'H$level',
-        style: aleo(size: 13, weight: 500, color: colors.text),
+      // Sized to match the icon buttons exactly, so the row reads as one set
+      // of controls rather than one wide one and six small ones.
+      child: SizedBox(
+        width: _kIconSize,
+        height: _kIconSize,
+        child: Center(
+          child: level == null
+              ? Icon(Icons.title, size: _kIconSize, color: colors.text)
+              : FittedBox(
+                  child: Text(
+                    'H$level',
+                    style: aleo(size: 11, weight: 600, color: colors.text),
+                  ),
+                ),
+        ),
       ),
     );
   }

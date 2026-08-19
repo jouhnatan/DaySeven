@@ -39,6 +39,7 @@ class TextSpanNode {
     this.color,
     this.highlight,
     this.font,
+    this.href,
   });
 
   final String text;
@@ -56,6 +57,9 @@ class TextSpanNode {
   /// Font family name, or null for the document default (Aleo).
   final String? font;
 
+  /// Link target, or null for ordinary text.
+  final String? href;
+
   bool get isEmpty => text.isEmpty;
 
   /// True when two spans differ only in their text, and so can be concatenated.
@@ -66,7 +70,8 @@ class TextSpanNode {
       underline == other.underline &&
       color == other.color &&
       highlight == other.highlight &&
-      font == other.font;
+      font == other.font &&
+      href == other.href;
 
   TextSpanNode copyWith({String? text}) => TextSpanNode(
     text: text ?? this.text,
@@ -77,6 +82,7 @@ class TextSpanNode {
     color: color,
     highlight: highlight,
     font: font,
+    href: href,
   );
 
   /// Omits every default so documents stay small and diffs stay readable.
@@ -89,6 +95,7 @@ class TextSpanNode {
     if (color != null) 'color': color,
     if (highlight != null) 'highlight': highlight,
     if (font != null) 'font': font,
+    if (href != null) 'href': href,
   };
 
   static TextSpanNode fromJson(Map<String, Object?> json) => TextSpanNode(
@@ -100,6 +107,7 @@ class TextSpanNode {
     color: json['color'] as String?,
     highlight: json['highlight'] as String?,
     font: json['font'] as String?,
+    href: json['href'] as String?,
   );
 
   @override
@@ -116,6 +124,7 @@ class TextSpanNode {
     color,
     highlight,
     font,
+    href,
   );
 }
 
@@ -149,6 +158,10 @@ sealed class Block {
     return switch (type) {
       'image' => ImageBlock.fromJson(json),
       'heading' => HeadingBlock.fromJson(json),
+      'listItem' => ListItemBlock.fromJson(json),
+      'quote' => QuoteBlock.fromJson(json),
+      'code' => CodeBlock.fromJson(json),
+      'divider' => DividerBlock.fromJson(json),
       _ => ParagraphBlock.fromJson(json),
     };
   }
@@ -297,6 +310,218 @@ class HeadingBlock extends TextBlock {
     spans: (json['spans'] as List<Object?>? ?? const [])
         .map((s) => TextSpanNode.fromJson(s as Map<String, Object?>))
         .toList(),
+    align: _alignFrom(json['align']),
+    spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// Whether a list item is bulleted or numbered.
+enum ListStyle { bullet, ordered }
+
+ListStyle _listStyleFrom(Object? v) =>
+    v == 'ordered' ? ListStyle.ordered : ListStyle.bullet;
+
+/// One line of a list. Items are separate blocks rather than children of a
+/// list, so that the merge keeps aligning by id the way it does everywhere
+/// else, and so that indenting a line is an attribute change rather than a
+/// move between parents.
+class ListItemBlock extends TextBlock {
+  const ListItemBlock({
+    required super.id,
+    required this.spans,
+    this.style = ListStyle.bullet,
+    this.depth = 0,
+    this.checked,
+    super.align,
+    super.spaceBefore,
+  });
+
+  final ListStyle style;
+
+  /// Nesting level; 0 is the outermost.
+  final int depth;
+
+  /// null for an ordinary item, true or false for a task item.
+  final bool? checked;
+
+  @override
+  final List<TextSpanNode> spans;
+
+  @override
+  ListItemBlock withSpans(List<TextSpanNode> spans) => copyWith(spans: spans);
+
+  @override
+  ListItemBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      copyWith(align: align, spaceBefore: spaceBefore);
+
+  @override
+  ListItemBlock normalized() => super.normalized() as ListItemBlock;
+
+  ListItemBlock copyWith({
+    List<TextSpanNode>? spans,
+    ListStyle? style,
+    int? depth,
+    bool? checked,
+    bool clearChecked = false,
+    BlockAlign? align,
+    double? spaceBefore,
+  }) => ListItemBlock(
+    id: id,
+    spans: spans ?? this.spans,
+    style: style ?? this.style,
+    depth: depth ?? this.depth,
+    checked: clearChecked ? null : (checked ?? this.checked),
+    align: align ?? this.align,
+    spaceBefore: spaceBefore ?? this.spaceBefore,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    ..._common(),
+    'type': 'listItem',
+    if (style != ListStyle.bullet) 'style': style.name,
+    if (depth != 0) 'depth': depth,
+    if (checked != null) 'checked': checked,
+    'spans': spans.map((s) => s.toJson()).toList(),
+  };
+
+  static ListItemBlock fromJson(Map<String, Object?> json) => ListItemBlock(
+    id: json['id'] as String,
+    style: _listStyleFrom(json['style']),
+    depth: ((json['depth'] as num?)?.toInt() ?? 0).clamp(0, 8),
+    checked: json['checked'] as bool?,
+    spans: (json['spans'] as List<Object?>? ?? const [])
+        .map((s) => TextSpanNode.fromJson(s as Map<String, Object?>))
+        .toList(),
+    align: _alignFrom(json['align']),
+    spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// A quoted line.
+class QuoteBlock extends TextBlock {
+  const QuoteBlock({
+    required super.id,
+    required this.spans,
+    super.align,
+    super.spaceBefore,
+  });
+
+  @override
+  final List<TextSpanNode> spans;
+
+  @override
+  QuoteBlock withSpans(List<TextSpanNode> spans) => copyWith(spans: spans);
+
+  @override
+  QuoteBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      copyWith(align: align, spaceBefore: spaceBefore);
+
+  @override
+  QuoteBlock normalized() => super.normalized() as QuoteBlock;
+
+  QuoteBlock copyWith({
+    List<TextSpanNode>? spans,
+    BlockAlign? align,
+    double? spaceBefore,
+  }) => QuoteBlock(
+    id: id,
+    spans: spans ?? this.spans,
+    align: align ?? this.align,
+    spaceBefore: spaceBefore ?? this.spaceBefore,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    ..._common(),
+    'type': 'quote',
+    'spans': spans.map((s) => s.toJson()).toList(),
+  };
+
+  static QuoteBlock fromJson(Map<String, Object?> json) => QuoteBlock(
+    id: json['id'] as String,
+    spans: (json['spans'] as List<Object?>? ?? const [])
+        .map((s) => TextSpanNode.fromJson(s as Map<String, Object?>))
+        .toList(),
+    align: _alignFrom(json['align']),
+    spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// A fenced code block. Plain text: inline formatting has no meaning in code,
+/// so this is not a [TextBlock].
+class CodeBlock extends Block {
+  const CodeBlock({
+    required super.id,
+    required this.text,
+    this.language,
+    super.align,
+    super.spaceBefore,
+  });
+
+  final String text;
+
+  /// The info string after the opening fence, or null for none.
+  final String? language;
+
+  @override
+  String get plainText => text;
+
+  @override
+  CodeBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      copyWith(align: align, spaceBefore: spaceBefore);
+
+  CodeBlock copyWith({
+    String? text,
+    String? language,
+    bool clearLanguage = false,
+    BlockAlign? align,
+    double? spaceBefore,
+  }) => CodeBlock(
+    id: id,
+    text: text ?? this.text,
+    language: clearLanguage ? null : (language ?? this.language),
+    align: align ?? this.align,
+    spaceBefore: spaceBefore ?? this.spaceBefore,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    ..._common(),
+    'type': 'code',
+    if (language != null) 'language': language,
+    'text': text,
+  };
+
+  static CodeBlock fromJson(Map<String, Object?> json) => CodeBlock(
+    id: json['id'] as String,
+    text: json['text'] as String? ?? '',
+    language: json['language'] as String?,
+    align: _alignFrom(json['align']),
+    spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// A horizontal rule.
+class DividerBlock extends Block {
+  const DividerBlock({required super.id, super.align, super.spaceBefore});
+
+  @override
+  String get plainText => '';
+
+  @override
+  DividerBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      DividerBlock(
+        id: id,
+        align: align ?? this.align,
+        spaceBefore: spaceBefore ?? this.spaceBefore,
+      );
+
+  @override
+  Map<String, Object?> toJson() => {..._common(), 'type': 'divider'};
+
+  static DividerBlock fromJson(Map<String, Object?> json) => DividerBlock(
+    id: json['id'] as String,
     align: _alignFrom(json['align']),
     spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
   );

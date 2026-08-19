@@ -322,4 +322,93 @@ void main() {
       expect(parseColor('#8A3B12'), const Color(0xFF8A3B12));
     });
   });
+
+  group('Markdown typed at the head of a paragraph', () {
+    /// Types [text] into the first block and returns the document.
+    Future<BlockDocument> type(WidgetTester tester, String text) async {
+      final (container, _, _) = await openEditor(
+        tester,
+        temp,
+        seed: seedWith(''),
+      );
+      await tester.enterText(find.byType(TextField).last, text);
+      await tester.pumpAndSettle();
+      final document = container.read(documentControllerProvider)!.document;
+      await tester.runAsync(
+        () => container.read(documentControllerProvider.notifier).flush(),
+      );
+      return document;
+    }
+
+    testWidgets('"## " becomes a heading', (tester) async {
+      final document = await type(tester, '## ');
+      final block = document.blocks.first;
+      expect(block, isA<HeadingBlock>());
+      expect((block as HeadingBlock).level, 2);
+      expect(block.plainText, isEmpty, reason: 'the prefix is consumed');
+    });
+
+    testWidgets('"- " becomes a bulleted item', (tester) async {
+      final block = (await type(tester, '- ')).blocks.first;
+      expect(block, isA<ListItemBlock>());
+      expect((block as ListItemBlock).style, ListStyle.bullet);
+    });
+
+    testWidgets('"1. " becomes a numbered item', (tester) async {
+      final block = (await type(tester, '1. ')).blocks.first;
+      expect((block as ListItemBlock).style, ListStyle.ordered);
+    });
+
+    testWidgets('"> " becomes a quote', (tester) async {
+      expect((await type(tester, '> ')).blocks.first, isA<QuoteBlock>());
+    });
+
+    testWidgets('the block keeps its id, and so its controller', (
+      tester,
+    ) async {
+      final block = (await type(tester, '# ')).blocks.first;
+      expect(block.id, 'b1');
+    });
+
+    testWidgets('typing the prefix, then the text, keeps both', (tester) async {
+      final (container, _, _) = await openEditor(
+        tester,
+        temp,
+        seed: seedWith(''),
+      );
+      final field = find.byType(TextField).last;
+
+      await tester.enterText(field, '## ');
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'The Fen');
+      await tester.pumpAndSettle();
+
+      final block = container
+          .read(documentControllerProvider)!
+          .document
+          .blocks
+          .first;
+      expect(block, isA<HeadingBlock>());
+      expect(block.plainText, 'The Fen');
+
+      await tester.runAsync(
+        () => container.read(documentControllerProvider.notifier).flush(),
+      );
+    });
+
+    /// enterText replaces the whole field in one go, which is what a paste
+    /// looks like. Converting then would rewrite text the user never typed as
+    /// a prefix, so it deliberately does not fire.
+    testWidgets('a pasted line is left as text', (tester) async {
+      final block = (await type(tester, '## The Fen')).blocks.first;
+      expect(block, isA<ParagraphBlock>());
+      expect(block.plainText, '## The Fen');
+    });
+
+    testWidgets('a hash typed mid-line is left alone', (tester) async {
+      final block = (await type(tester, 'a # b')).blocks.first;
+      expect(block, isA<ParagraphBlock>());
+      expect(block.plainText, 'a # b');
+    });
+  });
 }

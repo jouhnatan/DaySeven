@@ -36,9 +36,14 @@ TextStyle headingStyle(int level, Color color) => aleo(
 );
 
 /// Turns a document span's formatting into a Flutter style.
-TextStyle styleFor(TextSpanNode format, TextStyle base) {
+///
+/// [linkColor] is what a link is drawn in; pass null where links should read as
+/// ordinary text. A span that sets its own colour keeps it — an explicit choice
+/// outranks the default.
+TextStyle styleFor(TextSpanNode format, TextStyle base, {Color? linkColor}) {
+  final isLink = format.href != null && linkColor != null;
   final decorations = <TextDecoration>[
-    if (format.underline) TextDecoration.underline,
+    if (format.underline || isLink) TextDecoration.underline,
     if (format.strikethrough) TextDecoration.lineThrough,
   ];
 
@@ -50,8 +55,10 @@ TextStyle styleFor(TextSpanNode format, TextStyle base) {
     decoration: decorations.isEmpty
         ? TextDecoration.none
         : TextDecoration.combine(decorations),
-    decorationColor: parseColor(format.color) ?? base.color,
-    color: parseColor(format.color) ?? base.color,
+    decorationColor:
+        parseColor(format.color) ?? (isLink ? linkColor : null) ?? base.color,
+    color:
+        parseColor(format.color) ?? (isLink ? linkColor : null) ?? base.color,
     backgroundColor: parseColor(format.highlight),
   );
 }
