@@ -367,7 +367,8 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
   final bodyPlan = <_PlannedBlock>[];
   for (final block in document.blocks) {
     switch (block) {
-      case ParagraphBlock():
+      // A heading plans as a paragraph; see the note in docx.dart.
+      case TextBlock():
         bodyPlan.add(
           _PlannedBlock(
             block: block,
@@ -489,7 +490,7 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
             nest: () {
               for (final planned in bodyPlan) {
                 switch (planned.block) {
-                  case final ParagraphBlock block:
+                  case final TextBlock block:
                     builder.element(
                       'text:p',
                       nest: () {

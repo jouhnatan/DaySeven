@@ -229,14 +229,23 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
     final session = ref.read(kbSessionProvider);
     if (session == null) return;
 
-    // Untitled until the user types a title into the document itself.
+    // Untitled until the user types a title into the document itself. Both
+    // extensions are checked, so a new Untitled.md cannot shadow an
+    // Untitled.d7doc that has not been converted.
     var title = 'Untitled';
     var attempt = 1;
-    String pathFor(String t) => inFolder.isEmpty
-        ? '$t$kDocumentExtension'
-        : '$inFolder/$t$kDocumentExtension';
+    Future<bool> taken(String t) async {
+      final stem = inFolder.isEmpty ? t : '$inFolder/$t';
+      for (final extension in [kDocumentExtension, kLegacyDocumentExtension]) {
+        if (await File(session.kb.absolutePathFor('$stem$extension'))
+            .exists()) {
+          return true;
+        }
+      }
+      return false;
+    }
 
-    while (await File(session.kb.absolutePathFor(pathFor(title))).exists()) {
+    while (await taken(title)) {
       attempt++;
       title = 'Untitled $attempt';
     }
@@ -450,11 +459,21 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
       case 'document':
         var title = 'Untitled';
         var attempt = 1;
-        while (await File(
-          session.kb.absolutePathFor(
-            '${folder.relativePath}/$title$kDocumentExtension',
-          ),
-        ).exists()) {
+        Future<bool> taken(String t) async {
+          for (final extension in [
+            kDocumentExtension,
+            kLegacyDocumentExtension,
+          ]) {
+            if (await File(
+              session.kb.absolutePathFor('${folder.relativePath}/$t$extension'),
+            ).exists()) {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        while (await taken(title)) {
           attempt++;
           title = 'Untitled $attempt';
         }

@@ -44,6 +44,12 @@ Future<String> importDocumentInto(
     DocumentFormat.odt => await importOdt(source),
   };
 
+  // Both importers emit a span per run of the source format, which routinely
+  // leaves neighbours that share their formatting. Canonicalising here means
+  // what the app holds matches what a save writes — see
+  // `BlockDocument.normalized`.
+  final document = imported.document.normalized();
+
   // Write the images first, so no block ever points at a file that is not there.
   await Directory(kb.assetsPath).create(recursive: true);
   for (final entry in imported.assets.entries) {
@@ -51,10 +57,10 @@ Future<String> importDocumentInto(
   }
 
   final relativePath = await kb.createDocument(
-    title: imported.document.title,
+    title: document.title,
     folderRelativePath: folderRelativePath,
   );
-  await kb.writeDocument(relativePath, imported.document);
+  await kb.writeDocument(relativePath, document);
   return relativePath;
 }
 

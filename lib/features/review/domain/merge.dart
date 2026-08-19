@@ -173,19 +173,30 @@ _MergedBlock _mergeBlock({
     proposed.spaceBefore,
   );
 
-  if (base is ParagraphBlock &&
-      local is ParagraphBlock &&
-      proposed is ParagraphBlock) {
-    final text = _mergeSpans(base, local, proposed);
-    return _MergedBlock(
-      ParagraphBlock(
-        id: local.id,
-        spans: text.spans,
-        align: align,
-        spaceBefore: spaceBefore,
-      ),
-      text.conflicted,
-    );
+  // Paragraphs and headings merge identically — the text merge only wants
+  // spans. Note these are `is` tests, not a switch: a block type added without
+  // a branch here would fall through to "the proposal wins" and silently
+  // discard the local side, so anything with spans must be caught by TextBlock.
+  if (base is TextBlock && local is TextBlock && proposed is TextBlock) {
+    // A paragraph turned into a heading on one side is a change of kind, not
+    // of text; fall through and let the proposal win.
+    if (base.runtimeType == local.runtimeType &&
+        base.runtimeType == proposed.runtimeType) {
+      final text = _mergeSpans(base, local, proposed);
+      var merged = local
+          .withSpans(text.spans)
+          .copyWithCommon(align: align, spaceBefore: spaceBefore);
+
+      if (base is HeadingBlock &&
+          local is HeadingBlock &&
+          proposed is HeadingBlock) {
+        merged = (merged as HeadingBlock).copyWith(
+          level: _pick(base.level, local.level, proposed.level),
+        );
+      }
+
+      return _MergedBlock(merged, text.conflicted);
+    }
   }
 
   if (base is ImageBlock && local is ImageBlock && proposed is ImageBlock) {
@@ -229,7 +240,7 @@ class _StyledChar {
   bool sameFormat(_StyledChar other) => format.sameFormatting(other.format);
 }
 
-List<_StyledChar> _explode(ParagraphBlock block) {
+List<_StyledChar> _explode(TextBlock block) {
   final out = <_StyledChar>[];
   for (final span in block.spans) {
     for (final ch in span.text.split('')) {
@@ -340,11 +351,7 @@ _Script _scriptFor(List<_StyledChar> base, List<_StyledChar> side) {
   return script;
 }
 
-_MergedSpans _mergeSpans(
-  ParagraphBlock base,
-  ParagraphBlock local,
-  ParagraphBlock proposed,
-) {
+_MergedSpans _mergeSpans(TextBlock base, TextBlock local, TextBlock proposed) {
   final baseChars = _explode(base);
   final localChars = _explode(local);
   final proposedChars = _explode(proposed);

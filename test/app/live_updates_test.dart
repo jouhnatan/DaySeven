@@ -83,11 +83,17 @@ void main() {
 
       await Directory(p.join(temp.path, 'Characters')).create();
       await File(p.join(temp.path, 'Characters', 'Aldric$kDocumentExtension'))
-          .writeAsString(
-            '{"schemaVersion":1,"id":"d1","title":"Aldric",'
-            '"blocks":[{"id":"b1","type":"paragraph","spans":'
-            '[{"text":"He keeps the causeway."}]}]}',
-          );
+          .writeAsString('''
+---
+d7: 1
+schema: 1
+id: "d1"
+title: "Aldric"
+---
+
+<!-- d7 b1 -->
+He keeps the causeway.
+''');
 
       await until(() {
         final characters = container

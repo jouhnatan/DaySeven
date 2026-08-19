@@ -75,20 +75,59 @@ read it too.
 
 ## How a document is stored
 
-Each document is a `.d7doc` file — JSON, one block per paragraph, with stable
-block ids:
+Each document is a Markdown file — one block per paragraph, with stable block
+ids:
 
 ```
 MyWorld/
   Characters/
-    Aldric.d7doc
+    Aldric.md
   Places/
-    Aldenmoor.d7doc
+    Aldenmoor.md
   .settings/           the app's own files, hidden from the tree
     dayseven.kb.json   manifest: kbId, name, schemaVersion
     assets/            images referenced by documents
     .index/            search index (derived; safe to delete)
 ```
+
+A document opens in any editor:
+
+```markdown
+---
+d7: 1
+schema: 1
+id: "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1"
+title: "Aldenmoor"
+---
+
+<!-- d7 h1 -->
+## The Fen
+
+<!-- d7 p1 -->
+The moor is **wide** and <u>cold</u>.
+
+<!-- d7 p2 align=center space=16 -->
+<span style="color:#8A3B12">Aldenmoor</span>, the last free hold.
+```
+
+Two things Markdown has no syntax for are handled differently, and the split is
+deliberate. **Inline** formatting — underline, colour, highlight, font — becomes
+inline HTML, which renders correctly in other editors. **Block-level**
+attributes — alignment, space before — go in the `d7` comment rather than a
+`<p align>` wrapper, because CommonMark does not parse Markdown inside an HTML
+block: wrapping a paragraph would render its bold and italics as literal
+asterisks everywhere else.
+
+The `d7` comment also carries the block id, which is what lets the three-way
+merge tell a paragraph that *moved* from one deleted and another inserted.
+Editing a document elsewhere is fine; deleting those comments only costs the
+merge that knowledge, and fresh ids are minted on the next read.
+
+Knowledge Bases written by an earlier version hold `.d7doc` JSON files. They are
+converted on open — but only once the converted file has been read back and
+compared against the original, and the `.d7doc` is then kept as a `.bak` rather
+than deleted. Anything that fails that check is left exactly as it was and goes
+on working in the old format.
 
 Creating a Knowledge Base scaffolds nothing but `.settings/` — the structure is
 yours to make. A Knowledge Base from an earlier layout migrates the first time
@@ -143,8 +182,14 @@ invites you by; the display name is what they see on a proposal. Sharing a
 Knowledge Base and inviting someone to it sit in the Knowledge Base dropdown,
 since they belong to the Knowledge Base rather than to the account.
 
-Formatting is applied with keyboard shortcuts (⌘/Ctrl+B, I, U, ⇧⌘X) and one
-context menu on a block. There is no toolbar.
+Formatting comes from the toolbar in the bottom bar — headings, bold, italic,
+strikethrough, underline and the three alignments — from keyboard shortcuts
+(⌘/Ctrl+B, I, U, ⇧⌘X), and from a context menu on a block for the rest: colour,
+highlight, font, spacing, images and export.
+
+The toolbar acts on whatever the caret is in. Its formatting buttons need a
+selection, so they are muted until there is one; alignment and headings apply to
+the whole block and stay available.
 
 Documents and folders are created from the island dropdown, or by right-clicking
 a folder in the tree to create inside it.

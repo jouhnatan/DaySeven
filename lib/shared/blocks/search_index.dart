@@ -73,7 +73,9 @@ class SearchIndex {
       await for (final file in _documentFiles()) {
         final relative = _kb.relativePathFor(file.path);
         try {
-          final doc = BlockDocument.decode(await file.readAsString());
+          // Through the Knowledge Base, so which format a document is in is
+          // decided in exactly one place.
+          final doc = await _kb.readDocument(relative);
           stmt.execute([relative, doc.title, doc.plainText]);
         } on FormatException {
           // A file that is not a valid document simply is not searchable.
@@ -89,7 +91,7 @@ class SearchIndex {
     final dir = Directory(_kb.documentsPath);
     if (!await dir.exists()) return;
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is File && entity.path.endsWith(kDocumentExtension)) {
+      if (entity is File && isDocumentPath(entity.path)) {
         yield entity;
       }
     }

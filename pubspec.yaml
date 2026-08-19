@@ -91,5 +91,6 @@ msix_config:
   msix_version: 1.0.0.0
   capabilities: internetClient
   install_certificate: false
-  # File types DaySeven can open directly.
-  file_extension: .d7doc
+  # No file-type association: documents are ordinary .md files now, and
+  # claiming that extension would make DaySeven the default application for
+  # every Markdown file on the machine.

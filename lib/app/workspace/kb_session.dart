@@ -87,7 +87,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
 
     // A moved folder takes a whole subtree of paths with it, so the index is
     // rebuilt; a single document only needs its own row repointed.
-    if (relativePath.endsWith(kDocumentExtension)) {
+    if (isDocumentPath(relativePath)) {
       session.index.rename(relativePath, destination);
     } else {
       await session.index.rebuild();

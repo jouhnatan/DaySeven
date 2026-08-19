@@ -244,6 +244,107 @@ void main() {
     });
   });
 
+  group('three-way merge — headings', () {
+    HeadingBlock h(String id, int level, String text) => HeadingBlock(
+      id: id,
+      level: level,
+      spans: [TextSpanNode(text: text)],
+    );
+
+    test('text merges the same way it does in a paragraph', () {
+      final base = doc([h('a', 2, 'The Fen')]);
+      final result = threeWayMerge(
+        base: base,
+        local: doc([h('a', 2, 'The Great Fen')]),
+        proposed: base,
+      );
+
+      expect(textOf(result.document, 'a'), 'The Great Fen');
+      expect(result.document.blocks.single, isA<HeadingBlock>());
+      expect(result.hasConflicts, isFalse);
+    });
+
+    test('a level changed on one side is taken', () {
+      final base = doc([h('a', 2, 'The Fen')]);
+      final result = threeWayMerge(
+        base: base,
+        local: doc([h('a', 4, 'The Fen')]),
+        proposed: base,
+      );
+
+      expect((result.document.blocks.single as HeadingBlock).level, 4);
+      expect(result.hasConflicts, isFalse);
+    });
+
+    test('one side rewording while the other restyles keeps both', () {
+      final base = doc([h('a', 1, 'The Fen')]);
+      final result = threeWayMerge(
+        base: base,
+        local: doc([h('a', 1, 'The Great Fen')]),
+        proposed: doc([
+          HeadingBlock(
+            id: 'a',
+            level: 3,
+            spans: const [TextSpanNode(text: 'The Fen')],
+          ),
+        ]),
+      );
+
+      expect(textOf(result.document, 'a'), 'The Great Fen');
+      expect((result.document.blocks.single as HeadingBlock).level, 3);
+    });
+
+    test('alignment merges as it does for any block', () {
+      final base = doc([h('a', 2, 'The Fen')]);
+      final result = threeWayMerge(
+        base: base,
+        local: doc([
+          HeadingBlock(
+            id: 'a',
+            level: 2,
+            spans: const [TextSpanNode(text: 'The Fen')],
+            align: BlockAlign.center,
+          ),
+        ]),
+        proposed: base,
+      );
+
+      expect(result.document.blocks.single.align, BlockAlign.center);
+    });
+
+    /// The branch that catches this is `is TextBlock`, not a switch, so nothing
+    /// would fail to compile if it were missing — the local side would just
+    /// quietly disappear. This is the test that would notice.
+    test('a heading is not silently replaced by the proposal', () {
+      final base = doc([h('a', 2, 'The Fen')]);
+      final result = threeWayMerge(
+        base: base,
+        local: doc([h('a', 2, 'The Fen, at dusk')]),
+        proposed: doc([h('a', 2, 'The Fen')]),
+      );
+
+      expect(
+        textOf(result.document, 'a'),
+        'The Fen, at dusk',
+        reason: 'the local edit survives an untouched proposal',
+      );
+    });
+
+    test(
+      'a paragraph turned into a heading on one side is a change of kind',
+      () {
+        final base = doc([p('a', 'The Fen')]);
+        final result = threeWayMerge(
+          base: base,
+          local: doc([p('a', 'The Fen')]),
+          proposed: doc([h('a', 2, 'The Fen')]),
+        );
+
+        expect(result.document.blocks.single, isA<HeadingBlock>());
+      },
+    );
+  });
+
   group('document round-trip', () {
     test('encode then decode reproduces the document exactly', () {
       final original = doc([

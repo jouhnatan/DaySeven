@@ -372,7 +372,9 @@ String _documentXml(
         nest: () {
           for (final block in document.blocks) {
             switch (block) {
-              case ParagraphBlock():
+              // A heading exports as a paragraph carrying its text. Native
+              // heading styles are a later phase; this keeps the words.
+              case TextBlock():
                 _buildParagraph(builder, block);
               case ImageBlock():
                 final image = images[block.assetId];
@@ -429,7 +431,7 @@ void _buildParagraphProperties(
   );
 }
 
-void _buildParagraph(XmlBuilder builder, ParagraphBlock block) {
+void _buildParagraph(XmlBuilder builder, TextBlock block) {
   builder.element(
     'w:p',
     nest: () {

@@ -9,11 +9,31 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 /// A zero-length span carrying only formatting.
 typedef Format = TextSpanNode;
 
 const Format kPlainFormat = TextSpanNode(text: '');
+
+/// The base style for a heading of [level].
+///
+/// Here rather than in the editor for the reason this file exists: the diff
+/// view draws the same headings read-only and must not pull in the editing
+/// controller to do it.
+TextStyle headingStyle(int level, Color color) => aleo(
+  size: switch (level) {
+    1 => 26,
+    2 => 22,
+    3 => 19,
+    4 => 17,
+    5 => 15,
+    _ => 14,
+  },
+  weight: 600,
+  height: 1.3,
+  color: color,
+);
 
 /// Turns a document span's formatting into a Flutter style.
 TextStyle styleFor(TextSpanNode format, TextStyle base) {

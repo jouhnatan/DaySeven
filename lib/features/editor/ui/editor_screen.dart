@@ -2,8 +2,9 @@
 ///
 /// Content is a column of blocks; each paragraph is its own block, so pressing
 /// Return starts a new one and Backspace at the head of a block merges it into
-/// the one above. Formatting is applied through keyboard shortcuts and a single
-/// context menu — there is no toolbar.
+/// the one above. Formatting comes from three places: the toolbar in the bottom
+/// bar, keyboard shortcuts, and a context menu on the block for the rest —
+/// colour, highlight, font, spacing, images and export.
 library;
 
 import 'dart:io';
@@ -13,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -53,22 +55,36 @@ class DocumentEditor extends ConsumerStatefulWidget {
   ConsumerState<DocumentEditor> createState() => _DocumentEditorState();
 }
 
-class _DocumentEditorState extends ConsumerState<DocumentEditor> {
-  /// One controller and focus node per paragraph block, keyed by block id, so
-  /// that adding or removing a block does not disturb the others.
+class _DocumentEditorState extends ConsumerState<DocumentEditor>
+    implements EditingSurface {
+  /// One controller and focus node per text block, keyed by block id, so that
+  /// adding or removing a block does not disturb the others — and so that
+  /// turning a paragraph into a heading keeps the very same controller, with
+  /// all of its per-character formatting intact.
   final _controllers = <String, RichTextController>{};
   final _focusNodes = <String, FocusNode>{};
 
   late BlockDocument _document;
 
+  /// The last range the user actually selected in each block. A toolbar click
+  /// should not need it — the buttons are not focusable — but if a platform
+  /// does move focus, this is what the format still applies to.
+  final _lastSelection = <String, TextSelection>{};
+
+  /// Held rather than read through `ref` each time, because `ref` is off
+  /// limits by the time [dispose] runs and that is where the detach belongs.
+  late final EditingFocusController _editingFocus;
+
   @override
   void initState() {
     super.initState();
     _document = widget.open.document;
+    _editingFocus = ref.read(editingFocusProvider.notifier)..attach(this);
   }
 
   @override
   void dispose() {
+    _editingFocus.detach(this);
     for (final c in _controllers.values) {
       c.dispose();
     }
@@ -78,15 +94,136 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
     super.dispose();
   }
 
-  RichTextController _controllerFor(ParagraphBlock block) =>
+  RichTextController _controllerFor(TextBlock block) =>
       _controllers.putIfAbsent(block.id, () {
         final controller = RichTextController(spans: block.spans);
-        controller.addListener(() => _onParagraphChanged(block.id));
+        controller.addListener(() {
+          _onParagraphChanged(block.id);
+          // The controller notifies on selection changes too, so this is also
+          // how the toolbar learns what is selected.
+          _publishFocus(block.id);
+        });
         return controller;
       });
 
-  FocusNode _focusFor(String blockId) =>
-      _focusNodes.putIfAbsent(blockId, FocusNode.new);
+  FocusNode _focusFor(String blockId) => _focusNodes.putIfAbsent(blockId, () {
+    final node = FocusNode();
+    node.addListener(() => _publishFocus(blockId));
+    return node;
+  });
+
+  /// Tells the toolbar what it is pointed at.
+  ///
+  /// Deferred to after the frame: this runs from listeners registered while
+  /// building, and writing to a provider during build throws.
+  void _publishFocus(String blockId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // Losing focus deliberately leaves the last block published. Opening the
+      // toolbar's own heading menu takes focus away from the editor, and a
+      // toolbar that cleared itself then would vanish mid-interaction and have
+      // nothing left to act on when the menu closed. The editor's own dispose
+      // is what clears it.
+      final node = _focusNodes[blockId];
+      if (node == null || !node.hasFocus) return;
+
+      final controller = _controllers[blockId];
+      final block = _document.blocks.where((b) => b.id == blockId).firstOrNull;
+      if (controller == null || block == null) return;
+
+      final selection = controller.selection;
+      final has = selection.isValid && !selection.isCollapsed;
+      if (has) _lastSelection[blockId] = selection;
+
+      final range = TextRange(start: selection.start, end: selection.end);
+      _editingFocus.publish(
+        EditingFocus(
+          blockId: blockId,
+          hasSelection: has,
+          bold: has && controller.rangeSatisfies(range, (f) => f.bold),
+          italic: has && controller.rangeSatisfies(range, (f) => f.italic),
+          strikethrough:
+              has && controller.rangeSatisfies(range, (f) => f.strikethrough),
+          underline:
+              has && controller.rangeSatisfies(range, (f) => f.underline),
+          align: block.align,
+          headingLevel: block is HeadingBlock ? block.level : null,
+        ),
+      );
+    });
+  }
+
+  // ------------------------------------------------- toolbar (EditingSurface) --
+
+  @override
+  void toggleFormat(EditingFormat format) {
+    final focus = ref.read(editingFocusProvider);
+    if (focus == null) return;
+    final controller = _controllers[focus.blockId];
+    if (controller == null) return;
+
+    final selection =
+        controller.selection.isValid && !controller.selection.isCollapsed
+        ? controller.selection
+        : _lastSelection[focus.blockId];
+    if (selection == null || selection.isCollapsed) return;
+
+    final range = TextRange(start: selection.start, end: selection.end);
+    final (apply, test) = switch (format) {
+      EditingFormat.bold => (_withBold, (Format f) => f.bold),
+      EditingFormat.italic => (_withItalic, (Format f) => f.italic),
+      EditingFormat.strikethrough => (
+        _withStrike,
+        (Format f) => f.strikethrough,
+      ),
+      EditingFormat.underline => (_withUnderline, (Format f) => f.underline),
+    };
+
+    final already = controller.rangeSatisfies(range, test);
+    controller.applyToRange(range, (f) => apply(f, !already));
+
+    // Put the caret back where it was, so typing carries on in place.
+    controller.selection = selection;
+    _focusFor(focus.blockId).requestFocus();
+  }
+
+  @override
+  void setAlign(BlockAlign align) {
+    final focus = ref.read(editingFocusProvider);
+    if (focus == null) return;
+    _updateBlock(focus.blockId, (b) => b.copyWithCommon(align: align));
+    _publishFocus(focus.blockId);
+  }
+
+  @override
+  void setHeadingLevel(int? level) {
+    final focus = ref.read(editingFocusProvider);
+    if (focus == null) return;
+
+    _updateBlock(focus.blockId, (b) {
+      if (b is! TextBlock) return b;
+      // The id is kept, so the block's controller — and every per-character
+      // format in it — survives the change of kind.
+      return level == null
+          ? ParagraphBlock(
+              id: b.id,
+              spans: b.spans,
+              align: b.align,
+              spaceBefore: b.spaceBefore,
+            )
+          : HeadingBlock(
+              id: b.id,
+              level: level,
+              spans: b.spans,
+              align: b.align,
+              spaceBefore: b.spaceBefore,
+            );
+    });
+
+    _focusFor(focus.blockId).requestFocus();
+    _publishFocus(focus.blockId);
+  }
 
   void _commit(BlockDocument document, {bool rebuild = true}) {
     _document = document;
@@ -101,11 +238,11 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
     final index = _document.blocks.indexWhere((b) => b.id == blockId);
     if (index < 0) return;
     final block = _document.blocks[index];
-    if (block is! ParagraphBlock) return;
+    if (block is! TextBlock) return;
 
     final spans = controller.toSpans();
     final blocks = [..._document.blocks];
-    blocks[index] = block.copyWith(spans: spans);
+    blocks[index] = block.withSpans(spans);
     // No rebuild: the field is already showing this text.
     _commit(_document.copyWith(blocks: blocks), rebuild: false);
   }
@@ -125,8 +262,12 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
     final head = _sliceSpans(spans, 0, offset);
     final tail = _sliceSpans(spans, offset, controller.text.length);
 
-    final block = _document.blocks[index] as ParagraphBlock;
-    final newBlock = ParagraphBlock(id: newId(), spans: tail);
+    final block = _document.blocks[index] as TextBlock;
+    // Return at the end of a heading starts body text; splitting one in the
+    // middle leaves two headings.
+    final newBlock = block is HeadingBlock && offset < controller.text.length
+        ? HeadingBlock(id: newId(), level: block.level, spans: tail)
+        : ParagraphBlock(id: newId(), spans: tail);
 
     controller.setSpans(head);
     controller.selection = TextSelection.collapsed(
@@ -134,7 +275,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
     );
 
     final blocks = [..._document.blocks];
-    blocks[index] = block.copyWith(spans: head);
+    blocks[index] = block.withSpans(head);
     blocks.insert(index + 1, newBlock);
     _commit(_document.copyWith(blocks: blocks));
 
@@ -152,7 +293,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
 
     final previous = _document.blocks[index - 1];
     final current = _document.blocks[index];
-    if (previous is! ParagraphBlock || current is! ParagraphBlock) return false;
+    if (previous is! TextBlock || current is! TextBlock) return false;
 
     final previousController = _controllerFor(previous);
     final currentController = _controllerFor(current);
@@ -167,7 +308,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
     previousController.selection = TextSelection.collapsed(offset: joinOffset);
 
     final blocks = [..._document.blocks]
-      ..[index - 1] = previous.copyWith(spans: previousController.toSpans())
+      ..[index - 1] = previous.withSpans(previousController.toSpans())
       ..removeAt(index);
 
     _controllers.remove(blockId)?.dispose();
@@ -290,13 +431,18 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
             Padding(
               padding: EdgeInsets.only(top: block.spaceBefore),
               child: switch (block) {
-                ParagraphBlock() => _ParagraphView(
-                  block: block,
-                  controller: _controllerFor(block),
-                  focusNode: _focusFor(block.id),
-                  onSplit: () => _splitBlock(block.id),
-                  onMergeBack: () => _mergeIntoPrevious(block.id),
-                  onMenu: (position) => _showBlockMenu(position, block),
+                // Headings differ from paragraphs only in the style the text
+                // sits on, so both use the same view and the same controller.
+                final TextBlock t => _TextBlockView(
+                  block: t,
+                  controller: _controllerFor(t),
+                  focusNode: _focusFor(t.id),
+                  style: t is HeadingBlock
+                      ? headingStyle(t.level, colors.text)
+                      : aleo(size: 15, height: 1.6, color: colors.text),
+                  onSplit: () => _splitBlock(t.id),
+                  onMergeBack: () => _mergeIntoPrevious(t.id),
+                  onMenu: (position) => _showBlockMenu(position, t),
                 ),
                 ImageBlock() => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -353,7 +499,8 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
     }
   }
 
-  /// The one formatting surface in the editor: a context menu on the block.
+  /// Everything the toolbar does not carry: colour, highlight, font, spacing,
+  /// images and export.
   Future<void> _showBlockMenu(Offset position, Block block) async {
     final colors = context.ds;
     final isParagraph = block is ParagraphBlock;
@@ -428,22 +575,31 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor> {
         ],
         item(
           'Align left',
-          () => _updateBlock(block.id, (b) => _withAlign(b, BlockAlign.left)),
+          () => _updateBlock(
+            block.id,
+            (b) => b.copyWithCommon(align: BlockAlign.left),
+          ),
         ),
         item(
           'Align centre',
-          () => _updateBlock(block.id, (b) => _withAlign(b, BlockAlign.center)),
+          () => _updateBlock(
+            block.id,
+            (b) => b.copyWithCommon(align: BlockAlign.center),
+          ),
         ),
         item(
           'Align right',
-          () => _updateBlock(block.id, (b) => _withAlign(b, BlockAlign.right)),
+          () => _updateBlock(
+            block.id,
+            (b) => b.copyWithCommon(align: BlockAlign.right),
+          ),
         ),
         const PopupMenuDivider(height: 1),
         item(
           block.spaceBefore > 0 ? 'No space before' : 'Space before',
           () => _updateBlock(
             block.id,
-            (b) => _withSpaceBefore(b, b.spaceBefore > 0 ? 0 : 16),
+            (b) => b.copyWithCommon(spaceBefore: b.spaceBefore > 0 ? 0 : 16),
           ),
         ),
         const PopupMenuDivider(height: 1),
@@ -541,38 +697,6 @@ Format _withFont(Format f, String? font) => TextSpanNode(
   font: font,
 );
 
-Block _withAlign(Block b, BlockAlign align) => switch (b) {
-  ParagraphBlock() => ParagraphBlock(
-    id: b.id,
-    spans: b.spans,
-    align: align,
-    spaceBefore: b.spaceBefore,
-  ),
-  ImageBlock() => ImageBlock(
-    id: b.id,
-    assetId: b.assetId,
-    caption: b.caption,
-    align: align,
-    spaceBefore: b.spaceBefore,
-  ),
-};
-
-Block _withSpaceBefore(Block b, double space) => switch (b) {
-  ParagraphBlock() => ParagraphBlock(
-    id: b.id,
-    spans: b.spans,
-    align: b.align,
-    spaceBefore: space,
-  ),
-  ImageBlock() => ImageBlock(
-    id: b.id,
-    assetId: b.assetId,
-    caption: b.caption,
-    align: b.align,
-    spaceBefore: space,
-  ),
-};
-
 /// Splits a span list at character offsets, preserving each run's formatting.
 List<TextSpanNode> _sliceSpans(List<TextSpanNode> spans, int start, int end) {
   final out = <TextSpanNode>[];
@@ -596,19 +720,23 @@ List<TextSpanNode> _sliceSpans(List<TextSpanNode> spans, int start, int end) {
 
 // -------------------------------------------------------------- block views --
 
-class _ParagraphView extends StatelessWidget {
-  const _ParagraphView({
+/// One editable text block — a paragraph or a heading. They differ only in
+/// [style], so everything else here is shared.
+class _TextBlockView extends StatelessWidget {
+  const _TextBlockView({
     required this.block,
     required this.controller,
     required this.focusNode,
+    required this.style,
     required this.onSplit,
     required this.onMergeBack,
     required this.onMenu,
   });
 
-  final ParagraphBlock block;
+  final TextBlock block;
   final RichTextController controller;
   final FocusNode focusNode;
+  final TextStyle style;
   final VoidCallback onSplit;
   final bool Function() onMergeBack;
   final void Function(Offset position) onMenu;
@@ -705,7 +833,7 @@ class _ParagraphView extends StatelessWidget {
                 textAlign: _align,
                 cursorColor: colors.text,
                 cursorWidth: 1.5,
-                style: aleo(size: 15, height: 1.6, color: colors.text),
+                style: style,
                 decoration: const InputDecoration(
                   isCollapsed: true,
                   border: InputBorder.none,

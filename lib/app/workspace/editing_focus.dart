@@ -1,0 +1,125 @@
+/// What the editor is currently pointed at, published for the shell.
+///
+/// The formatting toolbar lives in the bottom bar, which is a different subtree
+/// from the editor: it cannot reach the editor's per-block controllers, and the
+/// editor cannot reach down into the bar. This is the channel between them.
+///
+/// The state is a plain value object and the actions live on the controller,
+/// deliberately. `StateNotifier` skips notifying when the new state `==` the
+/// old one, so a value object with real equality is what stops every keystroke
+/// from rebuilding the bottom bar; a closure held in the state would defeat it.
+library;
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:dayseven/shared/blocks/blocks.dart';
+
+/// The inline formats the toolbar can toggle.
+enum EditingFormat { bold, italic, strikethrough, underline }
+
+class EditingFocus {
+  const EditingFocus({
+    required this.blockId,
+    required this.hasSelection,
+    required this.bold,
+    required this.italic,
+    required this.strikethrough,
+    required this.underline,
+    required this.align,
+    required this.headingLevel,
+  });
+
+  final String blockId;
+
+  /// Inline formatting needs a range to act on; there is no pending format at
+  /// a collapsed caret. The toolbar disables those buttons when this is false.
+  final bool hasSelection;
+
+  final bool bold;
+  final bool italic;
+  final bool strikethrough;
+  final bool underline;
+
+  /// Block-level, so these stay available with no selection.
+  final BlockAlign align;
+
+  /// null when the focused block is body text.
+  final int? headingLevel;
+
+  bool isActive(EditingFormat format) => switch (format) {
+    EditingFormat.bold => bold,
+    EditingFormat.italic => italic,
+    EditingFormat.strikethrough => strikethrough,
+    EditingFormat.underline => underline,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is EditingFocus &&
+      other.blockId == blockId &&
+      other.hasSelection == hasSelection &&
+      other.bold == bold &&
+      other.italic == italic &&
+      other.strikethrough == strikethrough &&
+      other.underline == underline &&
+      other.align == align &&
+      other.headingLevel == headingLevel;
+
+  @override
+  int get hashCode => Object.hash(
+    blockId,
+    hasSelection,
+    bold,
+    italic,
+    strikethrough,
+    underline,
+    align,
+    headingLevel,
+  );
+}
+
+/// The editor's side of the channel. Implemented by the editor screen.
+abstract class EditingSurface {
+  void toggleFormat(EditingFormat format);
+  void setAlign(BlockAlign align);
+
+  /// null turns the focused block back into body text.
+  void setHeadingLevel(int? level);
+}
+
+class EditingFocusController extends StateNotifier<EditingFocus?> {
+  EditingFocusController() : super(null);
+
+  EditingSurface? _surface;
+
+  void attach(EditingSurface surface) => _surface = surface;
+
+  /// Identity-checked, so an editor being disposed after its replacement has
+  /// already attached cannot clear the newcomer's surface.
+  ///
+  /// The `mounted` guards here and below are not ceremony: a test — or a
+  /// closing window — can dispose the container before the widget tree
+  /// unmounts, and the editor detaches from its own `dispose`.
+  void detach(EditingSurface surface) {
+    if (!identical(_surface, surface)) return;
+    _surface = null;
+    if (mounted) state = null;
+  }
+
+  void publish(EditingFocus focus) {
+    if (mounted) state = focus;
+  }
+
+  void clear() {
+    if (mounted) state = null;
+  }
+
+  void toggleFormat(EditingFormat format) => _surface?.toggleFormat(format);
+  void setAlign(BlockAlign align) => _surface?.setAlign(align);
+  void setHeadingLevel(int? level) => _surface?.setHeadingLevel(level);
+}
+
+final editingFocusProvider =
+    StateNotifierProvider<EditingFocusController, EditingFocus?>(
+      (ref) => EditingFocusController(),
+    );

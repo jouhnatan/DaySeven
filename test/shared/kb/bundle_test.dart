@@ -183,7 +183,7 @@ void main() {
         folderRelativePath: 'Places',
       );
 
-      expect(path, 'Places/Aldenmoor.d7doc');
+      expect(path, 'Places/Aldenmoor.md');
 
       final doc = await kb.readDocument(path);
       final edited = doc.copyWith(
@@ -349,11 +349,7 @@ void main() {
       await kb.createFolder('People');
 
       final tree = await kb.readTree();
-      expect(tree.map((n) => n.name), [
-        'People',
-        'Aldenmoor.d7doc',
-        'Zephyr.d7doc',
-      ]);
+      expect(tree.map((n) => n.name), ['People', 'Aldenmoor.md', 'Zephyr.md']);
     });
   });
 }

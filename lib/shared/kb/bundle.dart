@@ -15,14 +15,29 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/blocks/markdown.dart';
 
 const String kSettingsDirName = '.settings';
 const String kManifestFileName = 'dayseven.kb.json';
 const String kDocumentsDirName = 'documents';
 const String kAssetsDirName = 'assets';
 const String kIndexDirName = '.index';
-const String kDocumentExtension = '.d7doc';
-const int kBundleSchemaVersion = 1;
+const String kDocumentExtension = '.md';
+
+/// The JSON format documents used to be written in. Still read, and still
+/// written back to, so a document that could not be converted is not silently
+/// dropped from the tree — see [KnowledgeBase._migrateDocumentFormat].
+const String kLegacyDocumentExtension = '.d7doc';
+
+/// What a converted document's original is renamed to. Never deleted.
+const String kConvertedBackupSuffix = '.bak';
+
+const int kBundleSchemaVersion = 2;
+
+/// True for a file this app treats as a document, in either format.
+bool isDocumentPath(String path) =>
+    path.endsWith(kDocumentExtension) ||
+    path.endsWith(kLegacyDocumentExtension);
 
 const _uuid = Uuid();
 
@@ -163,7 +178,85 @@ class KnowledgeBase {
       if (!await d.exists()) await d.create(recursive: true);
     }
 
-    return KnowledgeBase(rootPath: folder, manifest: manifest);
+    await _migrateDocumentFormat(folder);
+
+    var current = manifest;
+    if (manifest.schemaVersion < kBundleSchemaVersion) {
+      current = KbManifest(
+        kbId: manifest.kbId,
+        name: manifest.name,
+        createdAt: manifest.createdAt,
+      );
+      await manifestFile.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(current.toJson()),
+      );
+    }
+
+    return KnowledgeBase(rootPath: folder, manifest: current);
+  }
+
+  /// Rewrites any remaining JSON document as Markdown, in place.
+  ///
+  /// Runs on every open rather than once behind a version check. It is one
+  /// directory walk — the same cost as the `readTree` that follows moments
+  /// later — and running always makes it self-healing: a `.d7doc` restored from
+  /// a backup or synced in from another machine is picked up rather than
+  /// sitting unconverted forever.
+  ///
+  /// Nothing is ever deleted and nothing is overwritten. A document that
+  /// cannot be converted keeps its original file and stays fully readable and
+  /// writable, because [isDocumentPath] still recognises it.
+  static Future<void> _migrateDocumentFormat(String folder) async {
+    final root = Directory(folder);
+    if (!await root.exists()) return;
+
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      if (!entity.path.endsWith(kLegacyDocumentExtension)) continue;
+
+      // `.settings/` and anything else hidden is the app's, not the user's.
+      final relative = p.relative(entity.path, from: folder);
+      if (p.split(relative).any((part) => part.startsWith('.'))) continue;
+
+      try {
+        await _convertOneDocument(entity);
+      } on Object {
+        // One unconvertible document must not stop the rest, and leaving it
+        // as it was is always the safe outcome.
+        continue;
+      }
+    }
+  }
+
+  static Future<void> _convertOneDocument(File source) async {
+    final stem = source.path.substring(
+      0,
+      source.path.length - kLegacyDocumentExtension.length,
+    );
+    final target = File('$stem$kDocumentExtension');
+    final document = BlockDocument.decode(await source.readAsString());
+
+    if (await target.exists()) {
+      // Either a previous run was interrupted after writing but before
+      // renaming, in which case finish it; or the user has two documents with
+      // the same name, in which case touch neither.
+      final existing = decodeMarkdown(await target.readAsString());
+      if (existing.sameContentAs(document)) {
+        await source.rename('${source.path}$kConvertedBackupSuffix');
+      }
+      return;
+    }
+
+    final markdown = encodeMarkdown(document);
+
+    // The gate that makes this safe: if the document does not survive its own
+    // round trip, write nothing at all. No serializer bug can destroy content.
+    if (!decodeMarkdown(markdown).sameContentAs(document)) return;
+
+    final temp = File('${target.path}.tmp');
+    await temp.writeAsString(markdown, flush: true);
+    await temp.rename(target.path);
+    await source.rename('${source.path}$kConvertedBackupSuffix');
   }
 
   /// True when [folder] holds a Knowledge Base, in either layout.
@@ -253,7 +346,7 @@ class KnowledgeBase {
             children: await _readFolder(entity.path, childRelative),
           ),
         );
-      } else if (entity is File && name.endsWith(kDocumentExtension)) {
+      } else if (entity is File && isDocumentPath(name)) {
         files.add(
           KbFile(
             name: name,
@@ -273,9 +366,14 @@ class KnowledgeBase {
 
   // ------------------------------------------------------------- documents --
 
+  /// Reads a document in whichever format it is stored in, so a file that
+  /// failed conversion still opens.
   Future<BlockDocument> readDocument(String relativePath) async {
     final file = File(absolutePathFor(relativePath));
-    return BlockDocument.decode(await file.readAsString());
+    final source = await file.readAsString();
+    return relativePath.endsWith(kLegacyDocumentExtension)
+        ? BlockDocument.decode(source)
+        : decodeMarkdown(source);
   }
 
   /// Writes through a temporary file and renames, so an interrupted save can
@@ -286,8 +384,11 @@ class KnowledgeBase {
   ) async {
     final target = File(absolutePathFor(relativePath));
     await target.parent.create(recursive: true);
+    final source = relativePath.endsWith(kLegacyDocumentExtension)
+        ? document.encode()
+        : encodeMarkdown(document);
     final temp = File('${target.path}.tmp');
-    await temp.writeAsString(document.encode(), flush: true);
+    await temp.writeAsString(source, flush: true);
     await temp.rename(target.path);
   }
 
@@ -323,8 +424,8 @@ class KnowledgeBase {
   /// top level) and returns its new path.
   ///
   /// The entry is renamed, not copied, so a document keeps its identity on disk
-  /// and its `.d7doc` contents — including the document id the revisions in
-  /// Postgres are keyed by — are untouched.
+  /// and its contents — including the document id the revisions in Postgres are
+  /// keyed by — are untouched.
   Future<String> move(
     String relativePath,
     String targetFolderRelativePath,

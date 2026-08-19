@@ -4,7 +4,9 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:dayseven/shared/documents/docx.dart';
+import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/shared/documents/odt.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -72,9 +74,11 @@ void expectRoundTripped(BlockDocument original, BlockDocument restored) {
       reason: 'block $i space before',
     );
 
-    if (a is ParagraphBlock) {
-      expect(b, isA<ParagraphBlock>(), reason: 'block $i type');
-      final restoredSpans = (b as ParagraphBlock).normalized().spans;
+    if (a is TextBlock) {
+      // Headings come back as paragraphs: neither format carries a heading
+      // level yet, so only the text and its inline formatting survive.
+      expect(b, isA<TextBlock>(), reason: 'block $i type');
+      final restoredSpans = (b as TextBlock).normalized().spans;
       final originalSpans = a.normalized().spans;
 
       expect(b.plainText, a.plainText, reason: 'block $i text');
@@ -231,6 +235,87 @@ void main() {
 
       final viaOdt = await importOdt(odt);
       expectRoundTripped(original, viaOdt.document);
+    });
+  });
+
+  group('headings', () {
+    /// Pins today's behaviour so that changing it is a decision rather than an
+    /// accident: neither .docx nor .odt carries a heading level yet, so the
+    /// words survive and the level does not.
+    test('export as paragraphs, keeping their text', () async {
+      final original = BlockDocument(
+        id: 'd-h',
+        title: 'With a heading',
+        blocks: [
+          HeadingBlock(
+            id: 'h1',
+            level: 2,
+            spans: const [TextSpanNode(text: 'The Fen', bold: true)],
+          ),
+          ParagraphBlock(
+            id: 'p1',
+            spans: const [TextSpanNode(text: 'Body text.')],
+          ),
+        ],
+      );
+
+      final docx = File(p.join(temp.path, 'heading.docx'));
+      await exportDocx(
+        document: original,
+        target: docx,
+        readAsset: (_) async => null,
+      );
+      final viaDocx = await importDocx(docx);
+
+      expect(viaDocx.document.blocks, hasLength(2));
+      expect(viaDocx.document.blocks.first, isA<ParagraphBlock>());
+      expect(viaDocx.document.blocks.first.plainText, 'The Fen');
+      expect(
+        (viaDocx.document.blocks.first as ParagraphBlock).spans.first.bold,
+        isTrue,
+        reason: 'inline formatting inside a heading still round-trips',
+      );
+    });
+  });
+
+  group('imported documents', () {
+    /// Guards the invariant that makes an imported document safe to save:
+    /// see the contentHash tests in `test/shared/blocks/markdown_test.dart`.
+    test('reach the app already canonicalised', () async {
+      final original = BlockDocument(
+        id: 'd',
+        title: 'T',
+        blocks: [
+          ParagraphBlock(
+            id: 'p1',
+            spans: const [
+              TextSpanNode(text: 'one', bold: true),
+              TextSpanNode(text: ' two', bold: true),
+              TextSpanNode(text: ' three'),
+            ],
+          ),
+        ],
+      );
+
+      final docx = File(p.join(temp.path, 'norm.docx'));
+      await exportDocx(
+        document: original,
+        target: docx,
+        readAsset: (_) async => null,
+      );
+
+      final kb = await KnowledgeBase.create(
+        folder: p.join(temp.path, 'kb'),
+        name: 'MyWorld',
+      );
+      final path = await importDocumentInto(kb, docx);
+      final stored = await kb.readDocument(path);
+
+      expect(
+        stored.contentHash,
+        stored.normalized().contentHash,
+        reason: 'a saved import must already be in canonical form',
+      );
     });
   });
 }

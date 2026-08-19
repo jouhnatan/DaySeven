@@ -338,16 +338,19 @@ class _DiffBlock extends ConsumerWidget {
       DiffKind.unchanged || DiffKind.absent => Colors.transparent,
     };
 
+    // Paragraphs and headings differ only in the base style the spans sit on.
     final child = switch (block) {
-      final ParagraphBlock p => Text.rich(
+      final TextBlock t => Text.rich(
         TextSpan(
           children: [
-            for (final span in p.spans)
+            for (final span in t.spans)
               TextSpan(
                 text: span.text,
                 style: styleFor(
                   span,
-                  aleo(size: 14, height: 1.6, color: colors.text),
+                  t is HeadingBlock
+                      ? headingStyle(t.level, colors.text)
+                      : aleo(size: 14, height: 1.6, color: colors.text),
                 ),
               ),
           ],

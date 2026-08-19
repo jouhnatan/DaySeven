@@ -4,9 +4,10 @@
 /// three-way merge can align them by identity rather than by position: a
 /// paragraph that moved is the same paragraph, not a delete plus an insert.
 ///
-/// This exact JSON is what is written to disk as a `.d7doc`, what is stored in
-/// `revisions.content`, and what the diff view compares. Pure Dart — nothing in
-/// this file may import Flutter or Supabase.
+/// This JSON is what is stored in `revisions.content` and what the diff view
+/// compares. On disk the same model is written as Markdown — see
+/// `markdown.dart`; this stays the canonical in-memory and over-the-wire shape.
+/// Pure Dart — nothing in this file may import Flutter or Supabase.
 library;
 
 import 'dart:convert';
@@ -14,7 +15,9 @@ import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:crypto/crypto.dart';
 
-/// Bumped when the on-disk shape changes in a way that needs migration.
+/// Bumped when this JSON shape changes in a way that needs migration. It
+/// travels into `revisions.content`, so it tracks the *model*, not the file
+/// format — the Markdown encoding has its own [kMarkdownFormatVersion].
 const int kDocumentSchemaVersion = 1;
 
 enum BlockAlign { left, center, right }
@@ -134,10 +137,18 @@ sealed class Block {
   /// The block's text, used for merge comparison and the search index.
   String get plainText;
 
+  /// Copies the block, changing only what every block has. Lets callers that
+  /// do not care what kind of block this is — alignment, spacing — avoid a
+  /// switch that would need a new arm for every future block type.
+  Block copyWithCommon({BlockAlign? align, double? spaceBefore});
+
+  /// An unrecognised type decodes as a paragraph rather than failing, so a
+  /// document written by a newer build still opens with its text intact.
   static Block fromJson(Map<String, Object?> json) {
     final type = json['type'] as String?;
     return switch (type) {
       'image' => ImageBlock.fromJson(json),
+      'heading' => HeadingBlock.fromJson(json),
       _ => ParagraphBlock.fromJson(json),
     };
   }
@@ -149,7 +160,41 @@ sealed class Block {
   };
 }
 
-class ParagraphBlock extends Block {
+/// A block whose content is a run of formatted text.
+///
+/// Paragraphs and headings differ only in how they are drawn, so everything
+/// that works on spans — the merge, the diff view, the editor's controllers —
+/// takes one of these and does not care which it has.
+sealed class TextBlock extends Block {
+  const TextBlock({required super.id, super.align, super.spaceBefore});
+
+  List<TextSpanNode> get spans;
+
+  /// The same block with different text, keeping its id, kind and formatting.
+  TextBlock withSpans(List<TextSpanNode> spans);
+
+  /// Merges adjacent spans that share formatting and drops empty ones, so that
+  /// two blocks with the same appearance also have the same JSON.
+  TextBlock normalized() {
+    final out = <TextSpanNode>[];
+    for (final span in spans) {
+      if (span.isEmpty) continue;
+      if (out.isNotEmpty && out.last.sameFormatting(span)) {
+        out[out.length - 1] = out.last.copyWith(
+          text: out.last.text + span.text,
+        );
+      } else {
+        out.add(span);
+      }
+    }
+    return withSpans(out);
+  }
+
+  @override
+  String get plainText => spans.map((s) => s.text).join();
+}
+
+class ParagraphBlock extends TextBlock {
   const ParagraphBlock({
     required super.id,
     required this.spans,
@@ -157,10 +202,15 @@ class ParagraphBlock extends Block {
     super.spaceBefore,
   });
 
+  @override
   final List<TextSpanNode> spans;
 
   @override
-  String get plainText => spans.map((s) => s.text).join();
+  ParagraphBlock withSpans(List<TextSpanNode> spans) => copyWith(spans: spans);
+
+  @override
+  ParagraphBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      copyWith(align: align, spaceBefore: spaceBefore);
 
   ParagraphBlock copyWith({
     List<TextSpanNode>? spans,
@@ -173,22 +223,8 @@ class ParagraphBlock extends Block {
     spaceBefore: spaceBefore ?? this.spaceBefore,
   );
 
-  /// Merges adjacent spans that share formatting and drops empty ones, so that
-  /// two documents with the same appearance also have the same JSON.
-  ParagraphBlock normalized() {
-    final out = <TextSpanNode>[];
-    for (final span in spans) {
-      if (span.isEmpty) continue;
-      if (out.isNotEmpty && out.last.sameFormatting(span)) {
-        out[out.length - 1] = out.last.copyWith(
-          text: out.last.text + span.text,
-        );
-      } else {
-        out.add(span);
-      }
-    }
-    return copyWith(spans: out);
-  }
+  @override
+  ParagraphBlock normalized() => super.normalized() as ParagraphBlock;
 
   @override
   Map<String, Object?> toJson() => {
@@ -199,6 +235,65 @@ class ParagraphBlock extends Block {
 
   static ParagraphBlock fromJson(Map<String, Object?> json) => ParagraphBlock(
     id: json['id'] as String,
+    spans: (json['spans'] as List<Object?>? ?? const [])
+        .map((s) => TextSpanNode.fromJson(s as Map<String, Object?>))
+        .toList(),
+    align: _alignFrom(json['align']),
+    spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// A heading. Carries spans like a paragraph, so inline formatting works
+/// inside one and the editor reuses the same controller for both.
+class HeadingBlock extends TextBlock {
+  const HeadingBlock({
+    required super.id,
+    required this.level,
+    required this.spans,
+    super.align,
+    super.spaceBefore,
+  });
+
+  /// 1 through 6, matching Markdown's `#` through `######`.
+  final int level;
+
+  @override
+  final List<TextSpanNode> spans;
+
+  @override
+  HeadingBlock withSpans(List<TextSpanNode> spans) => copyWith(spans: spans);
+
+  @override
+  HeadingBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      copyWith(align: align, spaceBefore: spaceBefore);
+
+  @override
+  HeadingBlock normalized() => super.normalized() as HeadingBlock;
+
+  HeadingBlock copyWith({
+    int? level,
+    List<TextSpanNode>? spans,
+    BlockAlign? align,
+    double? spaceBefore,
+  }) => HeadingBlock(
+    id: id,
+    level: level ?? this.level,
+    spans: spans ?? this.spans,
+    align: align ?? this.align,
+    spaceBefore: spaceBefore ?? this.spaceBefore,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    ..._common(),
+    'type': 'heading',
+    'level': level,
+    'spans': spans.map((s) => s.toJson()).toList(),
+  };
+
+  static HeadingBlock fromJson(Map<String, Object?> json) => HeadingBlock(
+    id: json['id'] as String,
+    level: ((json['level'] as num?)?.toInt() ?? 1).clamp(1, 6),
     spans: (json['spans'] as List<Object?>? ?? const [])
         .map((s) => TextSpanNode.fromJson(s as Map<String, Object?>))
         .toList(),
@@ -222,6 +317,10 @@ class ImageBlock extends Block {
 
   @override
   String get plainText => caption;
+
+  @override
+  ImageBlock copyWithCommon({BlockAlign? align, double? spaceBefore}) =>
+      copyWith(align: align, spaceBefore: spaceBefore);
 
   ImageBlock copyWith({
     String? assetId,
@@ -273,6 +372,21 @@ class BlockDocument {
     schemaVersion: schemaVersion,
   );
 
+  /// The canonical form: every text block with its adjacent same-formatting
+  /// spans merged.
+  ///
+  /// Worth caring about because [contentHash] is taken over the JSON, and the
+  /// Markdown on disk cannot represent two adjacent spans that share their
+  /// formatting — it reads back as one. A document that is not in this form
+  /// would hash differently before and after a save, and so look diverged from
+  /// the revision it came from.
+  BlockDocument normalized() => copyWith(
+    blocks: [
+      for (final block in blocks)
+        if (block is TextBlock) block.normalized() else block,
+    ],
+  );
+
   /// Whole-document plain text, used to build the search index.
   String get plainText => blocks.map((b) => b.plainText).join('\n');
 
@@ -293,7 +407,8 @@ class BlockDocument {
         (json['schemaVersion'] as num?)?.toInt() ?? kDocumentSchemaVersion,
   );
 
-  /// Canonical JSON text: what is written to the `.d7doc` file.
+  /// Canonical JSON text. Documents are written to disk as Markdown; this is
+  /// the wire format and what `contentHash` is taken over.
   String encode() => const JsonEncoder.withIndent('  ').convert(toJson());
 
   static BlockDocument decode(String source) =>

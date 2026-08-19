@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/service.dart';
+import 'package:dayseven/app/shell/editing_toolbar.dart';
+import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/shell/pane_widths.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/features/auth/ui/auth_button.dart';
@@ -162,8 +164,8 @@ class DsIsland extends StatelessWidget {
   }
 }
 
-/// Holds exactly one control — Differences — and only while the Editor service
-/// is showing.
+/// The formatting toolbar and Differences, side by side, and only while the
+/// Editor service is showing.
 class _BottomBar extends ConsumerWidget {
   const _BottomBar();
 
@@ -176,11 +178,28 @@ class _BottomBar extends ConsumerWidget {
       return const SizedBox(height: DsSpace.pane);
     }
 
-    return const Padding(
+    // With nothing being edited there is no toolbar, and the bar has to look
+    // exactly as it did before there was one — gap included.
+    final editing = ref.watch(editingFocusProvider) != null;
+
+    return Padding(
       // The islands sit one island-gap above the bar, the same distance that
       // separates them from each other; below it is the window margin.
-      padding: EdgeInsets.fromLTRB(0, DsSpace.islandGap, 0, DsSpace.pane),
-      child: Center(child: DifferencesButton()),
+      padding: const EdgeInsets.fromLTRB(0, DsSpace.islandGap, 0, DsSpace.pane),
+      child: Row(
+        // Differences has to stay the tallest thing here: two shell tests
+        // measure the bar's spacing from its rect, and a taller sibling would
+        // centre it and shift both distances. `editing_toolbar_test` holds the
+        // toolbar to that height.
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (editing) ...[
+            const EditingToolbar(),
+            const SizedBox(width: DsSpace.islandGap),
+          ],
+          const DifferencesButton(),
+        ],
+      ),
     );
   }
 }
@@ -197,7 +216,7 @@ class DifferencesButton extends ConsumerWidget {
     final pending = ref.watch(pendingProposalProvider);
     final enabled = open != null && pending != null;
 
-    return _RoundedControl(
+    return RoundedControl(
       onPressed: enabled
           ? () => Navigator.of(context).push(diffRoute(pending))
           : null,
@@ -229,17 +248,30 @@ class DifferencesButton extends ConsumerWidget {
   }
 }
 
-class _RoundedControl extends StatefulWidget {
-  const _RoundedControl({required this.child, this.onPressed});
+/// The bottom bar's pill: a bordered, rounded control that lights on hover.
+///
+/// Built from a MouseRegion and a GestureDetector rather than anything from
+/// Material, and that is load-bearing: neither can take focus, so pressing one
+/// leaves the caret and the selection in the editor exactly where they were.
+class RoundedControl extends StatefulWidget {
+  const RoundedControl({
+    required this.child,
+    this.onPressed,
+    this.active = false,
+    super.key,
+  });
 
   final Widget child;
   final VoidCallback? onPressed;
 
+  /// Draws the control as though hovered, for a format that is already on.
+  final bool active;
+
   @override
-  State<_RoundedControl> createState() => _RoundedControlState();
+  State<RoundedControl> createState() => _RoundedControlState();
 }
 
-class _RoundedControlState extends State<_RoundedControl> {
+class _RoundedControlState extends State<RoundedControl> {
   bool _hovered = false;
 
   @override
@@ -257,7 +289,9 @@ class _RoundedControlState extends State<_RoundedControl> {
           duration: const Duration(milliseconds: 90),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: _hovered && enabled ? colors.selection : colors.island,
+            color: (_hovered && enabled) || widget.active
+                ? colors.selection
+                : colors.island,
             borderRadius: const BorderRadius.all(DsRadius.control),
             border: Border.all(color: colors.border, width: 1),
           ),
