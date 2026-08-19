@@ -10,10 +10,10 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
-import '../domain/blocks.dart';
-import '../kb/bundle.dart';
-import 'docx.dart';
-import 'odt.dart';
+import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/convert/docx.dart';
+import 'package:dayseven/convert/odt.dart';
 
 /// The document formats DaySeven reads and writes.
 enum DocumentFormat { docx, odt }

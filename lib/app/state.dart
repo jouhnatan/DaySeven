@@ -13,9 +13,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../domain/blocks.dart';
-import '../kb/bundle.dart';
-import '../search/search_index.dart';
+import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/search/search_index.dart';
 
 /// The left-hand rail lists services, not tools.
 enum DsService { home, editor }

@@ -10,15 +10,15 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/state.dart';
-import '../../app/theme.dart';
-import '../../domain/blocks.dart';
-import '../../domain/merge.dart';
-import '../../domain/revision.dart';
-import '../../sync/proposals.dart';
-import '../../sync/supabase.dart';
-import '../editor/rich_controller.dart';
-import '../error_box.dart';
+import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/domain/merge.dart';
+import 'package:dayseven/domain/revision.dart';
+import 'package:dayseven/sync/proposals.dart';
+import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/ui/editor/rich_controller.dart';
+import 'package:dayseven/ui/error_box.dart';
 
 Route<void> diffRoute(ChangeSet proposal) => MaterialPageRoute<void>(
   builder: (_) => DiffScreen(proposal: proposal),

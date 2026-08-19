@@ -14,7 +14,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
-import '../domain/blocks.dart';
+import 'package:dayseven/domain/blocks.dart';
 
 const String kSettingsDirName = '.settings';
 const String kManifestFileName = 'dayseven.kb.json';

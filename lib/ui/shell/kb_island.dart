@@ -12,16 +12,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
-import '../../app/state.dart';
-import '../../app/theme.dart';
-import '../../convert/documents.dart';
-import '../../kb/bundle.dart';
-import '../../auth/auth_repository.dart';
-import '../../sync/sharing.dart';
-import '../../sync/supabase.dart';
-import 'invite_dialog.dart';
-import 'name_prompt.dart';
-import 'shell.dart';
+import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/convert/documents.dart';
+import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/auth/auth_repository.dart';
+import 'package:dayseven/sync/sharing.dart';
+import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/ui/shell/invite_dialog.dart';
+import 'package:dayseven/ui/shell/name_prompt.dart';
+import 'package:dayseven/ui/shell/shell.dart';
 
 class KbIsland extends ConsumerWidget {
   const KbIsland({super.key});

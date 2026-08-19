@@ -17,8 +17,8 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
-import '../domain/blocks.dart';
-import '../kb/bundle.dart';
+import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/kb/bundle.dart';
 
 class SearchHit {
   const SearchHit({

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'app/theme.dart';
-import 'platform/install_location.dart';
-import 'sync/supabase.dart';
-import 'ui/shell/shell.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/platform/install_location.dart';
+import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/ui/shell/shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

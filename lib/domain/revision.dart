@@ -2,7 +2,7 @@
 /// folder and the Supabase mirror. Pure Dart.
 library;
 
-import 'blocks.dart';
+import 'package:dayseven/domain/blocks.dart';
 
 class Revision {
   const Revision({

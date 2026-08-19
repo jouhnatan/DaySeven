@@ -11,7 +11,7 @@ library;
 import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
 import 'package:flutter/material.dart';
 
-import '../../domain/blocks.dart';
+import 'package:dayseven/domain/blocks.dart';
 
 /// A zero-length span carrying only formatting.
 typedef Format = TextSpanNode;

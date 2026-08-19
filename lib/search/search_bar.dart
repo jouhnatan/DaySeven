@@ -9,10 +9,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../app/state.dart';
-import '../app/theme.dart';
-import 'search_index.dart';
-import 'search_state.dart';
+import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/search/search_index.dart';
+import 'package:dayseven/search/search_state.dart';
 
 /// A little narrower and shorter than macOS Spotlight, which is roughly
 /// 680 x 60.

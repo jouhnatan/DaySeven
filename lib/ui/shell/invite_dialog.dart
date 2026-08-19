@@ -7,11 +7,11 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
-import '../../sync/sharing.dart';
-import '../../sync/supabase.dart';
-import '../dialog.dart';
-import '../error_box.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/sync/sharing.dart';
+import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/ui/dialog.dart';
+import 'package:dayseven/ui/error_box.dart';
 
 class InviteDialog extends ConsumerStatefulWidget {
   const InviteDialog({super.key});

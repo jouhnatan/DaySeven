@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
-import '../../app/state.dart';
-import '../../app/theme.dart';
+import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/theme.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});

@@ -10,10 +10,10 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../app/state.dart';
-import '../domain/revision.dart';
-import '../auth/auth_repository.dart';
-import 'supabase.dart';
+import 'package:dayseven/app/state.dart';
+import 'package:dayseven/domain/revision.dart';
+import 'package:dayseven/auth/auth_repository.dart';
+import 'package:dayseven/sync/supabase.dart';
 
 /// Subscribes to the open Knowledge Base's private channel. Emits each time a
 /// proposal is announced, which is the cue to re-check the open document.

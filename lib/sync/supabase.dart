@@ -7,10 +7,10 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../auth/auth_repository.dart';
+import 'package:dayseven/auth/auth_repository.dart';
 
-import '../domain/blocks.dart';
-import '../domain/revision.dart';
+import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/domain/revision.dart';
 
 /// Supplied at build time with `--dart-define-from-file=env/supabase.json`.
 const String kSupabaseUrl = String.fromEnvironment('SUPABASE_URL');

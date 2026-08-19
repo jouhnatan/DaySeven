@@ -8,7 +8,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../sync/supabase.dart';
+import 'package:dayseven/sync/supabase.dart';
 
 final authStateProvider = StreamProvider<AuthState?>((ref) {
   if (!isSupabaseConfigured) return const Stream.empty();

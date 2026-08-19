@@ -5,17 +5,17 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/state.dart';
-import '../../auth/auth_button.dart';
-import '../../sync/supabase.dart';
-import '../../app/theme.dart';
-import '../../sync/proposals.dart';
-import '../diff/diff_screen.dart';
-import '../editor/editor_screen.dart';
-import '../home/home_screen.dart';
-import 'kb_island.dart';
-import '../../search/search_bar.dart';
-import 'service_rail.dart';
+import 'package:dayseven/app/state.dart';
+import 'package:dayseven/auth/auth_button.dart';
+import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/sync/proposals.dart';
+import 'package:dayseven/ui/diff/diff_screen.dart';
+import 'package:dayseven/ui/editor/editor_screen.dart';
+import 'package:dayseven/ui/home/home_screen.dart';
+import 'package:dayseven/ui/shell/kb_island.dart';
+import 'package:dayseven/search/search_bar.dart';
+import 'package:dayseven/ui/shell/service_rail.dart';
 
 class DsShell extends ConsumerWidget {
   const DsShell({super.key});

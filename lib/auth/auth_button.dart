@@ -9,12 +9,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
-import '../app/theme.dart';
-import '../sync/sharing.dart';
-import '../sync/supabase.dart';
-import '../ui/dialog.dart';
-import '../ui/error_box.dart';
-import 'auth_repository.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/sync/sharing.dart';
+import 'package:dayseven/sync/supabase.dart';
+import 'package:dayseven/ui/dialog.dart';
+import 'package:dayseven/ui/error_box.dart';
+import 'package:dayseven/auth/auth_repository.dart';
 
 class AuthButton extends ConsumerWidget {
   const AuthButton({super.key});

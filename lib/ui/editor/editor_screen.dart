@@ -13,13 +13,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/state.dart';
-import '../../app/theme.dart';
-import '../../convert/documents.dart';
-import '../../sync/sharing.dart';
-import '../../domain/blocks.dart';
-import '../../kb/bundle.dart';
-import 'rich_controller.dart';
+import 'package:dayseven/app/state.dart';
+import 'package:dayseven/app/theme.dart';
+import 'package:dayseven/convert/documents.dart';
+import 'package:dayseven/sync/sharing.dart';
+import 'package:dayseven/domain/blocks.dart';
+import 'package:dayseven/kb/bundle.dart';
+import 'package:dayseven/ui/editor/rich_controller.dart';
 
 class EditorScreen extends ConsumerWidget {
   const EditorScreen({super.key});
