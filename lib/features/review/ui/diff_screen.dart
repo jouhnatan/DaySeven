@@ -21,6 +21,7 @@ import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/features/review/data/change_set_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
+import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
 
 Route<void> diffRoute(ChangeSet proposal) => MaterialPageRoute<void>(
@@ -140,12 +141,12 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
               children: [
                 Text(
                   local.title,
-                  style: aleo(size: 14, weight: 600, color: colors.text),
+                  style: uiTextStyle(size: 14, weight: 600, color: colors.text),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   'proposed by ${widget.proposal.authorDisplayName}',
-                  style: aleo(size: 12, color: colors.muted),
+                  style: uiTextStyle(size: 12, color: colors.muted),
                 ),
               ],
             ),
@@ -189,14 +190,23 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _Action(
+                DsLabelButton(
                   label: 'Approve',
                   onPressed: _working ? null : _approve,
+                  horizontalPadding: 18,
                 ),
                 const SizedBox(width: DsSpace.islandGap),
-                _Action(label: 'Reject', onPressed: _working ? null : _reject),
+                DsLabelButton(
+                  label: 'Reject',
+                  onPressed: _working ? null : _reject,
+                  horizontalPadding: 18,
+                ),
                 const SizedBox(width: DsSpace.islandGap),
-                _Action(label: 'Return', onPressed: _working ? null : _return),
+                DsLabelButton(
+                  label: 'Return',
+                  onPressed: _working ? null : _return,
+                  horizontalPadding: 18,
+                ),
               ],
             ),
           ),
@@ -231,52 +241,46 @@ List<DiffRow> alignBlocks(BlockDocument local, BlockDocument proposed) {
   final localById = {for (final b in local.blocks) b.id: b};
   final proposedById = {for (final b in proposed.blocks) b.id: b};
 
-  final order = <String>[];
-  for (final b in local.blocks) {
-    order.add(b.id);
-  }
+  final order = local.blocks.map((block) => block.id).toList();
+  final known = order.toSet();
   for (var i = 0; i < proposed.blocks.length; i++) {
     final id = proposed.blocks[i].id;
-    if (order.contains(id)) continue;
+    if (!known.add(id)) continue;
     final predecessor = i == 0 ? null : proposed.blocks[i - 1].id;
     final at = predecessor == null ? 0 : order.indexOf(predecessor) + 1;
     order.insert(at.clamp(0, order.length), id);
   }
 
-  return [
-    for (final id in order)
-      () {
-        final l = localById[id];
-        final p = proposedById[id];
-        if (l == null) {
-          return DiffRow(
-            local: null,
-            proposed: p,
-            leftKind: DiffKind.absent,
-            rightKind: DiffKind.added,
-          );
-        }
-        if (p == null) {
-          return DiffRow(
-            local: l,
-            proposed: null,
-            leftKind: DiffKind.removed,
-            rightKind: DiffKind.absent,
-          );
-        }
-        final same = _sameBlock(l, p);
-        return DiffRow(
-          local: l,
-          proposed: p,
-          leftKind: same ? DiffKind.unchanged : DiffKind.changed,
-          rightKind: same ? DiffKind.unchanged : DiffKind.changed,
-        );
-      }(),
-  ];
+  return [for (final id in order) _alignedRow(localById[id], proposedById[id])];
 }
 
-bool _sameBlock(Block a, Block b) =>
-    a.toJson().toString() == b.toJson().toString();
+DiffRow _alignedRow(Block? local, Block? proposed) {
+  if (local == null) {
+    return DiffRow(
+      local: null,
+      proposed: proposed,
+      leftKind: DiffKind.absent,
+      rightKind: DiffKind.added,
+    );
+  }
+  if (proposed == null) {
+    return DiffRow(
+      local: local,
+      proposed: null,
+      leftKind: DiffKind.removed,
+      rightKind: DiffKind.absent,
+    );
+  }
+
+  final same = local.sameContentAs(proposed);
+  final kind = same ? DiffKind.unchanged : DiffKind.changed;
+  return DiffRow(
+    local: local,
+    proposed: proposed,
+    leftKind: kind,
+    rightKind: kind,
+  );
+}
 
 // -------------------------------------------------------------------- views --
 
@@ -306,7 +310,7 @@ class _Pane extends StatelessWidget {
             ),
             child: Text(
               label,
-              style: aleo(size: 12, weight: 600, color: colors.muted),
+              style: uiTextStyle(size: 12, weight: 600, color: colors.muted),
             ),
           ),
           Expanded(
@@ -350,7 +354,11 @@ class _DiffBlock extends ConsumerWidget {
                   span,
                   t is HeadingBlock
                       ? headingStyle(t.level, colors.text)
-                      : aleo(size: 14, height: 1.6, color: colors.text),
+                      : editorTextStyle(
+                          size: 14,
+                          height: 1.6,
+                          color: colors.text,
+                        ),
                   linkColor: colors.link,
                 ),
               ),
@@ -364,7 +372,7 @@ class _DiffBlock extends ConsumerWidget {
       ),
       final CodeBlock c => Text(
         c.text,
-        style: aleo(
+        style: editorTextStyle(
           size: 13,
           height: 1.5,
           color: colors.text,
@@ -377,13 +385,13 @@ class _DiffBlock extends ConsumerWidget {
           for (final row in t.rows)
             Text(
               row.map((c) => c.map((s) => s.text).join()).join('  |  '),
-              style: aleo(size: 13, height: 1.6, color: colors.text),
+              style: editorTextStyle(size: 13, height: 1.6, color: colors.text),
             ),
         ],
       ),
       final ImageBlock i => Text(
         i.caption.isEmpty ? '[image]' : '[image] ${i.caption}',
-        style: aleo(size: 13, italic: true, color: colors.muted),
+        style: editorTextStyle(size: 13, italic: true, color: colors.muted),
       ),
       null => const SizedBox(height: 20),
     };
@@ -400,52 +408,6 @@ class _DiffBlock extends ConsumerWidget {
         borderRadius: const BorderRadius.all(DsRadius.row),
       ),
       child: child,
-    );
-  }
-}
-
-class _Action extends StatefulWidget {
-  const _Action({required this.label, this.onPressed});
-
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  State<_Action> createState() => _ActionState();
-}
-
-class _ActionState extends State<_Action> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.ds;
-    final enabled = widget.onPressed != null;
-
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 90),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          decoration: BoxDecoration(
-            color: _hovered && enabled ? colors.selection : colors.island,
-            borderRadius: const BorderRadius.all(DsRadius.control),
-            border: Border.all(color: colors.border, width: 1),
-          ),
-          child: Text(
-            widget.label,
-            style: aleo(
-              size: 13,
-              weight: 500,
-              color: enabled ? colors.text : colors.muted,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

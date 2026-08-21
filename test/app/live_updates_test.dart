@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/shell/pane_widths.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
@@ -109,6 +110,27 @@ He keeps the causeway.
     },
   );
 
+  test(
+    'workspace creation centralizes names, indexing, and tree refresh',
+    () async {
+      final container = await openKb();
+      final session = container.read(kbSessionProvider)!;
+      await session.kb.createDocument(title: 'Untitled');
+
+      final document = await container
+          .read(kbControllerProvider.notifier)
+          .createDocument();
+      final folder = await container
+          .read(kbControllerProvider.notifier)
+          .createFolder(name: 'CON');
+
+      expect(document, 'Untitled 2.md');
+      expect(folder, '_CON');
+      expect(session.index.search('Untitled 2').single.relativePath, document);
+      expect(treeNames(container), ['_CON', 'Untitled 2.md', 'Untitled.md']);
+    },
+  );
+
   test('deleting a folder outside the app removes it from the tree', () async {
     final container = await openKb();
 
@@ -185,6 +207,100 @@ He keeps the causeway.
     });
   });
 
+  test(
+    'deleting a folder clears its open document, search, and recent paths',
+    () async {
+      final container = await openKb();
+      final session = container.read(kbSessionProvider)!;
+
+      await session.kb.createFolder('Characters/Houses');
+      final outside = await session.kb.createDocument(title: 'Aldenmoor');
+      final nested = await session.kb.createDocument(
+        title: 'Vane',
+        folderRelativePath: 'Characters/Houses',
+      );
+      await session.index.rebuild();
+      await container.read(kbControllerProvider.notifier).refreshTree();
+      await container.read(documentControllerProvider.notifier).open(outside);
+      await container.read(documentControllerProvider.notifier).open(nested);
+
+      await container
+          .read(kbControllerProvider.notifier)
+          .deleteNode('Characters');
+
+      expect(
+        Directory(session.kb.absolutePathFor('Characters')).existsSync(),
+        isFalse,
+      );
+      expect(container.read(documentControllerProvider), isNull);
+      expect(session.index.search('Vane'), isEmpty);
+      expect(session.index.search('Aldenmoor'), hasLength(1));
+      expect(treeNames(container), ['Aldenmoor.md']);
+
+      final store = await container.read(appStoreProvider.future);
+      expect(await store.recentDocuments(session.kb.manifest.kbId), [outside]);
+    },
+  );
+
+  test('recent edited files track saves and renames, not opens', () async {
+    final container = await openKb();
+    final session = container.read(kbSessionProvider)!;
+    final paths = <String>[];
+
+    for (var index = 1; index <= 6; index++) {
+      paths.add(await session.kb.createDocument(title: 'File $index'));
+    }
+    await container.read(kbControllerProvider.notifier).refreshTree();
+
+    for (final path in paths) {
+      await container.read(documentControllerProvider.notifier).open(path);
+    }
+
+    final store = await container.read(appStoreProvider.future);
+    expect(
+      await store.recentEditedDocuments(session.kb.manifest.kbId),
+      isEmpty,
+      reason: 'opening a file does not count as editing it',
+    );
+
+    for (final path in paths) {
+      final documents = container.read(documentControllerProvider.notifier);
+      await documents.open(path);
+      final open = container.read(documentControllerProvider)!;
+      documents.edit(
+        open.document.copyWith(
+          blocks: [
+            ParagraphBlock(
+              id: newId(),
+              spans: [TextSpanNode(text: 'Saved $path')],
+            ),
+          ],
+        ),
+      );
+      await documents.flush();
+    }
+
+    expect(
+      await store.recentEditedDocuments(session.kb.manifest.kbId),
+      paths.reversed,
+    );
+    expect(
+      await container.read(recentEditedDocumentsProvider.future),
+      paths.reversed.take(5),
+      reason: 'Home exposes only the five most recently edited files',
+    );
+
+    final renamed = await container
+        .read(kbControllerProvider.notifier)
+        .renameDocument(paths.first, 'Renamed');
+
+    final afterRename = await store.recentEditedDocuments(
+      session.kb.manifest.kbId,
+    );
+    expect(afterRename.first, renamed);
+    expect(afterRename, isNot(contains(paths.first)));
+  });
+
   group('pane widths', () {
     test('dragging stops before the editor is squeezed out', () {
       final container = ProviderContainer();
@@ -209,6 +325,16 @@ He keeps the causeway.
 
       panes.dragRail(-5000, 2000);
       expect(container.read(paneWidthsProvider).rail, PaneWidths.minRail);
+    });
+
+    test('a hidden panel releases its width to the rail and editor', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final panes = container.read(paneWidthsProvider.notifier);
+
+      panes.dragRail(5000, 740, reservedPanelWidth: 0);
+
+      expect(container.read(paneWidthsProvider).rail, PaneWidths.maxRail);
     });
   });
 

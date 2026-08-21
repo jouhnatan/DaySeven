@@ -70,13 +70,45 @@ flutter:
   uses-material-design: true
 
   fonts:
-    # Aleo is a variable font (wght axis). Weight is applied per span with
-    # FontVariation rather than by registering static weight files.
-    - family: Aleo
+    # IBM Plex Sans is the default for application UI and document text.
+    - family: IBM Plex Sans
       fonts:
-        - asset: assets/fonts/aleo/Aleo.ttf
-        - asset: assets/fonts/aleo/Aleo-Italic.ttf
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-Light.ttf
+          weight: 300
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-LightItalic.ttf
+          weight: 300
           style: italic
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-Italic.ttf
+          weight: 400
+          style: italic
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-MediumItalic.ttf
+          weight: 500
+          style: italic
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-SemiBoldItalic.ttf
+          weight: 600
+          style: italic
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-BoldItalic.ttf
+          weight: 700
+          style: italic
+    # Archivo is a variable font (wght axis). Weight is applied per span with
+    # FontVariation rather than by registering static weight files.
+    - family: Archivo
+      fonts:
+        - asset: assets/fonts/archivo/Archivo.ttf
+        - asset: assets/fonts/archivo/Archivo-Italic.ttf
+          style: italic
+    # Geist Pixel Square is reserved for headings in application chrome.
+    - family: Geist Pixel Square
+      fonts:
+        - asset: assets/fonts/geist_pixel/GeistPixel-Square.ttf
 
 # Windows packaging. `dart run msix:create` produces the installable package;
 # Microsoft's current guidance is MSIX, which installs per-user with no admin

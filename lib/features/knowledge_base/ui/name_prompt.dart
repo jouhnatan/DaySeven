@@ -1,61 +1,82 @@
-/// Asks for a single name — a folder's, when creating one.
+/// Asks for a single document or folder name.
 library;
 
 import 'package:flutter/material.dart';
 
-import 'package:dayseven/shared/ui/theme.dart';
+import 'package:dayseven/shared/ui/dialog.dart';
 
 Future<String?> askForName(
   BuildContext context, {
   required String title,
   String initial = '',
-}) {
-  final controller = TextEditingController(text: initial);
-  final colors = context.ds;
+  String actionLabel = 'Create',
+}) => showDialog<String>(
+  context: context,
+  builder: (_) => _NamePromptDialog(
+    title: title,
+    initial: initial,
+    actionLabel: actionLabel,
+  ),
+);
 
-  return showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: colors.island,
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(DsRadius.island),
-        side: BorderSide(color: colors.border),
-      ),
-      content: SizedBox(
-        width: 280,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: colors.editorSurface,
-            borderRadius: const BorderRadius.all(DsRadius.control),
-            border: Border.all(color: colors.border),
-          ),
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            style: aleo(size: 13, color: colors.text),
-            cursorColor: colors.text,
-            cursorWidth: 1.5,
-            onSubmitted: (value) => Navigator.of(context).pop(value),
-            decoration: InputDecoration(
-              isCollapsed: true,
-              border: InputBorder.none,
-              hintText: title,
-              hintStyle: aleo(size: 13, color: colors.muted),
-            ),
-          ),
-        ),
-      ),
+class _NamePromptDialog extends StatefulWidget {
+  const _NamePromptDialog({
+    required this.title,
+    required this.initial,
+    required this.actionLabel,
+  });
+
+  final String title;
+  final String initial;
+  final String actionLabel;
+
+  @override
+  State<_NamePromptDialog> createState() => _NamePromptDialogState();
+}
+
+class _NamePromptDialogState extends State<_NamePromptDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initial)
+      ..selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: widget.initial.length,
+      );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DsDialog(
+      width: 280,
       actions: [
-        TextButton(
+        DsDialogAction(
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: Text('Cancel', style: aleo(size: 13, color: colors.muted)),
+          tone: DsDialogActionTone.muted,
         ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(controller.text),
-          child: Text('Create', style: aleo(size: 13, color: colors.text)),
+        DsDialogAction(
+          label: widget.actionLabel,
+          onPressed: () => Navigator.of(context).pop(_controller.text),
         ),
       ],
-    ),
-  ).whenComplete(controller.dispose);
+      children: [
+        DsField(
+          controller: _controller,
+          hint: widget.title,
+          autofocus: true,
+          margin: EdgeInsets.zero,
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+      ],
+    );
+  }
 }

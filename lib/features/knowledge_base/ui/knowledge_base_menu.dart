@@ -1,8 +1,7 @@
-/// The right-hand Knowledge Base panel.
+/// The right-side Knowledge Base menu.
 ///
-/// A rounded "island" carries the folder-access dropdown, separated from the
-/// editor by a gap on the application background. Below it, the Knowledge
-/// Base's folder-and-file structure.
+/// Its heading sits directly on the application background. Separate islands
+/// carry the folder-access dropdown and the folder-and-file structure.
 library;
 
 import 'dart:io';
@@ -12,10 +11,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:dayseven/app/service.dart';
+import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
+import 'package:dayseven/shared/ui/controls.dart';
+import 'package:dayseven/shared/ui/dialog.dart';
+import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
@@ -23,11 +25,11 @@ import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/features/knowledge_base/ui/invite_dialog.dart';
+import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
 import 'package:dayseven/features/knowledge_base/ui/name_prompt.dart';
-import 'package:dayseven/app/shell/shell.dart';
 
-class KbIsland extends ConsumerWidget {
-  const KbIsland({super.key});
+class KnowledgeBaseMenu extends ConsumerWidget {
+  const KnowledgeBaseMenu({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,12 +38,27 @@ class KbIsland extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // The band naming the open Knowledge Base, kept as its own island.
-        const _KbDropdown(),
+        const DsMenuHeader('Knowledge Base'),
+        const SizedBox(height: DsSpace.islandGap),
+        SizedBox(
+          key: const Key('knowledge-base-access-controls'),
+          height: kKnowledgeBaseControlHeight,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Expanded(child: _KbDropdown()),
+              if (session != null) ...[
+                const SizedBox(width: DsSpace.islandGap),
+                const KnowledgeBaseSettingsButton(),
+              ],
+            ],
+          ),
+        ),
         const SizedBox(height: DsSpace.islandGap),
         if (session != null)
           Expanded(
             child: DsIsland(
+              key: const Key('knowledge-base-hierarchy'),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: _KbTree(session: session),
@@ -64,18 +81,56 @@ class _KbDropdown extends ConsumerStatefulWidget {
   ConsumerState<_KbDropdown> createState() => _KbDropdownState();
 }
 
-/// Menu values that are actions rather than a Knowledge Base path.
-const String _actionOpenFolder = ':open';
-const String _actionNewDocument = ':new';
-const String _actionImportDocument = ':import';
-const String _actionNewFolder = ':newFolder';
-const String _actionShare = ':share';
-const String _actionInvite = ':invite';
-const String _actionAccept = ':accept';
+enum _KbAction { openFolder, importDocument, invite, accept }
+
+enum _HierarchyAction { newFile, newFolder }
+
+enum _FolderAction { newFile, newFolder, delete }
+
+enum _DocumentAction { rename, delete }
+
+Future<bool> _createFileIn(
+  BuildContext context,
+  WidgetRef ref,
+  String parentFolder,
+) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  try {
+    final path = await ref
+        .read(kbControllerProvider.notifier)
+        .createDocument(folder: parentFolder);
+    if (!context.mounted) return true;
+    await ref.read(documentControllerProvider.notifier).open(path);
+    if (!context.mounted) return true;
+    ref.read(viewProvider.notifier).state = DsView.editor;
+    return true;
+  } catch (error) {
+    messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+    return false;
+  }
+}
+
+Future<bool> _createFolderIn(
+  BuildContext context,
+  WidgetRef ref,
+  String parentFolder,
+) async {
+  final name = await askForName(context, title: 'Folder name');
+  if (name == null || name.trim().isEmpty || !context.mounted) return false;
+
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  try {
+    await ref
+        .read(kbControllerProvider.notifier)
+        .createFolder(name: name, parent: parentFolder);
+    return true;
+  } catch (error) {
+    messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+    return false;
+  }
+}
 
 class _KbDropdownState extends ConsumerState<_KbDropdown> {
-  bool _hovered = false;
-
   Future<void> _choose() async {
     final recents = await ref.read(recentKbPathsProvider.future);
     final role = ref.read(currentUserProvider) == null
@@ -83,93 +138,59 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
         : ref.read(kbRoleProvider).valueOrNull;
     if (!mounted) return;
 
-    final box = context.findRenderObject() as RenderBox?;
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (box == null || overlay == null) return;
-
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        box.localToGlobal(Offset.zero, ancestor: overlay),
-        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
-
     final colors = context.ds;
-    final choice = await showMenu<String>(
+    final choice = await showDsMenu<Object>(
       context: context,
-      position: position,
-      color: colors.island,
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(DsRadius.control),
-        side: BorderSide(color: colors.border),
-      ),
       items: [
         for (final path in recents)
-          PopupMenuItem<String>(
+          DsMenuItem<Object>(
             value: path,
-            height: 34,
+            height: kDsMenuItemHeight,
             child: Text(
               p.basename(path),
-              style: aleo(size: 13, color: colors.text),
+              style: uiTextStyle(size: 13, color: colors.text),
             ),
           ),
-        if (recents.isNotEmpty) const PopupMenuDivider(height: 1),
-        PopupMenuItem<String>(
-          value: _actionOpenFolder,
-          height: 34,
+        if (recents.isNotEmpty) const DsMenuDivider(),
+        DsMenuItem<Object>(
+          value: _KbAction.openFolder,
+          height: kDsMenuItemHeight,
           child: Text(
             'Open folder…',
-            style: aleo(size: 13, color: colors.text),
+            style: uiTextStyle(size: 13, color: colors.text),
           ),
         ),
         if (ref.read(kbSessionProvider) != null) ...[
-          PopupMenuItem<String>(
-            value: _actionNewDocument,
-            height: 34,
-            child: Text(
-              'New document',
-              style: aleo(size: 13, color: colors.text),
-            ),
-          ),
-          PopupMenuItem<String>(
-            value: _actionNewFolder,
-            height: 34,
-            child: Text(
-              'New folder…',
-              style: aleo(size: 13, color: colors.text),
-            ),
-          ),
-          PopupMenuItem<String>(
-            value: _actionImportDocument,
-            height: 34,
+          DsMenuItem<Object>(
+            value: _KbAction.importDocument,
+            height: kDsMenuItemHeight,
             child: Text(
               'Import .docx or .odt…',
-              style: aleo(size: 13, color: colors.text),
+              style: uiTextStyle(size: 13, color: colors.text),
             ),
           ),
-          // Sharing belongs to the Knowledge Base, so it lives here rather
-          // than with the account. Only shown once signed in.
-          if (role != null) ...[
-            const PopupMenuDivider(height: 1),
-            PopupMenuItem<String>(
+          // Connection creation and deletion live behind the adjacent gear.
+          // The owner's invite and a member's acceptance stay with the active
+          // Knowledge Base because they are ordinary workspace actions.
+          if (role != null && role != KbRole.local) ...[
+            const DsMenuDivider(),
+            DsMenuItem<Object>(
               value: switch (role) {
-                KbRole.local => _actionShare,
-                KbRole.owner => _actionInvite,
-                KbRole.invited => _actionAccept,
-                KbRole.editor => '',
+                KbRole.local => null,
+                KbRole.owner => _KbAction.invite,
+                KbRole.invited => _KbAction.accept,
+                KbRole.editor => null,
               },
               enabled: role != KbRole.editor,
-              height: 34,
+              height: kDsMenuItemHeight,
               child: Text(
                 switch (role) {
-                  KbRole.local => 'Share this Knowledge Base',
+                  KbRole.local => '',
                   KbRole.owner => 'Invite a collaborator…',
                   KbRole.invited => 'Accept invitation',
                   KbRole.editor => 'Your edits are proposed for review',
                 },
-                style: aleo(
+                style: uiTextStyle(
                   size: 13,
                   color: role == KbRole.editor ? colors.muted : colors.text,
                 ),
@@ -183,25 +204,19 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
     if (choice == null) return;
 
     switch (choice) {
-      case _actionOpenFolder:
+      case _KbAction.openFolder:
         final folder = await getDirectoryPath(confirmButtonText: 'Open');
         if (folder == null) return;
         await ref.read(kbControllerProvider.notifier).openFolder(folder);
-      case _actionNewDocument:
-        await _createDocument();
-      case _actionNewFolder:
-        await _createFolder();
-      case _actionImportDocument:
+      case _KbAction.importDocument:
         await _importDocument();
-      case _actionShare:
-        await _guard(() => ref.read(sharingControllerProvider).shareOpenKb());
-      case _actionInvite:
+      case _KbAction.invite:
         if (!mounted) return;
         await showDialog<void>(
           context: context,
           builder: (_) => const InviteDialog(),
         );
-      case _actionAccept:
+      case _KbAction.accept:
         await _guard(() async {
           final session = ref.read(kbSessionProvider);
           if (session == null) return;
@@ -210,8 +225,8 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
               .acceptInvitation(session.kb.manifest.kbId);
           ref.invalidate(kbRoleProvider);
         });
-      default:
-        await ref.read(kbControllerProvider.notifier).openFolder(choice);
+      case final String path:
+        await ref.read(kbControllerProvider.notifier).openFolder(path);
     }
   }
 
@@ -225,55 +240,7 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
     }
   }
 
-  Future<void> _createDocument({String inFolder = ''}) async {
-    final session = ref.read(kbSessionProvider);
-    if (session == null) return;
-
-    // Untitled until the user types a title into the document itself. Both
-    // extensions are checked, so a new Untitled.md cannot shadow an
-    // Untitled.d7doc that has not been converted.
-    var title = 'Untitled';
-    var attempt = 1;
-    Future<bool> taken(String t) async {
-      final stem = inFolder.isEmpty ? t : '$inFolder/$t';
-      for (final extension in [kDocumentExtension, kLegacyDocumentExtension]) {
-        if (await File(session.kb.absolutePathFor('$stem$extension'))
-            .exists()) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    while (await taken(title)) {
-      attempt++;
-      title = 'Untitled $attempt';
-    }
-
-    final path = await session.kb.createDocument(
-      title: title,
-      folderRelativePath: inFolder,
-    );
-    await ref.read(kbControllerProvider.notifier).refreshTree();
-    await ref.read(documentControllerProvider.notifier).open(path);
-    ref.read(serviceProvider.notifier).state = DsService.editor;
-  }
-
-  Future<void> _createFolder({String inFolder = ''}) async {
-    final session = ref.read(kbSessionProvider);
-    if (session == null) return;
-
-    final name = await askForName(context, title: 'Folder name');
-    if (name == null || name.trim().isEmpty) return;
-
-    final relative = inFolder.isEmpty
-        ? name.trim()
-        : '$inFolder/${name.trim()}';
-    await session.kb.createFolder(relative);
-    await ref.read(kbControllerProvider.notifier).refreshTree();
-  }
-
-  Future<void> _importDocument({String inFolder = ''}) async {
+  Future<void> _importDocument() async {
     final session = ref.read(kbSessionProvider);
     if (session == null) return;
 
@@ -287,12 +254,12 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
     final path = await importDocumentInto(
       session.kb,
       File(file.path),
-      folderRelativePath: inFolder,
+      folderRelativePath: '',
     );
     await ref.read(kbControllerProvider.notifier).refreshTree();
     session.index.upsert(path, await session.kb.readDocument(path));
     await ref.read(documentControllerProvider.notifier).open(path);
-    ref.read(serviceProvider.notifier).state = DsService.editor;
+    ref.read(viewProvider.notifier).state = DsView.editor;
   }
 
   @override
@@ -301,37 +268,28 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
     final session = ref.watch(kbSessionProvider);
     final loading = ref.watch(kbControllerProvider).isLoading;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: loading ? null : _choose,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 90),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: _hovered ? colors.selection : colors.island,
-            borderRadius: const BorderRadius.all(DsRadius.island),
-            border: Border.all(color: colors.border, width: 1),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  session?.kb.manifest.name ?? 'Knowledge Base',
-                  overflow: TextOverflow.ellipsis,
-                  style: aleo(
-                    size: 13,
-                    weight: 600,
-                    color: session == null ? colors.muted : colors.text,
-                  ),
-                ),
+    return DsButton(
+      key: const Key('active-knowledge-base-button'),
+      onPressed: loading ? null : _choose,
+      highlight: colors.selection,
+      height: kKnowledgeBaseControlHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      borderRadius: const BorderRadius.all(DsRadius.island),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              session?.kb.manifest.name ?? 'Open a folder…',
+              overflow: TextOverflow.ellipsis,
+              style: uiTextStyle(
+                size: 13,
+                weight: 600,
+                color: session == null ? colors.muted : colors.text,
               ),
-              Icon(Icons.expand_more, size: 16, color: colors.muted),
-            ],
+            ),
           ),
-        ),
+          Icon(Icons.expand_more, size: 16, color: colors.muted),
+        ],
       ),
     );
   }
@@ -342,44 +300,89 @@ class _KbTree extends ConsumerWidget {
 
   final KbSession session;
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (session.tree.isEmpty) {
-      return Align(
-        alignment: Alignment.topLeft,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+  Future<void> _showRootMenu(
+    BuildContext context,
+    WidgetRef ref,
+    Offset position,
+  ) async {
+    final colors = context.ds;
+    final choice = await showDsMenu<_HierarchyAction>(
+      context: context,
+      position: position,
+      items: [
+        DsMenuItem<_HierarchyAction>(
+          value: _HierarchyAction.newFile,
+          height: kDsMenuItemHeight,
           child: Text(
-            'No folders yet.',
-            style: aleo(size: 12, color: context.ds.muted),
+            'New file',
+            style: uiTextStyle(size: 13, color: colors.text),
           ),
         ),
-      );
-    }
-
-    // Dropping on the panel itself, rather than on a folder, moves an item
-    // back out to the top level.
-    return DragTarget<String>(
-      onWillAcceptWithDetails: (details) =>
-          p.posix.dirname(details.data) != '.',
-      onAcceptWithDetails: (details) =>
-          moveNode(context, ref, details.data, ''),
-      builder: (context, candidate, _) => Container(
-        color: candidate.isEmpty
-            ? Colors.transparent
-            : context.ds.selection.withValues(alpha: 0.4),
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          children: [
-            for (var i = 0; i < session.tree.length; i++)
-              _TreeNode(
-                node: session.tree[i],
-                ancestors: const [],
-                isLast: i == session.tree.length - 1,
-              ),
-          ],
+        DsMenuItem<_HierarchyAction>(
+          value: _HierarchyAction.newFolder,
+          height: kDsMenuItemHeight,
+          child: Text(
+            'New folder…',
+            style: uiTextStyle(size: 13, color: colors.text),
+          ),
         ),
-      ),
+      ],
+    );
+    if (choice == null || !context.mounted) return;
+
+    switch (choice) {
+      case _HierarchyAction.newFile:
+        await _createFileIn(context, ref, '');
+      case _HierarchyAction.newFolder:
+        await _createFolderIn(context, ref, '');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tree = session.tree.isEmpty
+        ? Align(
+            alignment: Alignment.topLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Text(
+                'No files or folders yet. Right-click to create one.',
+                style: uiTextStyle(size: 12, color: context.ds.muted),
+              ),
+            ),
+          )
+        : DragTarget<String>(
+            // Dropping on the panel itself, rather than on a folder, moves an
+            // item back out to the top level.
+            onWillAcceptWithDetails: (details) =>
+                p.posix.dirname(details.data) != '.',
+            onAcceptWithDetails: (details) =>
+                moveNode(context, ref, details.data, ''),
+            builder: (context, candidate, _) => Container(
+              color: candidate.isEmpty
+                  ? Colors.transparent
+                  : context.ds.selection.withValues(alpha: 0.4),
+              child: ListView(
+                key: const Key('kb-tree-list'),
+                padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
+                children: [
+                  for (var i = 0; i < session.tree.length; i++)
+                    _TreeNode(
+                      node: session.tree[i],
+                      ancestors: const [],
+                      isLast: i == session.tree.length - 1,
+                    ),
+                ],
+              ),
+            ),
+          );
+
+    return GestureDetector(
+      key: const Key('knowledge-base-root-context-target'),
+      behavior: HitTestBehavior.opaque,
+      onSecondaryTapUp: (details) =>
+          _showRootMenu(context, ref, details.globalPosition),
+      child: tree,
     );
   }
 }
@@ -411,44 +414,44 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
 
   Future<void> _openDocument(String relativePath) async {
     await ref.read(documentControllerProvider.notifier).open(relativePath);
-    ref.read(serviceProvider.notifier).state = DsService.editor;
+    ref.read(viewProvider.notifier).state = DsView.editor;
   }
 
   /// Right-clicking a folder creates inside it, so a Knowledge Base can be
   /// organised without moving files around in Finder or Explorer.
   Future<void> _showFolderMenu(Offset position, KbFolder folder) async {
     final colors = context.ds;
-    final session = ref.read(kbSessionProvider);
-    if (session == null) return;
 
-    final choice = await showMenu<String>(
+    final choice = await showDsMenu<_FolderAction>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy,
-        position.dx,
-        position.dy,
-      ),
-      color: colors.island,
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(DsRadius.control),
-        side: BorderSide(color: colors.border),
-      ),
+      position: position,
       items: [
-        PopupMenuItem<String>(
-          value: 'document',
-          height: 34,
+        DsMenuItem<_FolderAction>(
+          value: _FolderAction.newFile,
+          height: kDsMenuItemHeight,
           child: Text(
-            'New document here',
-            style: aleo(size: 13, color: colors.text),
+            'New file here',
+            style: uiTextStyle(size: 13, color: colors.text),
           ),
         ),
-        PopupMenuItem<String>(
-          value: 'folder',
-          height: 34,
+        DsMenuItem<_FolderAction>(
+          value: _FolderAction.newFolder,
+          height: kDsMenuItemHeight,
           child: Text(
             'New folder here…',
-            style: aleo(size: 13, color: colors.text),
+            style: uiTextStyle(size: 13, color: colors.text),
+          ),
+        ),
+        const DsMenuDivider(),
+        DsMenuItem<_FolderAction>(
+          value: _FolderAction.delete,
+          height: kDsMenuItemHeight,
+          child: Text(
+            'Delete…',
+            style: uiTextStyle(
+              size: 13,
+              color: Theme.of(context).colorScheme.error,
+            ),
           ),
         ),
       ],
@@ -456,41 +459,123 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
     if (choice == null || !mounted) return;
 
     switch (choice) {
-      case 'document':
-        var title = 'Untitled';
-        var attempt = 1;
-        Future<bool> taken(String t) async {
-          for (final extension in [
-            kDocumentExtension,
-            kLegacyDocumentExtension,
-          ]) {
-            if (await File(
-              session.kb.absolutePathFor('${folder.relativePath}/$t$extension'),
-            ).exists()) {
-              return true;
-            }
-          }
-          return false;
+      case _FolderAction.newFile:
+        if (await _createFileIn(context, ref, folder.relativePath) && mounted) {
+          setState(() => _expanded = true);
         }
 
-        while (await taken(title)) {
-          attempt++;
-          title = 'Untitled $attempt';
+      case _FolderAction.newFolder:
+        if (await _createFolderIn(context, ref, folder.relativePath) &&
+            mounted) {
+          setState(() => _expanded = true);
         }
-        final path = await session.kb.createDocument(
-          title: title,
-          folderRelativePath: folder.relativePath,
-        );
-        await ref.read(kbControllerProvider.notifier).refreshTree();
-        await ref.read(documentControllerProvider.notifier).open(path);
-        ref.read(serviceProvider.notifier).state = DsService.editor;
 
-      case 'folder':
-        if (!mounted) return;
-        final name = await askForName(context, title: 'Folder name');
-        if (name == null || name.trim().isEmpty) return;
-        await session.kb.createFolder('${folder.relativePath}/${name.trim()}');
-        await ref.read(kbControllerProvider.notifier).refreshTree();
+      case _FolderAction.delete:
+        await _confirmDelete(folder);
+    }
+  }
+
+  Future<void> _showDocumentMenu(Offset position, KbFile file) async {
+    final colors = context.ds;
+    final choice = await showDsMenu<_DocumentAction>(
+      context: context,
+      position: position,
+      items: [
+        DsMenuItem<_DocumentAction>(
+          value: _DocumentAction.rename,
+          height: kDsMenuItemHeight,
+          child: Text(
+            'Rename…',
+            style: uiTextStyle(size: 13, color: colors.text),
+          ),
+        ),
+        const DsMenuDivider(),
+        DsMenuItem<_DocumentAction>(
+          value: _DocumentAction.delete,
+          height: kDsMenuItemHeight,
+          child: Text(
+            'Delete…',
+            style: uiTextStyle(
+              size: 13,
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ),
+      ],
+    );
+    if (choice == null || !mounted) return;
+
+    switch (choice) {
+      case _DocumentAction.rename:
+        await _renameDocument(file);
+      case _DocumentAction.delete:
+        await _confirmDelete(file);
+    }
+  }
+
+  Future<void> _renameDocument(KbFile file) async {
+    final name = await askForName(
+      context,
+      title: 'Document name',
+      initial: file.displayName,
+      actionLabel: 'Rename',
+    );
+    if (name == null || name.trim().isEmpty || !mounted) return;
+
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      await ref
+          .read(kbControllerProvider.notifier)
+          .renameDocument(file.relativePath, name);
+    } catch (error) {
+      messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+    }
+  }
+
+  Future<void> _confirmDelete(KbNode node) async {
+    final colors = context.ds;
+    final isFolder = node is KbFolder;
+    final label = node is KbFile ? node.displayName : node.name;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => DsDialog(
+        title: Text(
+          'Delete “$label”?',
+          style: uiTextStyle(size: 16, weight: 600, color: colors.text),
+        ),
+        actions: [
+          DsDialogAction(
+            label: 'Cancel',
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            tone: DsDialogActionTone.muted,
+          ),
+          DsDialogAction(
+            label: 'Delete',
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            tone: DsDialogActionTone.danger,
+          ),
+        ],
+        children: [
+          Text(
+            isFolder
+                ? 'This permanently deletes the folder and everything inside '
+                      'it from this Knowledge Base. This cannot be undone.'
+                : 'This permanently deletes the Markdown file from this '
+                      'Knowledge Base. This cannot be undone.',
+            style: uiTextStyle(size: 13, color: colors.muted),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      await ref
+          .read(kbControllerProvider.notifier)
+          .deleteNode(node.relativePath);
+    } catch (error) {
+      messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }
 
@@ -554,20 +639,27 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
             _openDocument(node.relativePath);
           }
         },
-        onSecondaryTapUp: node is KbFolder
-            ? (details) => _showFolderMenu(details.globalPosition, node)
-            : null,
+        onSecondaryTapUp: switch (node) {
+          KbFolder() => (details) => _showFolderMenu(
+            details.globalPosition,
+            node,
+          ),
+          KbFile() => (details) => _showDocumentMenu(
+            details.globalPosition,
+            node,
+          ),
+        },
         child: Container(
           height: _TreeGuides.rowHeight,
           decoration: BoxDecoration(
             color: highlighted
-                ? colors.selection
+                ? colors.buttonHighlight
                 : selected
-                ? colors.selection
+                ? colors.buttonHighlight
                 : _hovered
-                ? colors.selection.withValues(alpha: 0.5)
+                ? colors.buttonHighlight
                 : Colors.transparent,
-            borderRadius: const BorderRadius.all(DsRadius.row),
+            borderRadius: const BorderRadius.all(DsRadius.menuItem),
             border: highlighted
                 ? Border.all(color: colors.muted.withValues(alpha: 0.5))
                 : Border.all(color: Colors.transparent),
@@ -594,7 +686,7 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
                 child: Text(
                   node is KbFile ? node.displayName : node.name,
                   overflow: TextOverflow.ellipsis,
-                  style: aleo(
+                  style: uiTextStyle(
                     size: 13,
                     weight: isFolder || selected ? 600 : 400,
                     color: isFolder || selected ? colors.text : colors.muted,
@@ -663,7 +755,7 @@ class _DragLabel extends StatelessWidget {
               color: colors.muted,
             ),
             const SizedBox(width: 6),
-            Text(label, style: aleo(size: 13, color: colors.text)),
+            Text(label, style: uiTextStyle(size: 13, color: colors.text)),
           ],
         ),
       ),

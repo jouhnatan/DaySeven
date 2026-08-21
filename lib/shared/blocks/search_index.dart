@@ -76,7 +76,11 @@ class SearchIndex {
           // Through the Knowledge Base, so which format a document is in is
           // decided in exactly one place.
           final doc = await _kb.readDocument(relative);
-          stmt.execute([relative, doc.title, doc.plainText]);
+          stmt.execute([
+            relative,
+            documentTitleFromPath(relative),
+            doc.plainText,
+          ]);
         } on FormatException {
           // A file that is not a valid document simply is not searchable.
           continue;
@@ -104,7 +108,7 @@ class SearchIndex {
     ]);
     _db.execute(
       'insert into documents (relative_path, title, body) values (?, ?, ?)',
-      [relativePath, document.title, document.plainText],
+      [relativePath, documentTitleFromPath(relativePath), document.plainText],
     );
   }
 
@@ -114,15 +118,22 @@ class SearchIndex {
   );
 
   void rename(String fromPath, String toPath) => _db.execute(
-    'update documents set relative_path = ? where relative_path = ?',
-    [toPath, fromPath],
+    'update documents set relative_path = ?, title = ? '
+    'where relative_path = ?',
+    [toPath, documentTitleFromPath(toPath), fromPath],
   );
 
-  /// Searches titles and body text. Matches on a prefix of the last word, so
-  /// results narrow while the user is still typing it.
+  /// Searches Markdown file names and body text. Matches on a prefix of the
+  /// last word, so results narrow while the user is still typing it.
   List<SearchHit> search(String query, {int limit = 30}) {
     final match = _toMatchQuery(query);
     if (match == null) return const [];
+
+    // Keep this as an SQL literal rather than a bound integer. In macOS AOT
+    // builds, sqlite3 3.5.1 can segfault in sqlite3_bind_int64 while binding the
+    // LIMIT after the three text values below. The value is internal (never user
+    // input) and bounded here, so interpolating it does not weaken the query.
+    final safeLimit = limit < 1 ? 1 : (limit > 100 ? 100 : limit);
 
     try {
       final rows = _db.select(
@@ -132,9 +143,9 @@ class SearchIndex {
         from documents
         where documents match ?
         order by bm25(documents, 4.0, 1.0)
-        limit ?;
+        limit $safeLimit;
         ''',
-        [SearchHit.matchOpen, SearchHit.matchClose, match, limit],
+        [SearchHit.matchOpen, SearchHit.matchClose, match],
       );
 
       return [

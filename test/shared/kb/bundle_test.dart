@@ -237,6 +237,71 @@ void main() {
       );
     });
 
+    group('renaming documents', () {
+      test('renames the Markdown file and its embedded title', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        await kb.createFolder('Characters');
+        final path = await kb.createDocument(
+          title: 'Aldric',
+          folderRelativePath: 'Characters',
+        );
+        final before = await kb.readDocument(path);
+        await kb.writeDocument(
+          path,
+          before.copyWith(
+            blocks: [
+              ParagraphBlock(
+                id: newId(),
+                spans: const [TextSpanNode(text: 'He keeps the causeway.')],
+              ),
+            ],
+          ),
+        );
+
+        final renamed = await kb.renameDocument(path, 'The Gatekeeper.md');
+
+        expect(renamed, 'Characters/The Gatekeeper.md');
+        expect(File(kb.absolutePathFor(path)).existsSync(), isFalse);
+        expect(File(kb.absolutePathFor(renamed)).existsSync(), isTrue);
+        final after = await kb.readDocument(renamed);
+        expect(after.id, before.id);
+        expect(after.title, 'The Gatekeeper');
+        expect(after.plainText, 'He keeps the causeway.');
+      });
+
+      test('refuses to overwrite another document', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        final aldric = await kb.createDocument(title: 'Aldric');
+        final bryn = await kb.createDocument(title: 'Bryn');
+
+        expect(
+          () => kb.renameDocument(aldric, 'Bryn'),
+          throwsA(isA<KbException>()),
+        );
+        expect(File(kb.absolutePathFor(aldric)).existsSync(), isTrue);
+        expect(File(kb.absolutePathFor(bryn)).existsSync(), isTrue);
+      });
+
+      test('avoids Windows reserved device names', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        final path = await kb.createDocument(title: 'Aldric');
+
+        final renamed = await kb.renameDocument(path, 'CON');
+
+        expect(renamed, '_CON.md');
+        expect((await kb.readDocument(renamed)).title, '_CON');
+      });
+    });
+
     group('moving things about', () {
       test('a document moves into a folder', () async {
         final kb = await KnowledgeBase.create(
@@ -339,6 +404,67 @@ void main() {
         );
 
         expect(await kb.move(path, 'Characters'), path);
+      });
+    });
+
+    group('deleting items', () {
+      test('deletes a document', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        final path = await kb.createDocument(title: 'Aldric');
+
+        await kb.deleteNode(path);
+
+        expect(File(kb.absolutePathFor(path)).existsSync(), isFalse);
+      });
+
+      test('deletes a folder and everything below it', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        await kb.createFolder('Characters/Houses');
+        await kb.createDocument(
+          title: 'Vane',
+          folderRelativePath: 'Characters/Houses',
+        );
+
+        await kb.deleteNode('Characters');
+
+        expect(
+          Directory(kb.absolutePathFor('Characters')).existsSync(),
+          isFalse,
+        );
+      });
+
+      test('refuses root, settings, traversal, and absolute paths', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        final path = await kb.createDocument(title: 'Aldric');
+        final unsafe = <String>[
+          '',
+          '.',
+          '../outside',
+          'Characters/../Aldric.md',
+          kSettingsDirName,
+          '$kSettingsDirName/$kManifestFileName',
+          '/tmp/outside',
+          r'C:\Users\outside',
+        ];
+
+        for (final candidate in unsafe) {
+          expect(
+            () => kb.deleteNode(candidate),
+            throwsA(isA<KbException>()),
+            reason: 'must reject $candidate',
+          );
+        }
+        expect(File(kb.manifestPath).existsSync(), isTrue);
+        expect(File(kb.absolutePathFor(path)).existsSync(), isTrue);
       });
     });
 

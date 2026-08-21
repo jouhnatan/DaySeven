@@ -1,4 +1,4 @@
-/// The persistent search bar above the workspace.
+/// The Search field injected into the Editor's fixed overlay shelf.
 ///
 /// Shaped after Spotlight: a single rounded field, wider than it is tall, set
 /// on its own rather than stretched across the window. Results come from the
@@ -9,8 +9,9 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/app/service.dart';
+import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/blocks/search_index.dart';
 import 'package:dayseven/features/search/state/search_state.dart';
@@ -21,7 +22,10 @@ const double kSearchWidth = 560;
 const double kSearchHeight = 40;
 
 class DsSearchBar extends ConsumerStatefulWidget {
-  const DsSearchBar({super.key});
+  const DsSearchBar({super.key, this.resultsAbove = false});
+
+  /// Opens results above the field when Search is anchored to the bottom edge.
+  final bool resultsAbove;
 
   @override
   ConsumerState<DsSearchBar> createState() => _DsSearchBarState();
@@ -59,17 +63,26 @@ class _DsSearchBarState extends ConsumerState<DsSearchBar> {
         width: width,
         child: CompositedTransformFollower(
           link: _layerLink,
-          targetAnchor: Alignment.bottomLeft,
-          followerAnchor: Alignment.topLeft,
-          offset: const Offset(0, 4),
-          child: _ResultsPanel(
-            onOpen: (hit) {
-              _controller.clear();
-              ref.read(searchQueryProvider.notifier).state = '';
-              _hideResults();
-              _focus.unfocus();
-              _open(hit);
-            },
+          targetAnchor: widget.resultsAbove
+              ? Alignment.topLeft
+              : Alignment.bottomLeft,
+          followerAnchor: widget.resultsAbove
+              ? Alignment.bottomLeft
+              : Alignment.topLeft,
+          offset: Offset(0, widget.resultsAbove ? -4 : 4),
+          // Keep result clicks in the field's tap region. Otherwise TextField
+          // unfocuses on mouse-down and removes this overlay before the row's
+          // onTap can run on mouse-up.
+          child: TextFieldTapRegion(
+            child: _ResultsPanel(
+              onOpen: (hit) {
+                _controller.clear();
+                ref.read(searchQueryProvider.notifier).state = '';
+                _hideResults();
+                _focus.unfocus();
+                _open(hit);
+              },
+            ),
           ),
         ),
       ),
@@ -84,7 +97,7 @@ class _DsSearchBarState extends ConsumerState<DsSearchBar> {
 
   Future<void> _open(SearchHit hit) async {
     await ref.read(documentControllerProvider.notifier).open(hit.relativePath);
-    ref.read(serviceProvider.notifier).state = DsService.editor;
+    ref.read(viewProvider.notifier).state = DsView.editor;
   }
 
   @override
@@ -107,14 +120,14 @@ class _DsSearchBarState extends ConsumerState<DsSearchBar> {
           child: TextField(
             controller: _controller,
             focusNode: _focus,
-            style: aleo(size: 15, color: colors.text),
+            style: uiTextStyle(size: 15, color: colors.text),
             cursorColor: colors.text,
             cursorWidth: 1.5,
             decoration: InputDecoration(
               isCollapsed: true,
               border: InputBorder.none,
               hintText: 'Search',
-              hintStyle: aleo(size: 15, color: colors.muted),
+              hintStyle: uiTextStyle(size: 15, color: colors.muted),
             ),
             onChanged: (value) {
               ref.read(searchQueryProvider.notifier).state = value;
@@ -164,51 +177,30 @@ class _ResultsPanel extends ConsumerWidget {
   }
 }
 
-class _ResultRow extends StatefulWidget {
+class _ResultRow extends StatelessWidget {
   const _ResultRow({required this.hit, required this.onTap});
 
   final SearchHit hit;
   final VoidCallback onTap;
 
   @override
-  State<_ResultRow> createState() => _ResultRowState();
-}
-
-class _ResultRowState extends State<_ResultRow> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final colors = context.ds;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            color: _hovered ? colors.selection : Colors.transparent,
-            borderRadius: const BorderRadius.all(DsRadius.row),
+    return DsHoverRow(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            hit.title.isEmpty ? hit.relativePath : hit.title,
+            style: uiTextStyle(size: 13, weight: 500, color: colors.text),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.hit.title.isEmpty
-                    ? widget.hit.relativePath
-                    : widget.hit.title,
-                style: aleo(size: 13, weight: 500, color: colors.text),
-              ),
-              if (widget.hit.snippet.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                _Snippet(widget.hit.snippet),
-              ],
-            ],
-          ),
-        ),
+          if (hit.snippet.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            _Snippet(hit.snippet),
+          ],
+        ],
       ),
     );
   }
@@ -223,7 +215,7 @@ class _Snippet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    final base = aleo(size: 12, color: colors.muted);
+    final base = uiTextStyle(size: 12, color: colors.muted);
     final spans = <TextSpan>[];
     var rest = snippet;
 
@@ -237,7 +229,7 @@ class _Snippet extends StatelessWidget {
       spans.add(
         TextSpan(
           text: rest.substring(start + 1, end),
-          style: aleo(size: 12, weight: 600, color: colors.text),
+          style: uiTextStyle(size: 12, weight: 600, color: colors.text),
         ),
       );
       rest = rest.substring(end + 1);

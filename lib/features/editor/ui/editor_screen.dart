@@ -7,14 +7,17 @@
 /// colour, highlight, font, spacing, images and export.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/editing_focus.dart';
+import 'package:dayseven/app/workspace/editing_keybinds.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -22,28 +25,74 @@ import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
+import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
+import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 
+const double kEditorSearchCardHeight = 58;
+
 class EditorScreen extends ConsumerWidget {
-  const EditorScreen({super.key});
+  const EditorScreen({super.key, this.searchCard});
+
+  /// Injected by the app composition root so Editor does not depend directly
+  /// on the separate Search feature.
+  final Widget? searchCard;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
     final open = ref.watch(documentControllerProvider);
 
-    if (open == null) {
-      return Center(
-        child: Text(
-          'Open a document from the Knowledge Base.',
-          style: aleo(size: 13, color: colors.muted),
-        ),
-      );
-    }
+    final editor = open == null
+        ? Center(
+            child: Text(
+              'Open a document from the Knowledge Base.',
+              style: uiTextStyle(size: 13, color: colors.muted),
+            ),
+          )
+        // A path can change while this document remains open. Its stable id
+        // keeps the editing surface and caret alive through a rename or move.
+        : DocumentEditor(key: ValueKey(open.document.id), open: open);
 
-    return DocumentEditor(key: ValueKey(open.relativePath), open: open);
+    final card = searchCard;
+    if (card == null) return editor;
+
+    // Search stays fixed at the bottom Z layer while the document scrolls
+    // independently above it.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(bottom: kEditorSearchCardHeight, child: editor),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: _EditorSearchCard(child: card),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditorSearchCard extends StatelessWidget {
+  const _EditorSearchCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: kEditorSearchCardHeight,
+      width: double.infinity,
+      child: DsCard(
+        key: const Key('editor-search-card'),
+        separator: DsCardSeparator.top,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Center(child: child),
+        ),
+      ),
+    );
   }
 }
 
@@ -81,6 +130,12 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     super.initState();
     _document = widget.open.document;
     _editingFocus = ref.read(editingFocusProvider.notifier)..attach(this);
+  }
+
+  @override
+  void didUpdateWidget(DocumentEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _document = widget.open.document;
   }
 
   @override
@@ -161,17 +216,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
       final has = selection.isValid && !selection.isCollapsed;
       if (has) _lastSelection[blockId] = selection;
 
-      final range = TextRange(start: selection.start, end: selection.end);
       _editingFocus.publish(
         EditingFocus(
           blockId: blockId,
           hasSelection: has,
-          bold: has && controller.rangeSatisfies(range, (f) => f.bold),
-          italic: has && controller.rangeSatisfies(range, (f) => f.italic),
-          strikethrough:
-              has && controller.rangeSatisfies(range, (f) => f.strikethrough),
-          underline:
-              has && controller.rangeSatisfies(range, (f) => f.underline),
+          activeFormats: {
+            for (final format in EditingFormat.values)
+              if (controller.isFormatActive(format, selection)) format,
+          },
           align: block.align,
           headingLevel: block is HeadingBlock ? block.level : null,
         ),
@@ -188,25 +240,15 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     final controller = _controllers[focus.blockId];
     if (controller == null) return;
 
+    final currentSelection = controller.selection;
     final selection =
-        controller.selection.isValid && !controller.selection.isCollapsed
-        ? controller.selection
-        : _lastSelection[focus.blockId];
-    if (selection == null || selection.isCollapsed) return;
+        focus.hasSelection &&
+            (!currentSelection.isValid || currentSelection.isCollapsed)
+        ? _lastSelection[focus.blockId]
+        : currentSelection;
+    if (selection == null || !selection.isValid) return;
 
-    final range = TextRange(start: selection.start, end: selection.end);
-    final (apply, test) = switch (format) {
-      EditingFormat.bold => (_withBold, (Format f) => f.bold),
-      EditingFormat.italic => (_withItalic, (Format f) => f.italic),
-      EditingFormat.strikethrough => (
-        _withStrike,
-        (Format f) => f.strikethrough,
-      ),
-      EditingFormat.underline => (_withUnderline, (Format f) => f.underline),
-    };
-
-    final already = controller.rangeSatisfies(range, test);
-    controller.applyToRange(range, (f) => apply(f, !already));
+    controller.toggleFormat(format, selection);
 
     // Put the caret back where it was, so typing carries on in place.
     controller.selection = selection;
@@ -270,6 +312,19 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     _document = document;
     ref.read(documentControllerProvider.notifier).edit(document);
     if (rebuild && mounted) setState(() {});
+  }
+
+  Future<String?> _renameTitle(String title) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      final destination = await ref
+          .read(kbControllerProvider.notifier)
+          .renameDocument(widget.open.relativePath, title);
+      return documentTitleFromPath(destination);
+    } catch (error) {
+      messenger?.showSnackBar(SnackBar(content: Text('$error')));
+      return null;
+    }
   }
 
   void _onParagraphChanged(String blockId) {
@@ -439,19 +494,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
       context: context,
       builder: (context) => DsDialog(
         actions: [
-          TextButton(
+          DsDialogAction(
+            label: 'Cancel',
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'Cancel',
-              style: aleo(size: 13, color: context.ds.muted),
-            ),
+            tone: DsDialogActionTone.muted,
           ),
-          TextButton(
+          DsDialogAction(
+            label: 'Insert',
             onPressed: () => Navigator.of(context).pop(field.text.trim()),
-            child: Text(
-              'Insert',
-              style: aleo(size: 13, color: context.ds.text),
-            ),
           ),
         ],
         children: [DsField(controller: field, hint: 'https://…/image.png')],
@@ -477,23 +527,19 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
       builder: (context) => DsDialog(
         actions: [
           if (existing != null)
-            TextButton(
+            DsDialogAction(
+              label: 'Remove',
               onPressed: () => Navigator.of(context).pop(''),
-              child: Text(
-                'Remove',
-                style: aleo(size: 13, color: context.ds.muted),
-              ),
+              tone: DsDialogActionTone.muted,
             ),
-          TextButton(
+          DsDialogAction(
+            label: 'Cancel',
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'Cancel',
-              style: aleo(size: 13, color: context.ds.muted),
-            ),
+            tone: DsDialogActionTone.muted,
           ),
-          TextButton(
+          DsDialogAction(
+            label: 'Link',
             onPressed: () => Navigator.of(context).pop(field.text.trim()),
-            child: Text('Link', style: aleo(size: 13, color: context.ds.text)),
           ),
         ],
         children: [DsField(controller: field, hint: 'https://…')],
@@ -514,6 +560,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     final index = _document.blocks.indexWhere((b) => b.id == blockId);
     if (index < 0) return;
     final controller = _controllers[blockId]!;
+    final typingFormat = controller.explicitTypingFormat;
     final offset = controller.selection.baseOffset.clamp(
       0,
       controller.text.length,
@@ -543,7 +590,10 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusFor(newBlock.id).requestFocus();
       final c = _controllers[newBlock.id];
-      if (c != null) c.selection = const TextSelection.collapsed(offset: 0);
+      if (c != null) {
+        c.selection = const TextSelection.collapsed(offset: 0);
+        if (typingFormat != null) c.setTypingFormat(typingFormat);
+      }
     });
   }
 
@@ -629,19 +679,13 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
 
   // -------------------------------------------------------------- shortcuts --
 
-  void _toggle(
-    String blockId,
-    Format Function(Format, bool) apply,
-    bool Function(Format) test,
-  ) {
+  void _toggle(String blockId, EditingFormat format) {
     final controller = _controllers[blockId];
     if (controller == null) return;
     final selection = controller.selection;
     if (!selection.isValid || selection.isCollapsed) return;
 
-    final range = TextRange(start: selection.start, end: selection.end);
-    final already = controller.rangeSatisfies(range, test);
-    controller.applyToRange(range, (f) => apply(f, !already));
+    controller.toggleFormat(format, selection);
   }
 
   void _setColor(String blockId, String? color, {required bool highlight}) {
@@ -681,10 +725,20 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: _TitleField(
+            child: DocumentTitleField(
               title: _document.title,
-              onChanged: (title) =>
-                  _commit(_document.copyWith(title: title), rebuild: false),
+              onRename: _renameTitle,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: SizedBox(
+              height: 1,
+              child: ColoredBox(
+                key: const Key('editor-title-content-divider'),
+                color: colors.border,
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -700,7 +754,11 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
                   focusNode: _focusFor(t.id),
                   style: t is HeadingBlock
                       ? headingStyle(t.level, colors.text)
-                      : aleo(size: 15, height: 1.6, color: colors.text),
+                      : editorTextStyle(
+                          size: 15,
+                          height: 1.6,
+                          color: colors.text,
+                        ),
                   ordinal: t is ListItemBlock && t.style == ListStyle.ordered
                       ? _ordinalOf(t)
                       : null,
@@ -809,49 +867,39 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
       _ => null,
     };
 
-    PopupMenuItem<VoidCallback> item(
+    DsMenuItem<VoidCallback> item(
       String label,
       VoidCallback action, {
       bool enabled = true,
-    }) => PopupMenuItem<VoidCallback>(
+    }) => DsMenuItem<VoidCallback>(
       value: action,
-      height: 32,
+      height: kDsCompactMenuItemHeight,
       enabled: enabled,
       child: Text(
         label,
-        style: aleo(size: 13, color: enabled ? colors.text : colors.muted),
+        style: uiTextStyle(
+          size: 13,
+          color: enabled ? colors.text : colors.muted,
+        ),
       ),
     );
 
-    final action = await showMenu<VoidCallback>(
+    final action = await showDsMenu<VoidCallback>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy,
-        position.dx,
-        position.dy,
-      ),
-      color: colors.island,
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(DsRadius.control),
-        side: BorderSide(color: colors.border),
-      ),
+      position: position,
       items: [
         if (isParagraph) ...[
-          item('Bold', () => _toggle(block.id, _withBold, (f) => f.bold)),
-          item('Italic', () => _toggle(block.id, _withItalic, (f) => f.italic)),
+          item('Bold', () => _toggle(block.id, EditingFormat.bold)),
+          item('Italic', () => _toggle(block.id, EditingFormat.italic)),
           item(
             'Strikethrough',
-            () => _toggle(block.id, _withStrike, (f) => f.strikethrough),
+            () => _toggle(block.id, EditingFormat.strikethrough),
           ),
-          item(
-            'Underline',
-            () => _toggle(block.id, _withUnderline, (f) => f.underline),
-          ),
+          item('Underline', () => _toggle(block.id, EditingFormat.underline)),
           item('Link…', () => _setLink(block.id)),
-          const PopupMenuDivider(height: 1),
+          const DsMenuDivider(),
           PopupMenuItem<VoidCallback>(
-            height: 34,
+            height: kDsMenuItemHeight,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: _Swatches(
               label: 'Text',
@@ -860,7 +908,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
             ),
           ),
           PopupMenuItem<VoidCallback>(
-            height: 34,
+            height: kDsMenuItemHeight,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: _Swatches(
               label: 'Highlight',
@@ -868,10 +916,10 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
               onPick: (c) => _setColor(block.id, c, highlight: true),
             ),
           ),
-          const PopupMenuDivider(height: 1),
+          const DsMenuDivider(),
           for (final font in kAvailableFonts)
             item(font, () => _setFont(block.id, font)),
-          const PopupMenuDivider(height: 1),
+          const DsMenuDivider(),
         ],
         item(
           'Align left',
@@ -894,16 +942,18 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
             (b) => b.copyWithCommon(align: BlockAlign.right),
           ),
         ),
-        const PopupMenuDivider(height: 1),
+        const DsMenuDivider(),
         item(
           block.spaceBefore > 0 ? 'No space before' : 'Space before',
           () => _updateBlock(
             block.id,
-            (b) => b.copyWithCommon(spaceBefore: b.spaceBefore > 0 ? 0 : 16),
+            (b) => b.copyWithCommon(
+              spaceBefore: b.spaceBefore > 0 ? 0 : DsSpace.blockBefore,
+            ),
           ),
         ),
         if (block is TextBlock) ...[
-          const PopupMenuDivider(height: 1),
+          const DsMenuDivider(),
           item(
             'Body text',
             () => _convertBlock(
@@ -996,11 +1046,11 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
             ),
         ],
         if (block is TableBlock) ...[
-          const PopupMenuDivider(height: 1),
+          const DsMenuDivider(),
           item('Add row', () => _addTableRow(block.id)),
           item('Add column', () => _addTableColumn(block.id)),
         ],
-        const PopupMenuDivider(height: 1),
+        const DsMenuDivider(),
         item(
           'Insert divider',
           () => _insertAfter(block.id, DividerBlock(id: newId())),
@@ -1010,11 +1060,11 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
           item('Insert footnote', () => _insertFootnote(block.id)),
         item('Insert image…', () => _insertImage(block.id)),
         item('Insert image by URL…', () => _insertImageUrl(block.id)),
-        const PopupMenuDivider(height: 1),
+        const DsMenuDivider(),
         item('Export as .docx…', () => _export(DocumentFormat.docx)),
         item('Export as .odt…', () => _export(DocumentFormat.odt)),
         if (syncLabel != null) ...[
-          const PopupMenuDivider(height: 1),
+          const DsMenuDivider(),
           item(syncLabel, _sync),
         ],
       ],
@@ -1026,96 +1076,17 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
 
 // -------------------------------------------------------- format transforms --
 
-Format _withBold(Format f, bool on) => TextSpanNode(
-  text: f.text,
-  bold: on,
-  italic: f.italic,
-  strikethrough: f.strikethrough,
-  underline: f.underline,
-  color: f.color,
-  highlight: f.highlight,
-  font: f.font,
-);
-
-Format _withItalic(Format f, bool on) => TextSpanNode(
-  text: f.text,
-  bold: f.bold,
-  italic: on,
-  strikethrough: f.strikethrough,
-  underline: f.underline,
-  color: f.color,
-  highlight: f.highlight,
-  font: f.font,
-);
-
-Format _withStrike(Format f, bool on) => TextSpanNode(
-  text: f.text,
-  bold: f.bold,
-  italic: f.italic,
-  strikethrough: on,
-  underline: f.underline,
-  color: f.color,
-  highlight: f.highlight,
-  font: f.font,
-);
-
-Format _withUnderline(Format f, bool on) => TextSpanNode(
-  text: f.text,
-  bold: f.bold,
-  italic: f.italic,
-  strikethrough: f.strikethrough,
-  underline: on,
-  color: f.color,
-  highlight: f.highlight,
-  font: f.font,
-);
-
-Format _withColor(Format f, String? color) => TextSpanNode(
-  text: f.text,
-  bold: f.bold,
-  italic: f.italic,
-  strikethrough: f.strikethrough,
-  underline: f.underline,
-  color: color,
-  highlight: f.highlight,
-  font: f.font,
-);
-
-Format _withHighlight(Format f, String? color) => TextSpanNode(
-  text: f.text,
-  bold: f.bold,
-  italic: f.italic,
-  strikethrough: f.strikethrough,
-  underline: f.underline,
-  color: f.color,
-  highlight: color,
-  font: f.font,
-);
-
-Format _withFont(Format f, String? font) => TextSpanNode(
-  text: f.text,
-  bold: f.bold,
-  italic: f.italic,
-  strikethrough: f.strikethrough,
-  underline: f.underline,
-  color: f.color,
-  highlight: f.highlight,
-  font: font,
-);
+Format _withColor(Format format, String? color) =>
+    format.copyWith(color: (_) => color);
+Format _withHighlight(Format format, String? color) =>
+    format.copyWith(highlight: (_) => color);
+Format _withFont(Format format, String? font) =>
+    format.copyWith(font: (_) => font);
 
 final RegExp _autoformatPattern = RegExp(r'^(#{1,6} |[-*+] |\d+[.)] |> )');
 
-Format _withHref(Format f, String? href) => TextSpanNode(
-  text: f.text,
-  bold: f.bold,
-  italic: f.italic,
-  strikethrough: f.strikethrough,
-  underline: f.underline,
-  color: f.color,
-  highlight: f.highlight,
-  font: f.font,
-  href: href,
-);
+Format _withHref(Format format, String? href) =>
+    format.copyWith(href: (_) => href);
 
 /// Splits a span list at character offsets, preserving each run's formatting.
 List<TextSpanNode> _sliceSpans(List<TextSpanNode> spans, int start, int end) {
@@ -1185,45 +1156,21 @@ class _TextBlockView extends StatelessWidget {
       child: _decorate(
         context,
         Shortcuts(
-          shortcuts: const {
-            SingleActivator(LogicalKeyboardKey.enter): _SplitIntent(),
-            SingleActivator(LogicalKeyboardKey.keyB, meta: true): _BoldIntent(),
-            SingleActivator(LogicalKeyboardKey.keyB, control: true):
-                _BoldIntent(),
-            SingleActivator(LogicalKeyboardKey.keyI, meta: true):
-                _ItalicIntent(),
-            SingleActivator(LogicalKeyboardKey.keyI, control: true):
-                _ItalicIntent(),
-            SingleActivator(LogicalKeyboardKey.keyU, meta: true):
-                _UnderlineIntent(),
-            SingleActivator(LogicalKeyboardKey.keyU, control: true):
-                _UnderlineIntent(),
-            SingleActivator(LogicalKeyboardKey.keyX, meta: true, shift: true):
-                _StrikeIntent(),
-            SingleActivator(
-              LogicalKeyboardKey.keyX,
-              control: true,
-              shift: true,
-            ): _StrikeIntent(),
+          shortcuts: {
+            const SingleActivator(LogicalKeyboardKey.enter):
+                const _SplitIntent(),
+            for (final entry in kEditingKeybinds.entries)
+              entry.value.activator(defaultTargetPlatform): _FormatIntent(
+                entry.key,
+              ),
           },
           child: Actions(
             actions: {
               _SplitIntent: CallbackAction<_SplitIntent>(
                 onInvoke: (_) => onSplit(),
               ),
-              _BoldIntent: CallbackAction<_BoldIntent>(
-                onInvoke: (_) => _toggleHere(_withBold, (f) => f.bold),
-              ),
-              _ItalicIntent: CallbackAction<_ItalicIntent>(
-                onInvoke: (_) => _toggleHere(_withItalic, (f) => f.italic),
-              ),
-              _UnderlineIntent: CallbackAction<_UnderlineIntent>(
-                onInvoke: (_) =>
-                    _toggleHere(_withUnderline, (f) => f.underline),
-              ),
-              _StrikeIntent: CallbackAction<_StrikeIntent>(
-                onInvoke: (_) =>
-                    _toggleHere(_withStrike, (f) => f.strikethrough),
+              _FormatIntent: CallbackAction<_FormatIntent>(
+                onInvoke: (intent) => _toggleHere(intent.format),
               ),
             },
             child: Focus(
@@ -1313,7 +1260,7 @@ class _TextBlockView extends StatelessWidget {
             padding: const EdgeInsets.only(top: 3, right: 6),
             child: Text(
               '[${b.label}]',
-              style: aleo(size: 12, weight: 500, color: colors.link),
+              style: editorTextStyle(size: 12, weight: 500, color: colors.link),
             ),
           ),
           Expanded(child: field),
@@ -1356,20 +1303,14 @@ class _TextBlockView extends StatelessWidget {
       padding: const EdgeInsets.only(top: 2),
       child: Text(
         b.style == ListStyle.ordered ? '${ordinal ?? 1}.' : '•',
-        style: aleo(size: 15, height: 1.6, color: colors.muted),
+        style: editorTextStyle(size: 15, height: 1.6, color: colors.muted),
       ),
     );
   }
 
-  void _toggleHere(
-    Format Function(Format, bool) apply,
-    bool Function(Format) test,
-  ) {
+  void _toggleHere(EditingFormat format) {
     final selection = controller.selection;
-    if (!selection.isValid || selection.isCollapsed) return;
-    final range = TextRange(start: selection.start, end: selection.end);
-    final already = controller.rangeSatisfies(range, test);
-    controller.applyToRange(range, (f) => apply(f, !already));
+    controller.toggleFormat(format, selection);
   }
 }
 
@@ -1377,20 +1318,10 @@ class _SplitIntent extends Intent {
   const _SplitIntent();
 }
 
-class _BoldIntent extends Intent {
-  const _BoldIntent();
-}
+class _FormatIntent extends Intent {
+  const _FormatIntent(this.format);
 
-class _ItalicIntent extends Intent {
-  const _ItalicIntent();
-}
-
-class _UnderlineIntent extends Intent {
-  const _UnderlineIntent();
-}
-
-class _StrikeIntent extends Intent {
-  const _StrikeIntent();
+  final EditingFormat format;
 }
 
 class _ImageView extends ConsumerWidget {
@@ -1440,7 +1371,7 @@ class _ImageView extends ConsumerWidget {
                         color: colors.selection,
                         child: Text(
                           'Image unavailable',
-                          style: aleo(size: 13, color: colors.muted),
+                          style: uiTextStyle(size: 13, color: colors.muted),
                         ),
                       ),
                     )
@@ -1452,7 +1383,7 @@ class _ImageView extends ConsumerWidget {
                       color: colors.selection,
                       child: Text(
                         'Image missing',
-                        style: aleo(size: 12, color: colors.muted),
+                        style: uiTextStyle(size: 12, color: colors.muted),
                       ),
                     ),
             ),
@@ -1465,14 +1396,22 @@ class _ImageView extends ConsumerWidget {
                 BlockAlign.center => TextAlign.center,
                 BlockAlign.right => TextAlign.right,
               },
-              style: aleo(size: 12, italic: true, color: colors.muted),
+              style: editorTextStyle(
+                size: 12,
+                italic: true,
+                color: colors.muted,
+              ),
               cursorColor: colors.text,
               cursorWidth: 1.5,
               decoration: InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
                 hintText: 'Caption',
-                hintStyle: aleo(size: 12, italic: true, color: colors.muted),
+                hintStyle: editorTextStyle(
+                  size: 12,
+                  italic: true,
+                  color: colors.muted,
+                ),
               ),
             ),
           ],
@@ -1482,23 +1421,73 @@ class _ImageView extends ConsumerWidget {
   }
 }
 
-class _TitleField extends StatefulWidget {
-  const _TitleField({required this.title, required this.onChanged});
+class DocumentTitleField extends StatefulWidget {
+  const DocumentTitleField({
+    super.key,
+    required this.title,
+    required this.onRename,
+  });
 
   final String title;
-  final ValueChanged<String> onChanged;
+  final Future<String?> Function(String title) onRename;
 
   @override
-  State<_TitleField> createState() => _TitleFieldState();
+  State<DocumentTitleField> createState() => _DocumentTitleFieldState();
 }
 
-class _TitleFieldState extends State<_TitleField> {
+class _DocumentTitleFieldState extends State<DocumentTitleField> {
   late final TextEditingController _controller = TextEditingController(
     text: widget.title,
   );
+  late final FocusNode _focus = FocusNode()..addListener(_onFocusChanged);
+  late String _committedTitle = widget.title;
+  bool _renaming = false;
+
+  @override
+  void didUpdateWidget(DocumentTitleField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.title != _committedTitle) {
+      _committedTitle = widget.title;
+      _setText(widget.title);
+    }
+  }
+
+  void _onFocusChanged() {
+    if (!_focus.hasFocus) unawaited(_commitRename());
+  }
+
+  void _setText(String text) {
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  Future<void> _commitRename() async {
+    if (_renaming) return;
+    final requested = _controller.text.trim();
+    if (requested.isEmpty) {
+      _setText(_committedTitle);
+      return;
+    }
+    if (requested == _committedTitle) return;
+
+    setState(() => _renaming = true);
+    final canonical = await widget.onRename(requested);
+    if (!mounted) return;
+
+    if (canonical == null) {
+      _setText(_committedTitle);
+    } else {
+      _committedTitle = canonical;
+      _setText(canonical);
+    }
+    setState(() => _renaming = false);
+  }
 
   @override
   void dispose() {
+    _focus.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -1508,16 +1497,23 @@ class _TitleFieldState extends State<_TitleField> {
     final colors = context.ds;
     return TextField(
       controller: _controller,
-      onChanged: widget.onChanged,
+      focusNode: _focus,
+      readOnly: _renaming,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) async {
+        await _commitRename();
+        _focus.unfocus();
+      },
+      onTapOutside: (_) => _focus.unfocus(),
       maxLines: 1,
-      style: aleo(size: 24, weight: 600, color: colors.text),
+      style: editorTextStyle(size: 24, weight: 600, color: colors.text),
       cursorColor: colors.text,
       cursorWidth: 1.5,
       decoration: InputDecoration(
         isCollapsed: true,
         border: InputBorder.none,
         hintText: 'Untitled',
-        hintStyle: aleo(size: 24, weight: 600, color: colors.muted),
+        hintStyle: editorTextStyle(size: 24, weight: 600, color: colors.muted),
       ),
     );
   }
@@ -1591,7 +1587,7 @@ class _TableView extends StatelessWidget {
                                     },
                                     cursorColor: colors.text,
                                     cursorWidth: 1.5,
-                                    style: aleo(
+                                    style: editorTextStyle(
                                       size: 14,
                                       height: 1.5,
                                       weight: r == 0 ? 600 : 400,
@@ -1650,7 +1646,7 @@ class _CodeView extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
                   block.language!,
-                  style: aleo(size: 11, color: colors.muted),
+                  style: editorTextStyle(size: 11, color: colors.muted),
                 ),
               ),
             TextField(
@@ -1661,7 +1657,7 @@ class _CodeView extends StatelessWidget {
               maxLines: null,
               cursorColor: colors.text,
               cursorWidth: 1.5,
-              style: aleo(
+              style: editorTextStyle(
                 size: 13,
                 height: 1.5,
                 color: colors.text,
@@ -1696,7 +1692,7 @@ class _AddParagraph extends StatelessWidget {
           height: 28,
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text('+', style: aleo(size: 15, color: color)),
+            child: Text('+', style: uiTextStyle(size: 15, color: color)),
           ),
         ),
       ),
@@ -1722,7 +1718,7 @@ class _Swatches extends StatelessWidget {
       children: [
         SizedBox(
           width: 68,
-          child: Text(label, style: aleo(size: 13, color: ds.text)),
+          child: Text(label, style: uiTextStyle(size: 13, color: ds.text)),
         ),
         for (final hex in colors)
           GestureDetector(
@@ -1746,7 +1742,7 @@ class _Swatches extends StatelessWidget {
             Navigator.of(context).pop();
             onPick(null);
           },
-          child: Text('none', style: aleo(size: 11, color: ds.muted)),
+          child: Text('none', style: uiTextStyle(size: 11, color: ds.muted)),
         ),
       ],
     );

@@ -34,6 +34,7 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
   }
 
   final Ref _ref;
+  static const _saveDelay = Duration(milliseconds: 400);
 
   Future<void> _restore() async {
     final store = await _ref.read(appStoreProvider.future);
@@ -47,8 +48,9 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
 
   /// [available] is the width the three panes and their handles share, so a
   /// drag can be stopped before the editor is squeezed out.
-  void dragRail(double delta, double available) {
-    final headroom = available - state.panel - PaneWidths.minEditor;
+  void dragRail(double delta, double available, {double? reservedPanelWidth}) {
+    final headroom =
+        available - (reservedPanelWidth ?? state.panel) - PaneWidths.minEditor;
     final rail = (state.rail + delta)
         .clamp(PaneWidths.minRail, PaneWidths.maxRail)
         .clamp(
@@ -72,7 +74,7 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
   void _set(PaneWidths widths) {
     state = widths;
     _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(milliseconds: 400), () async {
+    _saveDebounce = Timer(_saveDelay, () async {
       final store = await _ref.read(appStoreProvider.future);
       await store.setPaneWidth('rail', state.rail);
       await store.setPaneWidth('panel', state.panel);

@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:dayseven/shared/kb/paths.dart';
+
 /// Small pieces of app-level state that belong to the installation rather than
 /// to any Knowledge Base: the list of recently opened bundles.
 class AppStore {
@@ -68,26 +70,101 @@ class AppStore {
     await _write(data);
   }
 
+  /// Visibility of optional shell panes. Unknown and malformed values are
+  /// ignored so older or hand-edited settings keep the default layout.
+  Future<Map<String, bool>> paneVisibility() async {
+    final raw = (await _read())['paneVisibility'];
+    if (raw is! Map<String, Object?>) return {};
+    return {
+      for (final entry in raw.entries)
+        if (entry.value is bool) entry.key: entry.value! as bool,
+    };
+  }
+
+  Future<void> setPaneVisibility(String pane, bool visible) async {
+    final data = await _read();
+    final raw = data['paneVisibility'];
+    final visibility = raw is Map<String, Object?>
+        ? Map<String, Object?>.from(raw)
+        : <String, Object?>{};
+    visibility[pane] = visible;
+    data['paneVisibility'] = visibility;
+    await _write(data);
+  }
+
   /// Recent documents are tracked per Knowledge Base, keyed by its id, so
   /// moving a bundle between machines does not lose the list.
   Future<List<String>> recentDocuments(String kbId) async =>
-      (((await _read())['recentDocuments'] as Map<String, Object?>? ??
-                      const {})[kbId]
-                  as List<Object?>? ??
-              const [])
-          .cast<String>();
+      _documentList('recentDocuments', kbId);
+
+  Future<List<String>> recentEditedDocuments(String kbId) async =>
+      _documentList('recentEditedDocuments', kbId);
 
   Future<void> noteDocumentOpened(String kbId, String relativePath) async {
+    await _updateDocumentLists(['recentDocuments'], kbId, (current) {
+      final next = current.where((path) => path != relativePath).toList()
+        ..insert(0, relativePath);
+      return next.take(20).toList();
+    });
+  }
+
+  Future<void> noteDocumentEdited(String kbId, String relativePath) async {
+    await _updateDocumentLists(['recentEditedDocuments'], kbId, (current) {
+      final next = current.where((path) => path != relativePath).toList()
+        ..insert(0, relativePath);
+      return next.take(20).toList();
+    });
+  }
+
+  /// Repoints recent-document entries after a file or a containing folder is
+  /// moved. Their order is preserved and duplicate paths are collapsed.
+  Future<void> noteDocumentsMoved(
+    String kbId,
+    String fromPath,
+    String toPath,
+  ) async {
+    await _updateDocumentLists(
+      ['recentDocuments', 'recentEditedDocuments'],
+      kbId,
+      (current) {
+        final moved = <String>{
+          for (final path in current)
+            relocatePath(path, from: fromPath, to: toPath),
+        };
+        return moved.toList();
+      },
+    );
+  }
+
+  /// Removes a deleted document, or every document below a deleted folder,
+  /// from the recent list for this Knowledge Base.
+  Future<void> noteDocumentsDeleted(String kbId, String deletedPath) async {
+    await _updateDocumentLists(
+      ['recentDocuments', 'recentEditedDocuments'],
+      kbId,
+      (current) =>
+          current.where((path) => !isPathAtOrBelow(path, deletedPath)).toList(),
+    );
+  }
+
+  Future<List<String>> _documentList(String key, String kbId) async {
     final data = await _read();
-    final all = (data['recentDocuments'] as Map<String, Object?>? ?? {});
-    final list =
-        (all[kbId] as List<Object?>? ?? const [])
-            .cast<String>()
-            .where((e) => e != relativePath)
-            .toList()
-          ..insert(0, relativePath);
-    all[kbId] = list.take(20).toList();
-    data['recentDocuments'] = all;
+    final all = data[key] as Map<String, Object?>? ?? const {};
+    return (all[kbId] as List<Object?>? ?? const []).cast<String>();
+  }
+
+  Future<void> _updateDocumentLists(
+    List<String> keys,
+    String kbId,
+    List<String> Function(List<String> current) update,
+  ) async {
+    final data = await _read();
+    for (final key in keys) {
+      final all = (data[key] as Map<String, Object?>? ?? {});
+      final current = (all[kbId] as List<Object?>? ?? const []).cast<String>();
+      all[kbId] = update(current);
+      data[key] = all;
+    }
     await _write(data);
   }
 }

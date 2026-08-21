@@ -21,7 +21,7 @@ const Format kPlainFormat = TextSpanNode(text: '');
 /// Here rather than in the editor for the reason this file exists: the diff
 /// view draws the same headings read-only and must not pull in the editing
 /// controller to do it.
-TextStyle headingStyle(int level, Color color) => aleo(
+TextStyle headingStyle(int level, Color color) => editorTextStyle(
   size: switch (level) {
     1 => 26,
     2 => 22,

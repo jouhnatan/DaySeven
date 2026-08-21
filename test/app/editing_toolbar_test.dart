@@ -7,13 +7,17 @@ library;
 
 import 'dart:io';
 
-import 'package:dayseven/app/service.dart';
-import 'package:dayseven/app/shell/editing_toolbar.dart';
+import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/shell/shell.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
+import 'package:dayseven/features/editor/ui/rich_controller.dart';
+import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,6 +31,11 @@ void main() {
 
   late Directory temp;
   late Directory support;
+
+  Finder paragraphField() => find.byWidgetPredicate(
+    (widget) => widget is TextField && widget.controller is RichTextController,
+    description: 'document paragraph TextField',
+  );
 
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('dayseven_toolbar');
@@ -50,7 +59,7 @@ void main() {
     if (await support.exists()) await support.delete(recursive: true);
   });
 
-  /// Opens the shell on the Editor service with one two-paragraph document.
+  /// Opens the shell on the Editor view with one two-paragraph document.
   Future<ProviderContainer> openEditor(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1100, 700);
     tester.view.devicePixelRatio = 1;
@@ -80,7 +89,7 @@ void main() {
       );
       await container.read(kbControllerProvider.notifier).refreshTree();
       await container.read(documentControllerProvider.notifier).open(path);
-      container.read(serviceProvider.notifier).state = DsService.editor;
+      container.read(viewProvider.notifier).state = DsView.editor;
     });
 
     await tester.pumpWidget(
@@ -102,7 +111,7 @@ void main() {
     await tester.tap(find.text('The first age ended.'));
     await tester.pumpAndSettle();
 
-    final field = tester.widget<TextField>(find.byType(TextField).last);
+    final field = tester.widget<TextField>(paragraphField());
     field.controller!.selection = TextSelection(
       baseOffset: 0,
       extentOffset: length,
@@ -133,20 +142,117 @@ void main() {
     await settle(tester, container);
   });
 
-  testWidgets('it never grows taller than Differences', (tester) async {
+  testWidgets('its island follows the editor width while buttons stay intact', (
+    tester,
+  ) async {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 3);
 
-    final toolbar = tester.getRect(find.byType(EditingToolbar));
-    final differences = tester.getRect(find.byType(DifferencesButton));
-
-    expect(
-      toolbar.height,
-      lessThanOrEqualTo(differences.height),
-      reason:
-          'a taller toolbar would recentre the bar and move Differences, '
-          'which two shell tests measure their spacing from',
+    final editorIsland = find.ancestor(
+      of: find.byType(EditorScreen),
+      matching: find.byType(DsIsland),
     );
+    final toolbarIsland = find.byKey(const Key('editing-toolbar-island'));
+
+    Rect editorRect() => tester.getRect(editorIsland);
+    Rect toolbarRect() => tester.getRect(toolbarIsland);
+
+    expect(toolbarRect().left, editorRect().left);
+    expect(toolbarRect().right, editorRect().right);
+    expect(
+      find.ancestor(
+        of: find.byIcon(Icons.format_bold),
+        matching: find.byType(DsButton),
+      ),
+      findsOneWidget,
+      reason: 'wrapping the toolbar must not flatten its buttons',
+    );
+
+    final editorBefore = editorRect();
+    final toolbarBefore = toolbarRect();
+    await tester.dragFrom(
+      Offset(
+        editorBefore.right + DsSpace.islandGap / 2,
+        editorBefore.center.dy,
+      ),
+      const Offset(-80, 0),
+    );
+    await tester.pumpAndSettle();
+
+    final editorAfter = editorRect();
+    final toolbarAfter = toolbarRect();
+    expect(editorAfter.width, isNot(editorBefore.width));
+    expect(toolbarAfter.width, editorAfter.width);
+    expect(
+      toolbarAfter.width - toolbarBefore.width,
+      closeTo(editorAfter.width - editorBefore.width, 0.5),
+    );
+
+    // Let the persisted pane-width debounce finish before disposing the test
+    // container.
+    await tester.pump(const Duration(milliseconds: 450));
+    await settle(tester, container);
+  });
+
+  testWidgets('Differences lives in the toolbar ellipsis menu', (tester) async {
+    final container = await openEditor(tester);
+    await selectInParagraph(tester, 3);
+
+    expect(find.text('Differences'), findsNothing);
+    await tester.tap(find.byTooltip('Editor menu'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
+    expect(find.text('Differences'), findsOneWidget);
+
+    await tester.tapAt(const Offset(1, 1));
+    await tester.pumpAndSettle();
+    await settle(tester, container);
+  });
+
+  testWidgets('text modifier tooltips show their Windows keybinds', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final container = await openEditor(tester);
+      await selectInParagraph(tester, 3);
+
+      for (final (icon, message) in const [
+        (Icons.format_bold, 'Bold (CTRL+B)'),
+        (Icons.format_italic, 'Italics (CTRL+I)'),
+        (Icons.format_underlined, 'Underline (CTRL+U)'),
+        (Icons.format_strikethrough, 'Strikethrough (CTRL+SHIFT+X)'),
+      ]) {
+        final tooltip = tester.widget<Tooltip>(
+          find.ancestor(of: find.byIcon(icon), matching: find.byType(Tooltip)),
+        );
+        expect(tooltip.message, message);
+      }
+
+      await settle(tester, container);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('the island leaves breathing room around every button', (
+    tester,
+  ) async {
+    final container = await openEditor(tester);
+    await selectInParagraph(tester, 3);
+
+    final island = tester.getRect(
+      find.byKey(const Key('editing-toolbar-island')),
+    );
+    final toolbar = tester.getRect(find.byType(EditingToolbar));
+    final menu = tester.getRect(find.byType(EditorToolbarMenuButton));
+
+    expect(toolbar.height, lessThanOrEqualTo(menu.height));
+    expect(toolbar.top - island.top, greaterThanOrEqualTo(6));
+    expect(island.bottom - toolbar.bottom, greaterThanOrEqualTo(6));
+    expect(menu.top - island.top, greaterThanOrEqualTo(6));
+    expect(island.bottom - menu.bottom, greaterThanOrEqualTo(6));
     await settle(tester, container);
   });
 
@@ -174,10 +280,10 @@ void main() {
     await tester.tap(find.byIcon(Icons.format_bold));
     await tester.pumpAndSettle();
 
-    final bold = tester.widget<RoundedControl>(
+    final bold = tester.widget<DsButton>(
       find.ancestor(
         of: find.byIcon(Icons.format_bold),
-        matching: find.byType(RoundedControl),
+        matching: find.byType(DsButton),
       ),
     );
     expect(bold.active, isTrue);
@@ -185,25 +291,44 @@ void main() {
     await settle(tester, container);
   });
 
-  testWidgets('format buttons are disabled with nothing selected', (
+  testWidgets('format buttons set the format for text typed at the caret', (
     tester,
   ) async {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 0); // collapsed caret
 
-    final bold = tester.widget<RoundedControl>(
+    final bold = tester.widget<DsButton>(
       find.ancestor(
         of: find.byIcon(Icons.format_bold),
-        matching: find.byType(RoundedControl),
+        matching: find.byType(DsButton),
       ),
     );
-    expect(bold.onPressed, isNull);
+    expect(bold.onPressed, isNotNull);
+
+    await tester.tap(find.byIcon(Icons.format_bold));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(paragraphField());
+    final controller = field.controller! as RichTextController;
+    controller.value = TextEditingValue(
+      text: 'A${controller.text}',
+      selection: const TextSelection.collapsed(offset: 1),
+    );
+    await tester.pumpAndSettle();
+
+    final firstSpan =
+        (container.read(documentControllerProvider)!.document.blocks.first
+                as ParagraphBlock)
+            .spans
+            .first;
+    expect(firstSpan.text, 'A');
+    expect(firstSpan.bold, isTrue);
 
     // Alignment acts on the block, so it stays available.
-    final left = tester.widget<RoundedControl>(
+    final left = tester.widget<DsButton>(
       find.ancestor(
         of: find.byIcon(Icons.format_align_left),
-        matching: find.byType(RoundedControl),
+        matching: find.byType(DsButton),
       ),
     );
     expect(left.onPressed, isNotNull);
@@ -215,13 +340,13 @@ void main() {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 3);
 
-    final before = tester.widget<TextField>(find.byType(TextField).last);
+    final before = tester.widget<TextField>(paragraphField());
     expect(before.focusNode!.hasFocus, isTrue);
 
     await tester.tap(find.byIcon(Icons.format_bold));
     await tester.pumpAndSettle();
 
-    final after = tester.widget<TextField>(find.byType(TextField).last);
+    final after = tester.widget<TextField>(paragraphField());
     expect(
       after.focusNode!.hasFocus,
       isTrue,

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -8,6 +9,7 @@ import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,6 +44,9 @@ Future<(ProviderContainer, KnowledgeBase, String)> openEditor(
     if (seed != null) {
       await kb.writeDocument(path, seed);
     }
+    final document = await kb.readDocument(path);
+    session.index.upsert(path, document);
+    await container.read(kbControllerProvider.notifier).refreshTree();
     await container.read(documentControllerProvider.notifier).open(path);
   });
 
@@ -152,6 +157,172 @@ void main() {
     );
   });
 
+  testWidgets('Windows text modifier keybinds format the selection', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final (container, _, _) = await openEditor(
+        tester,
+        temp,
+        seed: seedWith('The Fen'),
+      );
+      final field = find.byType(TextField).last;
+      await tester.tap(field);
+      final controller =
+          tester.widget<TextField>(field).controller! as RichTextController;
+      controller.selection = const TextSelection(
+        baseOffset: 0,
+        extentOffset: 3,
+      );
+      await tester.pump();
+
+      Future<void> press(LogicalKeyboardKey key, {bool shift = false}) async {
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        if (shift) {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        }
+        await tester.sendKeyEvent(key);
+        if (shift) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        }
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pump();
+      }
+
+      await press(LogicalKeyboardKey.keyB);
+      await press(LogicalKeyboardKey.keyI);
+      await press(LogicalKeyboardKey.keyU);
+      await press(LogicalKeyboardKey.keyX, shift: true);
+
+      final formatted =
+          (container.read(documentControllerProvider)!.document.blocks.first
+                  as ParagraphBlock)
+              .spans
+              .first;
+      expect(formatted.text, 'The');
+      expect(formatted.bold, isTrue);
+      expect(formatted.italic, isTrue);
+      expect(formatted.underline, isTrue);
+      expect(formatted.strikethrough, isTrue);
+
+      await tester.runAsync(
+        () => container.read(documentControllerProvider.notifier).flush(),
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('Windows keybinds set and toggle the format for future typing', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final (container, _, _) = await openEditor(
+        tester,
+        temp,
+        seed: seedWith('Plain:'),
+      );
+      final field = find.byType(TextField).last;
+      await tester.tap(field);
+      final controller =
+          tester.widget<TextField>(field).controller! as RichTextController;
+      controller.selection = const TextSelection.collapsed(offset: 6);
+      await tester.pump();
+
+      Future<void> press(LogicalKeyboardKey key, {bool shift = false}) async {
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        if (shift) {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        }
+        await tester.sendKeyEvent(key);
+        if (shift) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        }
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pump();
+      }
+
+      await press(LogicalKeyboardKey.keyB);
+      await press(LogicalKeyboardKey.keyI);
+      await press(LogicalKeyboardKey.keyU);
+      await press(LogicalKeyboardKey.keyX, shift: true);
+
+      controller.value = const TextEditingValue(
+        text: 'Plain:styled',
+        selection: TextSelection.collapsed(offset: 12),
+      );
+      await tester.pump();
+
+      await press(LogicalKeyboardKey.keyB); // Bold off; the others stay on.
+      controller.value = const TextEditingValue(
+        text: 'Plain:styled more',
+        selection: TextSelection.collapsed(offset: 17),
+      );
+      await tester.pump();
+
+      final spans =
+          (container.read(documentControllerProvider)!.document.blocks.first
+                  as ParagraphBlock)
+              .spans;
+      expect(spans.map((span) => span.text), ['Plain:', 'styled', ' more']);
+      expect(spans[1].bold, isTrue);
+      expect(spans[1].italic, isTrue);
+      expect(spans[1].underline, isTrue);
+      expect(spans[1].strikethrough, isTrue);
+      expect(spans[2].bold, isFalse);
+      expect(spans[2].italic, isTrue);
+      expect(spans[2].underline, isTrue);
+      expect(spans[2].strikethrough, isTrue);
+
+      await tester.runAsync(
+        () => container.read(documentControllerProvider.notifier).flush(),
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('a future typing format continues into a new block', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final (container, _, _) = await openEditor(
+        tester,
+        temp,
+        seed: seedWith(''),
+      );
+      await tester.tap(find.byType(TextField).last);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byType(TextField).last);
+      field.controller!.value = const TextEditingValue(
+        text: 'Still bold',
+        selection: TextSelection.collapsed(offset: 10),
+      );
+      await tester.pump();
+
+      final document = container.read(documentControllerProvider)!.document;
+      expect(document.blocks, hasLength(2));
+      expect(
+        (document.blocks.last as ParagraphBlock).spans.single.bold,
+        isTrue,
+      );
+
+      await tester.runAsync(
+        () => container.read(documentControllerProvider.notifier).flush(),
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('the block model keeps one paragraph per block', (tester) async {
     final (container, _, _) = await openEditor(
       tester,
@@ -184,22 +355,121 @@ void main() {
     );
   });
 
-  testWidgets('the title is editable and saved', (tester) async {
+  testWidgets('submitting the title renames the file everywhere', (
+    tester,
+  ) async {
     final (container, kb, path) = await openEditor(tester, temp);
 
     await tester.enterText(find.byType(TextField).first, 'The Fen Road');
     await tester.pump();
 
-    late BlockDocument onDisk;
     await tester.runAsync(() async {
-      await container.read(documentControllerProvider.notifier).flush();
-      onDisk = await kb.readDocument(path);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      final renamed = File(kb.absolutePathFor('The Fen Road.md'));
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (!renamed.existsSync() && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
     });
+    await tester.pumpAndSettle();
 
-    expect(onDisk.title, 'The Fen Road');
+    const renamedPath = 'The Fen Road.md';
+    expect(File(kb.absolutePathFor(path)).existsSync(), isFalse);
+    expect(File(kb.absolutePathFor(renamedPath)).existsSync(), isTrue);
+    final onDisk = await tester.runAsync(() => kb.readDocument(renamedPath));
+    expect(onDisk?.title, 'The Fen Road');
+    expect(
+      container.read(documentControllerProvider)?.relativePath,
+      renamedPath,
+    );
+
+    final session = container.read(kbSessionProvider)!;
+    expect((session.tree.single as KbFile).displayName, 'The Fen Road');
+    expect(session.index.search('Aldenmoor'), isEmpty);
+    expect(session.index.search('Fen Road').single.relativePath, renamedPath);
+
+    final store = await tester.runAsync(
+      () => container.read(appStoreProvider.future),
+    );
+    final recents = await tester.runAsync(
+      () => store!.recentDocuments(session.kb.manifest.kbId),
+    );
+    expect(recents, contains(renamedPath));
+    expect(recents, isNot(contains(path)));
+  });
+
+  testWidgets('the title divider is inset and leaves the canvas unchanged', (
+    tester,
+  ) async {
+    await openEditor(tester, temp, brightness: Brightness.light);
+
+    final editor = tester.getRect(find.byType(EditorScreen));
+    final title = tester.getRect(find.byType(DocumentTitleField));
+    final dividerFinder = find.byKey(const Key('editor-title-content-divider'));
+    final divider = tester.getRect(dividerFinder);
+    final line = tester.widget<ColoredBox>(dividerFinder);
+
+    expect(divider.top, greaterThan(title.bottom));
+    expect(divider.left, greaterThan(editor.left));
+    expect(divider.right, lessThan(editor.right));
+    expect(divider.height, 1);
+    expect(line.color, DsColors.light.border);
+    expect(
+      Theme.of(tester.element(find.byType(EditorScreen)))
+          .extension<DsColors>()!
+          .editorSurface,
+      DsColors.light.editorSurface,
+      reason: 'the title separator does not introduce another surface fill',
+    );
+  });
+
+  testWidgets('leaving the title field commits its rename', (tester) async {
+    String? requested;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: dsTheme(Brightness.dark),
+        home: Scaffold(
+          body: Column(
+            children: [
+              DocumentTitleField(
+                key: const Key('title'),
+                title: 'Aldenmoor',
+                onRename: (title) async {
+                  requested = title;
+                  return title;
+                },
+              ),
+              const TextField(key: Key('body')),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byKey(const Key('title')), 'The Fen Road');
+    await tester.tap(find.byKey(const Key('body')));
+    await tester.pumpAndSettle();
+
+    expect(requested, 'The Fen Road');
   });
 
   group('rich text controller', () {
+    test('moving the caret clears an explicit future typing format', () {
+      final controller = RichTextController(
+        spans: const [TextSpanNode(text: 'Plain')],
+      );
+      controller.selection = const TextSelection.collapsed(offset: 5);
+      controller.setTypingFormat(
+        controller.formatForTypingAt(5).copyWith(bold: true),
+      );
+
+      expect(controller.formatForTypingAt(5).bold, isTrue);
+
+      controller.selection = const TextSelection.collapsed(offset: 0);
+
+      expect(controller.formatForTypingAt(0).bold, isFalse);
+    });
+
     test('bold applied to a selection survives editing elsewhere', () {
       final controller = RichTextController(
         spans: const [TextSpanNode(text: 'The moor is wide.')],

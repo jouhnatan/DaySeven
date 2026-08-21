@@ -45,16 +45,11 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
     final colors = context.ds;
 
     return DsDialog(
-      actions: [
-        TextButton(
-          onPressed: _invite,
-          child: Text('Invite', style: aleo(size: 13, color: colors.text)),
-        ),
-      ],
+      actions: [DsDialogAction(label: 'Invite', onPressed: _invite)],
       children: [
         Text(
           'They choose their own folder for this Knowledge Base.',
-          style: aleo(size: 12, color: colors.muted),
+          style: uiTextStyle(size: 12, color: colors.muted),
         ),
         const SizedBox(height: 8),
         DsField(controller: _username, hint: 'Username'),

@@ -39,6 +39,11 @@ bool isDocumentPath(String path) =>
     path.endsWith(kDocumentExtension) ||
     path.endsWith(kLegacyDocumentExtension);
 
+/// The user-facing title of a document is its file name without the document
+/// extension. The relative path is always POSIX-style, even on Windows.
+String documentTitleFromPath(String relativePath) =>
+    p.posix.basenameWithoutExtension(relativePath);
+
 const _uuid = Uuid();
 
 String newId() => _uuid.v7();
@@ -93,17 +98,22 @@ class KbFolder extends KbNode {
 }
 
 class KbFile extends KbNode {
-  const KbFile({
-    required super.name,
-    required super.relativePath,
-    required this.modifiedAt,
-  });
-
-  final DateTime modifiedAt;
+  const KbFile({required super.name, required super.relativePath});
 
   /// The document title as shown in the tree: the file name without extension.
   String get displayName => p.basenameWithoutExtension(name);
 }
+
+/// Depth-first traversal shared by indexing, syncing, and workspace state.
+Iterable<KbNode> walkKbTree(Iterable<KbNode> nodes) sync* {
+  for (final node in nodes) {
+    yield node;
+    if (node is KbFolder) yield* walkKbTree(node.children);
+  }
+}
+
+Iterable<String> documentPathsIn(Iterable<KbNode> nodes) =>
+    walkKbTree(nodes).whereType<KbFile>().map((file) => file.relativePath);
 
 class KnowledgeBase {
   KnowledgeBase({required this.rootPath, required this.manifest});
@@ -347,13 +357,7 @@ class KnowledgeBase {
           ),
         );
       } else if (entity is File && isDocumentPath(name)) {
-        files.add(
-          KbFile(
-            name: name,
-            relativePath: childRelative,
-            modifiedAt: (await entity.stat()).modified,
-          ),
-        );
+        files.add(KbFile(name: name, relativePath: childRelative));
       }
     }
 
@@ -397,7 +401,7 @@ class KnowledgeBase {
     required String title,
     String folderRelativePath = '',
   }) async {
-    final fileName = '${_sanitizeFileName(title)}$kDocumentExtension';
+    final fileName = '${sanitizeNodeName(title)}$kDocumentExtension';
     final relativePath = folderRelativePath.isEmpty
         ? fileName
         : '$folderRelativePath/$fileName';
@@ -419,6 +423,80 @@ class KnowledgeBase {
 
   Future<void> createFolder(String relativePath) =>
       Directory(absolutePathFor(relativePath)).create(recursive: true);
+
+  /// Renames one document within its current folder and keeps the title stored
+  /// in the document in step with the Markdown file name.
+  Future<String> renameDocument(
+    String relativePath,
+    String requestedName,
+  ) async {
+    if (!isDocumentPath(relativePath)) {
+      throw const KbException('Only documents can be renamed here.');
+    }
+
+    var name = requestedName.trim();
+    for (final extension in [kDocumentExtension, kLegacyDocumentExtension]) {
+      if (name.toLowerCase().endsWith(extension)) {
+        name = name.substring(0, name.length - extension.length);
+        break;
+      }
+    }
+
+    final title = sanitizeNodeName(name);
+    final extension = relativePath.endsWith(kLegacyDocumentExtension)
+        ? kLegacyDocumentExtension
+        : kDocumentExtension;
+    final folder = p.posix.dirname(relativePath);
+    final fileName = '$title$extension';
+    final destination = folder == '.'
+        ? fileName
+        : p.posix.join(folder, fileName);
+    final from = absolutePathFor(relativePath);
+
+    if (await FileSystemEntity.type(from) != FileSystemEntityType.file) {
+      throw const KbException('That document is no longer there.');
+    }
+
+    // Do not let the two supported document formats shadow one another with
+    // the same visible name. Case-only renames are allowed when both paths
+    // identify the source file on a case-insensitive filesystem.
+    for (final candidateExtension in [
+      kDocumentExtension,
+      kLegacyDocumentExtension,
+    ]) {
+      final candidateName = '$title$candidateExtension';
+      final candidate = folder == '.'
+          ? candidateName
+          : p.posix.join(folder, candidateName);
+      final candidatePath = absolutePathFor(candidate);
+      if (await FileSystemEntity.type(candidatePath) ==
+          FileSystemEntityType.notFound) {
+        continue;
+      }
+
+      var isSource = candidate == relativePath;
+      if (!isSource) {
+        try {
+          isSource = await FileSystemEntity.identical(from, candidatePath);
+        } on FileSystemException {
+          isSource = false;
+        }
+      }
+      if (!isSource) {
+        throw KbException('A document called "$title" is already there.');
+      }
+    }
+
+    if (destination != relativePath) {
+      await File(from).rename(absolutePathFor(destination));
+    }
+
+    final document = await readDocument(destination);
+    if (document.title != title) {
+      await writeDocument(destination, document.copyWith(title: title));
+    }
+    return destination;
+  }
 
   /// Moves a document or folder into [targetFolderRelativePath] (empty for the
   /// top level) and returns its new path.
@@ -466,9 +544,44 @@ class KnowledgeBase {
     return destination;
   }
 
-  Future<void> deleteDocument(String relativePath) async {
-    final file = File(absolutePathFor(relativePath));
-    if (await file.exists()) await file.delete();
+  /// Permanently deletes one visible file or folder from the Knowledge Base.
+  ///
+  /// This method accepts only the canonical, POSIX-style relative paths that
+  /// [readTree] returns. The checks are intentionally repeated here, at the
+  /// filesystem boundary, because deleting a directory is recursive.
+  Future<void> deleteNode(String relativePath) async {
+    final normalized = p.posix.normalize(relativePath);
+    final segments = p.posix.split(relativePath);
+    final isUnsafe =
+        relativePath.isEmpty ||
+        normalized == '.' ||
+        normalized != relativePath ||
+        p.posix.isAbsolute(relativePath) ||
+        p.windows.isAbsolute(relativePath) ||
+        segments.isEmpty ||
+        segments.any((part) => part == '.' || part == '..') ||
+        segments.first == kSettingsDirName;
+    if (isUnsafe) {
+      throw const KbException('That item cannot be deleted.');
+    }
+
+    final target = absolutePathFor(relativePath);
+    if (!p.isWithin(documentsPath, target)) {
+      throw const KbException('That item cannot be deleted.');
+    }
+
+    switch (await FileSystemEntity.type(target, followLinks: false)) {
+      case FileSystemEntityType.file:
+        await File(target).delete();
+      case FileSystemEntityType.directory:
+        await Directory(target).delete(recursive: true);
+      case FileSystemEntityType.link:
+        await Link(target).delete();
+      case FileSystemEntityType.notFound:
+        throw const KbException('That item is no longer there.');
+      default:
+        throw const KbException('That item cannot be deleted.');
+    }
   }
 
   // ---------------------------------------------------------------- assets --
@@ -484,13 +597,20 @@ class KnowledgeBase {
 }
 
 /// Strips characters that are illegal in a file name on either platform.
-String _sanitizeFileName(String title) {
+String sanitizeNodeName(String title) {
   final cleaned = title
       .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   final trimmed = cleaned.replaceAll(RegExp(r'\.+$'), '');
-  return trimmed.isEmpty ? 'Untitled' : trimmed;
+  if (trimmed.isEmpty) return 'Untitled';
+
+  // Windows reserves these device names even when an extension follows them.
+  final firstSegment = trimmed.split('.').first.toUpperCase();
+  if (RegExp(r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$').hasMatch(firstSegment)) {
+    return '_$trimmed';
+  }
+  return trimmed;
 }
 
 class KbException implements Exception {

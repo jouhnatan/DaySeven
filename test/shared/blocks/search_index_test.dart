@@ -55,6 +55,69 @@ void main() {
       expect(index.search('nothinghere'), isEmpty);
     });
 
+    test('uses the Markdown file name instead of its embedded title', () async {
+      final kb = await KnowledgeBase.create(folder: temp.path, name: 'MyWorld');
+      final path = await kb.createDocument(title: 'Aldric');
+      final document = await kb.readDocument(path);
+      await kb.writeDocument(
+        path,
+        document.copyWith(title: 'An Outdated Embedded Title'),
+      );
+
+      final index = await SearchIndex.openFor(kb);
+      addTearDown(index.close);
+      await index.rebuild();
+
+      final hits = index.search('Aldric');
+      expect(hits, hasLength(1));
+      expect(hits.single.relativePath, 'Aldric.md');
+      expect(hits.single.title, 'Aldric');
+      expect(index.search('Outdated'), isEmpty);
+    });
+
+    test('updates the searchable title when a file is renamed', () async {
+      final kb = await KnowledgeBase.create(folder: temp.path, name: 'MyWorld');
+      final path = await kb.createDocument(title: 'Aldric');
+      final index = await SearchIndex.openFor(kb);
+      addTearDown(index.close);
+      await index.rebuild();
+
+      index.rename(path, 'Characters/The Gatekeeper.md');
+
+      expect(index.search('Aldric'), isEmpty);
+      final hits = index.search('Gatekeeper');
+      expect(hits, hasLength(1));
+      expect(hits.single.relativePath, 'Characters/The Gatekeeper.md');
+      expect(hits.single.title, 'The Gatekeeper');
+    });
+
+    test('honours a bounded result limit without binding an integer', () async {
+      final kb = await KnowledgeBase.create(folder: temp.path, name: 'MyWorld');
+      for (var i = 0; i < 3; i++) {
+        final path = await kb.createDocument(title: 'Causeway $i');
+        final doc = await kb.readDocument(path);
+        await kb.writeDocument(
+          path,
+          doc.copyWith(
+            blocks: [
+              ParagraphBlock(
+                id: newId(),
+                spans: const [TextSpanNode(text: 'The causeway remains.')],
+              ),
+            ],
+          ),
+        );
+      }
+
+      final index = await SearchIndex.openFor(kb);
+      addTearDown(index.close);
+      await index.rebuild();
+
+      expect(index.search('causeway', limit: 2), hasLength(2));
+      expect(index.search('causeway', limit: 0), hasLength(1));
+      expect(index.search('causeway', limit: 1000), hasLength(3));
+    });
+
     test('upsert reflects an edit without a full rebuild', () async {
       final kb = await KnowledgeBase.create(folder: temp.path, name: 'MyWorld');
       final path = await kb.createDocument(title: 'Aldenmoor');

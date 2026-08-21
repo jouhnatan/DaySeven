@@ -30,18 +30,19 @@ lib/
   main.dart      Boots Supabase and runs the app
   app/           The composition root — the one place features meet
     app.dart       MaterialApp and the first-run install check
-    service.dart   Which service the rail is showing
+    view.dart      Which workspace view is selected
     app_store.dart Per-installation state: recents, pane widths
-    shell/         The three-pane frame and its service rail
+    shell/         The three-pane frame and resizable pane state
     workspace/     What is currently open: the Knowledge Base, the document,
                    and the sharing that syncs them
   features/      One folder per feature: ui/, plus state/, data/ or domain/
     auth/          The sign-in button
     editor/        The document editor and its rich-text controller
     home/          The landing screen
-    knowledge_base/The KB island, invite and rename dialogs, KB repository
+    knowledge_base/The right-side menu, dialogs, and KB repository
     review/        Diff view, three-way merge, proposals, change sets
     search/        Query state and the search bar
+    views/         The left-side Home and Editor navigation menu
   shared/        Used by more than one feature; depends on no feature
     blocks/        Block model, revisions, the FTS5 search index — pure Dart
     kb/            Knowledge Base bundle: the folder on disk
@@ -49,7 +50,7 @@ lib/
     auth/          Who is signed in
     backend/       Supabase client, error vocabulary, document repository
     platform/      Install-location check
-    ui/            Theme tokens, dialogs, error box, span styling
+    ui/            Theme tokens, controls, menus, dialogs, span styling
 supabase/
   migrations/    Schema, RLS, RPCs, Realtime trigger, Storage bucket
 scripts/         Packaging for macOS (DMG) and Windows (MSIX)
@@ -65,13 +66,23 @@ Three rules, checked by `scripts/check_layers.sh`:
 - **No feature imports another feature.** If two features need to talk, the
   thing they are talking about is usually neither one's: it goes in `shared/`
   if it is a model or a helper, or in `app/` if it coordinates them.
+- **Feature UI does not import `app/shell/`.** A control used by the shell and
+  a feature belongs in `shared/ui/`; the shell is a consumer, not a widget kit.
 - **`app/` may import anything.** It composes the features into an application,
   so it is allowed to know about all of them.
 
 `app/workspace/` holds the open Knowledge Base and the open document. They live
 there rather than in a feature because nearly every feature reads them: the
-editor edits the open document, but search, review, home and the KB island all
+editor edits the open document, but search, review, home and the KB menu all
 read it too.
+
+Application-wide preferences live together in
+`shared/ui/global_settings.dart`. Add future global settings to `DsAppSettings`
+so the composition root can rebuild the whole app from one listenable value.
+Text in controls, menus, navigation and other application chrome must use
+`uiTextStyle`; document titles, prose, headings, tables, captions and code must
+use `editorTextStyle`. Their sizes scale from the independent UI and editor base
+sizes in the global settings rather than from feature-local constants.
 
 ## How a document is stored
 
@@ -160,7 +171,7 @@ diff view compares, so a document has one shape everywhere.
 | A collaborator saves | Their local file is written; nothing upstream changes |
 | They choose *Propose changes* | A `change_set` is created with `base_revision_id` and the full proposed JSON |
 | Realtime fires | A private channel carries only ids and the author's display name — never content |
-| You press *Differences* | The proposal is fetched and shown: your file left, the proposal right |
+| You open the toolbar's ellipsis menu and choose *Differences* | The proposal is fetched and shown: your file left, the proposal right |
 | **Approve** | A three-way merge runs, then one server-side transaction writes the new revision; only then is your file rewritten |
 | **Reject** | The proposal is marked rejected. No revision is written, your file is untouched |
 | **Return** | The diff closes and the proposal stays pending |
@@ -173,24 +184,30 @@ the block is marked as conflicted in the diff before you approve.
 
 ## Interface
 
-- **Three islands** — the service rail, the editor and the Knowledge Base panel
+- **Three panes** — the Views menu, the editor and the Knowledge Base menu
   are rounded panes on the application background, each a subtle tone apart.
-- **Left rail** — services, not tools: Home and Editor.
+- **Left** — a Geist Pixel heading, *Views*, above a rounded island containing
+  Home and Editor.
 - **Top** — a persistent search bar over the Knowledge Base's local FTS5 index,
   matching as you type.
-- **Right** — a band naming the open Knowledge Base, and beneath it the tree:
+- **Right** — a Geist Pixel *Knowledge Base* heading, a rounded control naming
+  the open folder, and a separate hierarchy island beneath it. The tree shows
   folder and document icons, and a line running down from each folder that
   turns in to meet its children. Drag a document or folder onto another folder
   to move it, or onto the panel background to bring it back out to the top
-  level; the file is renamed on disk, not copied.
-- **Resizing** — drag the gap between any two islands. The editor keeps a
+  level; the file is renamed on disk, not copied. Right-click a document to
+  rename it, or edit its title in the editor and press Enter or click away; the
+  Markdown filename is the canonical title everywhere. Right-click any item to
+  delete it after a permanent-deletion confirmation.
+- **Resizing** — drag the gap between the three panes. The editor keeps a
   minimum width however far you drag, and the widths are remembered between
   sessions.
-- **Bottom** — one control, *Differences*, shown only while the Editor is
-  active, with a subdued dot when a proposal is waiting.
+- **Bottom** — an editor-width toolbar island with extra vertical breathing
+  room. Formatting controls stay as individual buttons; an ellipsis menu holds
+  *Differences* and carries a subdued dot when a proposal is waiting.
 - **Top right** — one rounded button: "Sign in" when signed out, your display
   name when signed in, opening a short menu to change that name or sign out.
-- **Home** — "Welcome back!" in Aleo, and recent files.
+- **Home** — "Welcome back!" in Archivo, and recent files.
 
 Accounts are **username and password**. The username is what a collaborator
 invites you by; the display name is what they see on a proposal. Sharing a

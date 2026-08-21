@@ -11,6 +11,7 @@ library;
 import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
 import 'package:flutter/material.dart';
 
+import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -21,6 +22,10 @@ class RichTextController extends TextEditingController {
       super(text: spans.map((s) => s.text).join());
 
   List<Format> _formats;
+
+  /// An explicit style chosen at a collapsed caret. Unlike the formats in
+  /// [_formats], this belongs to text that has not been inserted yet.
+  Format? _typingFormat;
 
   static List<Format> _explode(List<TextSpanNode> spans) => [
     for (final span in spans)
@@ -57,6 +62,7 @@ class RichTextController extends TextEditingController {
   /// the editor after a proposal is approved.
   void setSpans(List<TextSpanNode> spans) {
     _formats = _explode(spans);
+    _typingFormat = null;
     super.value = TextEditingValue(
       text: spans.map((s) => s.text).join(),
       selection: const TextSelection.collapsed(offset: 0),
@@ -66,7 +72,16 @@ class RichTextController extends TextEditingController {
   @override
   set value(TextEditingValue newValue) {
     if (newValue.text != text) {
-      _formats = _reflow(text, newValue.text, _formats);
+      _formats = _reflow(
+        text,
+        newValue.text,
+        _formats,
+        insertedFormat: _typingFormat,
+      );
+    } else if (newValue.selection != selection) {
+      // A click, arrow key or selection change starts a new typing context.
+      // The effective style will be read from the text beside the new caret.
+      _typingFormat = null;
     }
     super.value = newValue;
   }
@@ -77,8 +92,9 @@ class RichTextController extends TextEditingController {
   static List<Format> _reflow(
     String oldText,
     String newText,
-    List<Format> oldFormats,
-  ) {
+    List<Format> oldFormats, {
+    Format? insertedFormat,
+  }) {
     final diffs = dmp.diff(oldText, newText);
     final out = <Format>[];
     var oldIndex = 0;
@@ -97,11 +113,13 @@ class RichTextController extends TextEditingController {
         case dmp.DIFF_DELETE:
           oldIndex += d.text.length;
         case dmp.DIFF_INSERT:
-          final inherited = out.isNotEmpty
-              ? out.last
-              : (oldIndex < oldFormats.length
-                    ? oldFormats[oldIndex]
-                    : kPlainFormat);
+          final inherited =
+              insertedFormat ??
+              (out.isNotEmpty
+                  ? out.last
+                  : (oldIndex < oldFormats.length
+                        ? oldFormats[oldIndex]
+                        : kPlainFormat));
           for (var i = 0; i < d.text.length; i++) {
             out.add(inherited);
           }
@@ -125,6 +143,64 @@ class RichTextController extends TextEditingController {
   /// — rather than only ask yes-or-no questions about it.
   Format? formatAt(int offset) =>
       offset >= 0 && offset < _formats.length ? _formats[offset] : null;
+
+  /// The style newly inserted characters will receive at [offset].
+  ///
+  /// An explicit toolbar/shortcut choice wins. Otherwise this mirrors
+  /// [_reflow]'s natural inheritance: the character to the left, then the one
+  /// to the right at the start of a block, then plain text.
+  Format formatForTypingAt(int offset) {
+    if (_typingFormat case final format?) return format;
+    final caret = offset.clamp(0, _formats.length);
+    if (caret > 0) return _formats[caret - 1];
+    if (_formats.isNotEmpty) return _formats.first;
+    return kPlainFormat;
+  }
+
+  /// Overrides the style inherited by future insertions at the current caret.
+  void setTypingFormat(Format format) {
+    final normalized = format.copyWith(text: '');
+    if (_typingFormat?.sameFormatting(normalized) ?? false) return;
+    _typingFormat = normalized;
+    notifyListeners();
+  }
+
+  /// Exposed so splitting a block can carry an intentional typing style into
+  /// the newly created block.
+  Format? get explicitTypingFormat => _typingFormat;
+
+  /// Whether [format] is active throughout [selection], or for text typed at a
+  /// collapsed caret. This is the single query path used by editor chrome.
+  bool isFormatActive(EditingFormat format, TextSelection selection) {
+    if (!selection.isValid) return false;
+    if (selection.isCollapsed) {
+      return _formatIsOn(format, formatForTypingAt(selection.extentOffset));
+    }
+
+    final range = TextRange(start: selection.start, end: selection.end);
+    return rangeSatisfies(range, (value) => _formatIsOn(format, value));
+  }
+
+  /// Toggles [format] for the selected characters or for text typed next at a
+  /// collapsed caret.
+  void toggleFormat(EditingFormat format, TextSelection selection) {
+    if (!selection.isValid) return;
+
+    if (selection.isCollapsed) {
+      final current = formatForTypingAt(selection.extentOffset);
+      setTypingFormat(
+        _setFormat(format, current, !_formatIsOn(format, current)),
+      );
+      return;
+    }
+
+    final range = TextRange(start: selection.start, end: selection.end);
+    final turnOn = !rangeSatisfies(
+      range,
+      (value) => _formatIsOn(format, value),
+    );
+    applyToRange(range, (value) => _setFormat(format, value, turnOn));
+  }
 
   /// True when every character in [range] already satisfies [test], which is
   /// what makes a formatting shortcut toggle rather than only ever set.
@@ -174,6 +250,21 @@ class RichTextController extends TextEditingController {
     return TextSpan(style: base, children: children);
   }
 }
+
+bool _formatIsOn(EditingFormat format, Format value) => switch (format) {
+  EditingFormat.bold => value.bold,
+  EditingFormat.italic => value.italic,
+  EditingFormat.strikethrough => value.strikethrough,
+  EditingFormat.underline => value.underline,
+};
+
+Format _setFormat(EditingFormat format, Format value, bool enabled) =>
+    switch (format) {
+      EditingFormat.bold => value.copyWith(bold: enabled),
+      EditingFormat.italic => value.copyWith(italic: enabled),
+      EditingFormat.strikethrough => value.copyWith(strikethrough: enabled),
+      EditingFormat.underline => value.copyWith(underline: enabled),
+    };
 
 /// The colours offered for text and highlight. A small fixed set rather than a
 /// colour picker, to keep the editor's surface area to what is specified.

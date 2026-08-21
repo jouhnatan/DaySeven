@@ -55,7 +55,10 @@ void main() {
     final decoration = container.decoration! as BoxDecoration;
 
     expect(decoration.borderRadius, const BorderRadius.all(DsRadius.control));
-    expect(decoration.border, isNotNull);
+    expect(
+      (decoration.border! as Border).top.color,
+      DsColors.dark.surfaceOutline,
+    );
     expect(decoration.color, DsColors.dark.island);
   });
 

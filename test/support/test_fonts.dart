@@ -1,7 +1,7 @@
 /// Font loading for tests that render.
 ///
-/// `flutter test` ships neither the bundled Aleo nor the Material icon font, so
-/// without this text and icons come out as empty boxes.
+/// `flutter test` does not automatically load the bundled application fonts or
+/// the Material icon font, so without this text and icons render incorrectly.
 library;
 
 import 'dart:io';
@@ -11,14 +11,43 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 Future<void> loadTestFonts() async {
-  final aleo = FontLoader(kEditorFontFamily);
+  final ibmPlexSans = FontLoader(kDefaultFontFamily);
   for (final path in [
-    'assets/fonts/aleo/Aleo.ttf',
-    'assets/fonts/aleo/Aleo-Italic.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-Light.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-LightItalic.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-Regular.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-Italic.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-Medium.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-MediumItalic.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-SemiBold.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-SemiBoldItalic.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-Bold.ttf',
+    'assets/fonts/ibm_plex_sans/IBMPlexSans-BoldItalic.ttf',
   ]) {
-    aleo.addFont(File(path).readAsBytes().then((b) => b.buffer.asByteData()));
+    ibmPlexSans.addFont(
+      File(path).readAsBytes().then((b) => b.buffer.asByteData()),
+    );
   }
-  await aleo.load();
+  await ibmPlexSans.load();
+
+  final archivo = FontLoader('Archivo');
+  for (final path in [
+    'assets/fonts/archivo/Archivo.ttf',
+    'assets/fonts/archivo/Archivo-Italic.ttf',
+  ]) {
+    archivo.addFont(
+      File(path).readAsBytes().then((b) => b.buffer.asByteData()),
+    );
+  }
+  await archivo.load();
+
+  final geistPixel = FontLoader(kUiHeaderFontFamily)
+    ..addFont(
+      File('assets/fonts/geist_pixel/GeistPixel-Square.ttf')
+          .readAsBytes()
+          .then((b) => b.buffer.asByteData()),
+    );
+  await geistPixel.load();
 
   // Skipped when the SDK cannot be located; icons then render as boxes.
   final flutterRoot = Platform.environment['FLUTTER_ROOT'];

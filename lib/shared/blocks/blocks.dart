@@ -55,7 +55,7 @@ class TextSpanNode {
   /// `#RRGGBB`, or null for no highlight.
   final String? highlight;
 
-  /// Font family name, or null for the document default (Aleo).
+  /// Font family name, or null for the document default (IBM Plex Sans).
   final String? font;
 
   /// Link target, or null for ordinary text.
@@ -80,17 +80,31 @@ class TextSpanNode {
       href == other.href &&
       footnote == other.footnote;
 
-  TextSpanNode copyWith({String? text}) => TextSpanNode(
+  /// Copies this run while changing only the supplied formatting properties.
+  /// Nullable values use transformer callbacks so callers can explicitly
+  /// clear a colour, link, or font while omission still means "keep it".
+  TextSpanNode copyWith({
+    String? text,
+    bool? bold,
+    bool? italic,
+    bool? strikethrough,
+    bool? underline,
+    String? Function(String?)? color,
+    String? Function(String?)? highlight,
+    String? Function(String?)? font,
+    String? Function(String?)? href,
+    String? Function(String?)? footnote,
+  }) => TextSpanNode(
     text: text ?? this.text,
-    bold: bold,
-    italic: italic,
-    strikethrough: strikethrough,
-    underline: underline,
-    color: color,
-    highlight: highlight,
-    font: font,
-    href: href,
-    footnote: footnote,
+    bold: bold ?? this.bold,
+    italic: italic ?? this.italic,
+    strikethrough: strikethrough ?? this.strikethrough,
+    underline: underline ?? this.underline,
+    color: color == null ? this.color : color(this.color),
+    highlight: highlight == null ? this.highlight : highlight(this.highlight),
+    font: font == null ? this.font : font(this.font),
+    href: href == null ? this.href : href(this.href),
+    footnote: footnote == null ? this.footnote : footnote(this.footnote),
   );
 
   /// Omits every default so documents stay small and diffs stay readable.
@@ -153,6 +167,9 @@ sealed class Block {
   final double spaceBefore;
 
   Map<String, Object?> toJson();
+
+  bool sameContentAs(Block other) =>
+      const DeepCollectionEquality().equals(toJson(), other.toJson());
 
   /// The block's text, used for merge comparison and the search index.
   String get plainText;

@@ -76,11 +76,17 @@ void main() {
       expect(mid, isNotEmpty, reason: 'expected a fade still in progress');
 
       for (final color in mid) {
-        expect(
-          (color.r, color.g, color.b),
-          (ds.editingBlock.r, ds.editingBlock.g, ds.editingBlock.b),
-          reason: 'the wash drifted off-hue mid-fade, which reads as grey',
-        );
+        for (final (actual, expected) in [
+          (color.r, ds.editingBlock.r),
+          (color.g, ds.editingBlock.g),
+          (color.b, ds.editingBlock.b),
+        ]) {
+          expect(
+            actual,
+            closeTo(expected, 1e-12),
+            reason: 'the wash drifted off-hue mid-fade, which reads as grey',
+          );
+        }
       }
 
       // Let the fade finish, then settle the debounced save the tap starts;

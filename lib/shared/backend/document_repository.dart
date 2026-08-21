@@ -50,6 +50,7 @@ class DocumentRepository {
   /// document's own owner saves, as opposed to proposing a change.
   Future<String> commit({
     required String kbId,
+    required String relativePath,
     required BlockDocument document,
   }) async {
     final user = supabase.auth.currentUser;
@@ -72,7 +73,11 @@ class DocumentRepository {
     final revisionId = revision['id'] as String;
     await supabase
         .from('documents')
-        .update({'current_revision_id': revisionId, 'title': document.title})
+        .update({
+          'current_revision_id': revisionId,
+          'path': relativePath,
+          'title': document.title,
+        })
         .eq('id', document.id);
     return revisionId;
   }

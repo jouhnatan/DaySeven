@@ -10,6 +10,7 @@
 /// from rebuilding the bottom bar; a closure held in the state would defeat it.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/shared/blocks/blocks.dart';
@@ -18,27 +19,23 @@ import 'package:dayseven/shared/blocks/blocks.dart';
 enum EditingFormat { bold, italic, strikethrough, underline }
 
 class EditingFocus {
-  const EditingFocus({
+  EditingFocus({
     required this.blockId,
     required this.hasSelection,
-    required this.bold,
-    required this.italic,
-    required this.strikethrough,
-    required this.underline,
+    required Set<EditingFormat> activeFormats,
     required this.align,
     required this.headingLevel,
-  });
+  }) : activeFormats = Set.unmodifiable(activeFormats);
 
   final String blockId;
 
-  /// Inline formatting needs a range to act on; there is no pending format at
-  /// a collapsed caret. The toolbar disables those buttons when this is false.
+  /// Whether the current formatting state describes a selected range. At a
+  /// collapsed caret, modifiers apply to text typed next instead.
   final bool hasSelection;
 
-  final bool bold;
-  final bool italic;
-  final bool strikethrough;
-  final bool underline;
+  /// Inline modifiers that are active throughout the selection or at the
+  /// collapsed caret's typing position.
+  final Set<EditingFormat> activeFormats;
 
   /// Block-level, so these stay available with no selection.
   final BlockAlign align;
@@ -46,22 +43,14 @@ class EditingFocus {
   /// null when the focused block is body text.
   final int? headingLevel;
 
-  bool isActive(EditingFormat format) => switch (format) {
-    EditingFormat.bold => bold,
-    EditingFormat.italic => italic,
-    EditingFormat.strikethrough => strikethrough,
-    EditingFormat.underline => underline,
-  };
+  bool isActive(EditingFormat format) => activeFormats.contains(format);
 
   @override
   bool operator ==(Object other) =>
       other is EditingFocus &&
       other.blockId == blockId &&
       other.hasSelection == hasSelection &&
-      other.bold == bold &&
-      other.italic == italic &&
-      other.strikethrough == strikethrough &&
-      other.underline == underline &&
+      setEquals(other.activeFormats, activeFormats) &&
       other.align == align &&
       other.headingLevel == headingLevel;
 
@@ -69,10 +58,7 @@ class EditingFocus {
   int get hashCode => Object.hash(
     blockId,
     hasSelection,
-    bold,
-    italic,
-    strikethrough,
-    underline,
+    Object.hashAllUnordered(activeFormats),
     align,
     headingLevel,
   );

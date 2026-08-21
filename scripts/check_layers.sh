@@ -2,7 +2,7 @@
 # Enforces the import rules that lib/'s layout is meant to express:
 #
 #   shared/   may not import app/ or features/ — it is the bottom of the stack
-#   features/ may not import another feature — they meet in app/, not directly
+#   features/ may not import another feature or shell UI
 #   app/      may import anything; it is the composition root
 #
 # Run from the repository root. Exits non-zero on the first violation found.
@@ -16,7 +16,7 @@ while IFS= read -r hit; do
   echo "shared/ may not import app/ or features/:"
   echo "  $hit"
   fail=1
-done < <(grep -rn "^import 'package:dayseven/\(app\|features\)/" lib/shared || true)
+done < <(rg -n "^import 'package:dayseven/(app|features)/" lib/shared || true)
 
 # --- no feature may import another feature ----------------------------------
 for dir in lib/features/*/; do
@@ -28,10 +28,31 @@ for dir in lib/features/*/; do
     echo "features/$feature may not import features/$imported:"
     echo "  $hit"
     fail=1
-  done < <(grep -rn "^import 'package:dayseven/features/" "$dir" || true)
+  done < <(rg -n "^import 'package:dayseven/features/" "$dir" || true)
 done
 
+# --- feature UI must not borrow general controls from the application shell --
+while IFS= read -r hit; do
+  echo "features/ may not import app/shell; move shared UI to shared/ui/:"
+  echo "  $hit"
+  fail=1
+done < <(rg -n "^import 'package:dayseven/app/shell/" lib/features || true)
+
+# --- rendered font sizes must flow through the global settings --------------
+# global_settings computes the two base scales, theme applies the UI scale to
+# Material roles, and block_text_style derives footnotes from an editor style.
+while IFS= read -r hit; do
+  echo "fontSize must come from uiTextStyle or editorTextStyle:"
+  echo "  $hit"
+  fail=1
+done < <(
+  rg -n "fontSize:" lib \
+    --glob '!lib/shared/ui/global_settings.dart' \
+    --glob '!lib/shared/ui/block_text_style.dart' \
+    --glob '!lib/shared/ui/theme.dart' || true
+)
+
 if [ "$fail" -eq 0 ]; then
-  echo "Layer check passed: shared/ is self-contained and no feature imports another."
+  echo "Layer check passed: shared/ is self-contained and feature UI is decoupled."
 fi
 exit "$fail"

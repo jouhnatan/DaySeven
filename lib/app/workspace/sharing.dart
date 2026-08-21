@@ -16,6 +16,7 @@ import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/features/review/data/change_set_repository.dart';
+import 'package:dayseven/features/review/data/proposals.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 
 enum KbRole {
@@ -77,7 +78,8 @@ class SharingController {
         );
 
     final documents = _ref.read(documentRepositoryProvider);
-    for (final path in await _allDocumentPaths(session)) {
+    final tree = await session.kb.readTree();
+    for (final path in documentPathsIn(tree)) {
       final document = await session.kb.readDocument(path);
       await documents.publish(
         kbId: session.kb.manifest.kbId,
@@ -96,6 +98,22 @@ class SharingController {
         .invite(kbId: session.kb.manifest.kbId, username: username);
   }
 
+  /// Removes only the open Knowledge Base's Supabase mirror. The open folder,
+  /// its manifest and every document on disk remain exactly where they are, so
+  /// the same Knowledge Base can be shared again later.
+  Future<void> deleteSharedKb() async {
+    final session = _ref.read(kbSessionProvider);
+    if (session == null) {
+      throw const SyncException('Open a Knowledge Base first.');
+    }
+
+    await _ref
+        .read(kbRepositoryProvider)
+        .deleteRemote(session.kb.manifest.kbId);
+    _ref.read(pendingProposalProvider.notifier).clear();
+    _ref.invalidate(kbRoleProvider);
+  }
+
   /// Sends the open document upstream: a commit if this account owns the
   /// Knowledge Base, a proposal if it does not.
   ///
@@ -109,8 +127,9 @@ class SharingController {
 
     // Whatever is on screen is what gets sent.
     await _ref.read(documentControllerProvider.notifier).flush();
-    final document =
-        _ref.read(documentControllerProvider)?.document ?? open.document;
+    final currentOpen = _ref.read(documentControllerProvider) ?? open;
+    final document = currentOpen.document;
+    final relativePath = currentOpen.relativePath;
 
     final role = await _ref.read(kbRoleProvider.future);
     final documents = _ref.read(documentRepositoryProvider);
@@ -129,11 +148,15 @@ class SharingController {
         if (existing == null) {
           await documents.publish(
             kbId: kbId,
-            relativePath: open.relativePath,
+            relativePath: relativePath,
             document: document,
           );
         } else {
-          await documents.commit(kbId: kbId, document: document);
+          await documents.commit(
+            kbId: kbId,
+            relativePath: relativePath,
+            document: document,
+          );
         }
         return SyncOutcome.committed;
 
@@ -154,24 +177,6 @@ class SharingController {
             );
         return SyncOutcome.proposed;
     }
-  }
-
-  Future<List<String>> _allDocumentPaths(KbSession session) async {
-    final paths = <String>[];
-
-    void walk(List<KbNode> nodes) {
-      for (final node in nodes) {
-        switch (node) {
-          case KbFolder():
-            walk(node.children);
-          case KbFile():
-            paths.add(node.relativePath);
-        }
-      }
-    }
-
-    walk(await session.kb.readTree());
-    return paths;
   }
 }
 

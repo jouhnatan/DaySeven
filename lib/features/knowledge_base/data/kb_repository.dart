@@ -18,17 +18,10 @@ class KbRepository {
   }) async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
-    await supabase.from('knowledge_bases').insert({
-      'id': kbId,
-      'name': name,
-      'owner_id': user.id,
-    });
-    await supabase.from('kb_members').insert({
-      'kb_id': kbId,
-      'user_id': user.id,
-      'role': 'owner',
-      'accepted_at': DateTime.now().toUtc().toIso8601String(),
-    });
+    await supabase.rpc(
+      'share_knowledge_base',
+      params: {'p_kb_id': kbId, 'p_name': name},
+    );
   }
 
   /// Invites a collaborator by username. Resolving it to an account happens
@@ -46,6 +39,19 @@ class KbRepository {
 
   Future<void> acceptInvitation(String kbId) =>
       supabase.rpc('accept_kb_invitation', params: {'p_kb_id': kbId});
+
+  /// Deletes the server-side mirror only. The Knowledge Base folder lives on
+  /// the caller's disk and is never addressed by this operation.
+  ///
+  /// The RPC is owner-checked and deliberately treats an already-missing row
+  /// as success, which makes disconnect safe to retry after an interrupted
+  /// share or delete.
+  Future<void> deleteRemote(String kbId) async {
+    await supabase.rpc(
+      'delete_shared_knowledge_base',
+      params: {'p_kb_id': kbId},
+    );
+  }
 
   /// Knowledge Bases this account belongs to, including unaccepted invitations.
   Future<List<Map<String, Object?>>> myMemberships() async {

@@ -128,3 +128,19 @@ final myProfileProvider = FutureProvider<Profile?>((ref) {
   if (!isSupabaseConfigured) return Future.value(null);
   return ref.read(authRepositoryProvider).myProfile();
 });
+
+/// The account name used throughout the interface. The profile is canonical,
+/// but auth metadata gives the UI an immediate, offline-safe fallback while
+/// that row is loading or unavailable.
+final accountDisplayNameProvider = Provider<String?>((ref) {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return null;
+
+  final profile = ref.watch(myProfileProvider).valueOrNull;
+  if (profile != null) return profile.displayName;
+
+  final metadata = user.userMetadata ?? const {};
+  return (metadata['display_name'] as String?) ??
+      (metadata['username'] as String?) ??
+      'Account';
+});

@@ -1,36 +1,26 @@
 /// Visual tokens.
 ///
-/// Three surface tones, each a subtle step apart: the application background,
-/// the island/panel, and the editor surface. Flat — no gradients, no shadows
-/// beyond a hairline border, and one coloured fill: the paragraph being edited.
-/// Follows the system light/dark setting, which adds no control to the
-/// interface.
+/// Shared light/dark color tokens for the window, pane/editor surfaces, and
+/// darker Cards nested inside islands.
 library;
 
 import 'package:flutter/material.dart';
 
-const String kEditorFontFamily = 'Aleo';
+import 'package:dayseven/shared/ui/global_settings.dart';
 
-/// Fonts offered by the font selector. Aleo is bundled; the rest are the
-/// families present on both macOS and Windows.
-const List<String> kAvailableFonts = [
-  'Aleo',
-  'Georgia',
-  'Times New Roman',
-  'Helvetica',
-  'Arial',
-  'Courier New',
-  'Verdana',
-];
+export 'package:dayseven/shared/ui/global_settings.dart';
 
 class DsColors extends ThemeExtension<DsColors> {
   const DsColors({
     required this.appBackground,
     required this.island,
     required this.editorSurface,
+    required this.cardSurface,
+    required this.surfaceOutline,
     required this.border,
     required this.text,
     required this.muted,
+    required this.buttonHighlight,
     required this.selection,
     required this.editingBlock,
     required this.link,
@@ -43,15 +33,26 @@ class DsColors extends ThemeExtension<DsColors> {
   /// The window background. Everything else sits on top of it.
   final Color appBackground;
 
-  /// The right-hand Knowledge Base island and the bottom bar button.
+  /// Side-menu islands and bottom-bar buttons.
   final Color island;
 
   /// The editing canvas.
   final Color editorSurface;
 
+  /// A contrasting section nested inside an island and separated by a line.
+  /// In the light theme this is the standardized darker Card white.
+  final Color cardSurface;
+
+  /// The slightly darker hairline around islands and shared buttons.
+  final Color surfaceOutline;
+
+  /// Structural lines inside surfaces: dividers, fields, and tree details.
   final Color border;
   final Color text;
   final Color muted;
+
+  /// The green wash behind actionable buttons while hovered or active.
+  final Color buttonHighlight;
 
   /// Row hover/selection wash in lists and the tree.
   final Color selection;
@@ -76,12 +77,15 @@ class DsColors extends ThemeExtension<DsColors> {
   static const dark = DsColors(
     appBackground: Color(0xFF121317),
     island: Color(0xFF1C1E23),
-    editorSurface: Color(0xFF17191D),
+    editorSurface: Color(0xFF1C1E23),
+    cardSurface: Color(0xFF14161B),
+    surfaceOutline: Color(0xFF101216),
     border: Color(0xFF2A2D34),
     text: Color(0xFFD6D9DF),
     muted: Color(0xFF868D99),
+    buttonHighlight: Color(0xFF416750),
     selection: Color(0xFF23262D),
-    editingBlock: Color(0xFF1A1F2B),
+    editingBlock: Color(0xFF2C4637),
     link: Color(0xFF7FA6D8),
     pending: Color(0xFFC8A45C),
     addition: Color(0xFF1E2A22),
@@ -91,13 +95,16 @@ class DsColors extends ThemeExtension<DsColors> {
 
   static const light = DsColors(
     appBackground: Color(0xFFE8E9EC),
-    island: Color(0xFFF4F5F7),
+    island: Color(0xFFFBFBFC),
     editorSurface: Color(0xFFFBFBFC),
-    border: Color(0xFFD8DAE0),
+    cardSurface: Color(0xFFE9EAED),
+    surfaceOutline: Color(0xFFA7ACB6),
+    border: Color(0xFFC3C6CE),
     text: Color(0xFF1D2025),
     muted: Color(0xFF6B7280),
+    buttonHighlight: Color(0xFFC6D9C9),
     selection: Color(0xFFE3E5EA),
-    editingBlock: Color(0xFFEFF3FC),
+    editingBlock: Color(0xFFE4F1E7),
     link: Color(0xFF1F5FA8),
     pending: Color(0xFF9A7526),
     addition: Color(0xFFE7F1E9),
@@ -118,6 +125,7 @@ class DsRadius {
   static const island = Radius.circular(10);
   static const control = Radius.circular(8);
   static const row = Radius.circular(6);
+  static const menuItem = Radius.circular(9);
 
   /// The wash behind the paragraph being edited.
   static const block = Radius.circular(5);
@@ -128,61 +136,88 @@ class DsSpace {
   static const islandGap = 10.0;
   static const pane = 12.0;
   static const row = 6.0;
+  static const controlGap = 6.0;
+  static const blockBefore = 16.0;
 }
 
-ThemeData dsTheme(Brightness brightness) {
+class DsMotion {
+  static const hover = Duration(milliseconds: 90);
+  static const pane = Duration(milliseconds: 200);
+}
+
+ThemeData dsTheme(Brightness brightness, {DsAppSettings? settings}) {
   final c = brightness == Brightness.dark ? DsColors.dark : DsColors.light;
+  final appSettings = settings ?? DsGlobalSettings.value;
+  final uiTextScale = appSettings.uiTextSize / kDefaultUiTextSize;
 
   return ThemeData(
     brightness: brightness,
     scaffoldBackgroundColor: c.appBackground,
     canvasColor: c.appBackground,
-    fontFamily: kEditorFontFamily,
+    fontFamily: appSettings.fontFamily,
     colorScheme: ColorScheme.fromSeed(
       seedColor: c.island,
       brightness: brightness,
       surface: c.island,
     ).copyWith(onSurface: c.text),
     dividerColor: c.border,
-    textTheme: Typography.material2021(platform: TargetPlatform.macOS).black
-        .apply(
-          fontFamily: kEditorFontFamily,
-          bodyColor: c.text,
-          displayColor: c.text,
-        ),
+    textTheme: _scaleTextTheme(
+      Typography.material2021(platform: TargetPlatform.macOS).black.apply(
+        fontFamily: appSettings.fontFamily,
+        bodyColor: c.text,
+        displayColor: c.text,
+      ),
+      uiTextScale,
+    ),
     extensions: [c],
     visualDensity: VisualDensity.compact,
     splashFactory: NoSplash.splashFactory,
     highlightColor: Colors.transparent,
+    textButtonTheme: TextButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return Colors.transparent;
+          if (states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.focused) ||
+              states.contains(WidgetState.pressed)) {
+            return c.buttonHighlight;
+          }
+          return Colors.transparent;
+        }),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
+    ),
+  );
+}
+
+/// [TextTheme.apply] asserts when asked to scale an inherited style whose
+/// font size is null. Material includes a few such styles, so scale only the
+/// roles that define a concrete size and leave inherited sizes untouched.
+TextTheme _scaleTextTheme(TextTheme theme, double factor) {
+  TextStyle? scale(TextStyle? style) {
+    final size = style?.fontSize;
+    return size == null ? style : style!.copyWith(fontSize: size * factor);
+  }
+
+  return theme.copyWith(
+    displayLarge: scale(theme.displayLarge),
+    displayMedium: scale(theme.displayMedium),
+    displaySmall: scale(theme.displaySmall),
+    headlineLarge: scale(theme.headlineLarge),
+    headlineMedium: scale(theme.headlineMedium),
+    headlineSmall: scale(theme.headlineSmall),
+    titleLarge: scale(theme.titleLarge),
+    titleMedium: scale(theme.titleMedium),
+    titleSmall: scale(theme.titleSmall),
+    bodyLarge: scale(theme.bodyLarge),
+    bodyMedium: scale(theme.bodyMedium),
+    bodySmall: scale(theme.bodySmall),
+    labelLarge: scale(theme.labelLarge),
+    labelMedium: scale(theme.labelMedium),
+    labelSmall: scale(theme.labelSmall),
   );
 }
 
 extension DsThemeAccess on BuildContext {
   DsColors get ds => Theme.of(this).extension<DsColors>()!;
 }
-
-/// Aleo is a variable font: weight comes from the `wght` axis rather than from
-/// separate static files, so every weighted style must set a FontVariation.
-TextStyle aleo({
-  double size = 15,
-  int weight = 400,
-  bool italic = false,
-  Color? color,
-  double? height,
-}) => TextStyle(
-  fontFamily: kEditorFontFamily,
-  fontSize: size,
-  height: height,
-  color: color,
-  fontStyle: italic ? FontStyle.italic : FontStyle.normal,
-  fontWeight: _weightOf(weight),
-  fontVariations: [FontVariation('wght', weight.toDouble())],
-);
-
-FontWeight _weightOf(int w) => switch (w) {
-  <= 300 => FontWeight.w300,
-  <= 400 => FontWeight.w400,
-  <= 500 => FontWeight.w500,
-  <= 600 => FontWeight.w600,
-  _ => FontWeight.w700,
-};

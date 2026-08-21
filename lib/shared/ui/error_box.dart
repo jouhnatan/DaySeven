@@ -29,7 +29,7 @@ class DsErrorBox extends StatelessWidget {
       ),
       child: SelectableText(
         message,
-        style: aleo(size: 12, color: colors.text),
+        style: uiTextStyle(size: 12, color: colors.text),
         cursorColor: colors.text,
         // Right-click and the platform's own copy shortcut both work.
         contextMenuBuilder: (context, state) =>
