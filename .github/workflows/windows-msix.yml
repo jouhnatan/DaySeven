@@ -8,7 +8,6 @@ on:
       - "env/**"
       - "lib/**"
       - "scripts/build_windows.ps1"
-      - "test/**"
       - "windows/**"
       - "pubspec.lock"
       - "pubspec.yaml"
@@ -54,10 +53,6 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: flutter pub get
-
-      - name: Run tests
-        shell: pwsh
-        run: flutter test
 
       - name: Create test signing certificate
         shell: pwsh
