@@ -1,5 +1,3 @@
-/Users/johnathanbmeeks/.zshenv:.:3: no such file or directory: /Users/johnathanbmeeks/.aftman/env
-/Users/johnathanbmeeks/.zshenv:.:3: no such file or directory: /Users/johnathanbmeeks/.aftman/env
 # Builds DaySeven for Windows 11 and packages it as an MSIX.
 #
 # Run from the repository root on a Windows machine with the Flutter Windows
