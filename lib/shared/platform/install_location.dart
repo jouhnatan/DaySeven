@@ -3,8 +3,10 @@
 /// On macOS the app is meant to live in the Applications folder. Running from
 /// elsewhere — most often straight out of the Downloads folder after unzipping
 /// — leaves the user with an unmanaged copy, so the app says so once and then
-/// continues. Windows installs through MSIX, which places the app itself, so
-/// there is nothing to check there.
+/// continues. It also blocks self-updating, which would otherwise replace a
+/// bundle the person did not think of as installed. On Windows the app is
+/// wherever its zip was extracted and no location is more correct than
+/// another, so there is nothing to check.
 library;
 
 import 'dart:io';

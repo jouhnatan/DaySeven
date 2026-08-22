@@ -38,15 +38,16 @@ void main() {
     );
   });
 
-  testWidgets('the Views menu lists only Home and Editor', (tester) async {
+  testWidgets('the Views menu lists Home, Editor, and Differences', (
+    tester,
+  ) async {
     await tester.pumpWidget(harness());
     await tester.pump();
 
     expect(find.text('Views'), findsOneWidget);
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Editor'), findsOneWidget);
-    // Differences is not a view; it must not appear in the left menu.
-    expect(find.text('Differences'), findsNothing);
+    expect(find.text('Differences'), findsOneWidget);
   });
 
   testWidgets('Home changes the shell background without changing Editor', (
@@ -143,18 +144,20 @@ void main() {
     await tester.pump();
 
     expect(find.byTooltip('Editor menu'), findsNothing);
-    expect(find.text('Differences'), findsNothing);
+    expect(find.text('Differences'), findsOneWidget);
 
     await tester.tap(find.text('Editor'));
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Editor menu'), findsOneWidget);
-    expect(find.text('Differences'), findsNothing);
+    expect(find.text('Differences'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Editor menu'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Differences'), findsOneWidget);
+    expect(find.text('Publish directly'), findsNothing);
+    expect(find.text('Sync latest'), findsOneWidget);
+    expect(find.text('Differences'), findsNWidgets(2));
     expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
 
     await tester.tapAt(const Offset(1, 1));
@@ -164,7 +167,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Editor menu'), findsNothing);
-    expect(find.text('Differences'), findsNothing);
+    expect(find.text('Differences'), findsOneWidget);
   });
 
   testWidgets('the Knowledge Base menu shows on the right of the editor', (

@@ -20,6 +20,7 @@ import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/workspace/editing_keybinds.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/document_publish_controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
@@ -44,6 +45,7 @@ class EditorScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
     final open = ref.watch(documentControllerProvider);
+    final readOnly = ref.watch(kbRoleProvider).valueOrNull == KbRole.reviewer;
 
     final editor = open == null
         ? Center(
@@ -54,7 +56,11 @@ class EditorScreen extends ConsumerWidget {
           )
         // A path can change while this document remains open. Its stable id
         // keeps the editing surface and caret alive through a rename or move.
-        : DocumentEditor(key: ValueKey(open.document.id), open: open);
+        : DocumentEditor(
+            key: ValueKey(open.document.id),
+            open: open,
+            readOnly: readOnly,
+          );
 
     final card = searchCard;
     if (card == null) return editor;
@@ -97,9 +103,10 @@ class _EditorSearchCard extends StatelessWidget {
 }
 
 class DocumentEditor extends ConsumerStatefulWidget {
-  const DocumentEditor({super.key, required this.open});
+  const DocumentEditor({super.key, required this.open, this.readOnly = false});
 
   final OpenDocument open;
+  final bool readOnly;
 
   @override
   ConsumerState<DocumentEditor> createState() => _DocumentEditorState();
@@ -187,10 +194,25 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   }
 
   FocusNode _focusFor(String blockId) => _focusNodes.putIfAbsent(blockId, () {
-    final node = FocusNode();
+    final node = FocusNode(onKeyEvent: _handleDocumentShortcut);
     node.addListener(() => _publishFocus(blockId));
     return node;
   });
+
+  KeyEventResult _handleDocumentShortcut(FocusNode node, KeyEvent event) {
+    if (widget.readOnly || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    final modifier = defaultTargetPlatform == TargetPlatform.macOS
+        ? keyboard.isMetaPressed
+        : keyboard.isControlPressed;
+    if (event.logicalKey != LogicalKeyboardKey.keyS || !modifier) {
+      return KeyEventResult.ignored;
+    }
+    unawaited(publishOpenDocumentWithFeedback(context, ref));
+    return KeyEventResult.handled;
+  }
 
   /// Tells the toolbar what it is pointed at.
   ///
@@ -309,12 +331,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   }
 
   void _commit(BlockDocument document, {bool rebuild = true}) {
+    if (widget.readOnly) return;
     _document = document;
     ref.read(documentControllerProvider.notifier).edit(document);
     if (rebuild && mounted) setState(() {});
   }
 
   Future<String?> _renameTitle(String title) async {
+    if (widget.readOnly) return _document.title;
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       final destination = await ref
@@ -723,11 +747,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
       child: ListView(
         padding: const EdgeInsets.fromLTRB(48, 40, 48, 120),
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: DocumentTitleField(
-              title: _document.title,
-              onRename: _renameTitle,
+          AbsorbPointer(
+            absorbing: widget.readOnly,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: DocumentTitleField(
+                title: _document.title,
+                onRename: _renameTitle,
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -743,91 +770,100 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
           ),
           const SizedBox(height: 20),
           for (final block in _document.blocks)
-            Padding(
-              padding: EdgeInsets.only(top: block.spaceBefore),
-              child: switch (block) {
-                // Headings differ from paragraphs only in the style the text
-                // sits on, so both use the same view and the same controller.
-                final TextBlock t => _TextBlockView(
-                  block: t,
-                  controller: _controllerFor(t),
-                  focusNode: _focusFor(t.id),
-                  style: t is HeadingBlock
-                      ? headingStyle(t.level, colors.text)
-                      : editorTextStyle(
-                          size: 15,
-                          height: 1.6,
-                          color: colors.text,
-                        ),
-                  ordinal: t is ListItemBlock && t.style == ListStyle.ordered
-                      ? _ordinalOf(t)
-                      : null,
-                  onToggleChecked: t is ListItemBlock && t.checked != null
-                      ? () => _updateBlock(
-                          t.id,
-                          (b) => (b as ListItemBlock).copyWith(
-                            checked: !(b.checked ?? false),
+            AbsorbPointer(
+              absorbing: widget.readOnly,
+              child: Padding(
+                padding: EdgeInsets.only(top: block.spaceBefore),
+                child: switch (block) {
+                  // Headings differ from paragraphs only in the style the text
+                  // sits on, so both use the same view and the same controller.
+                  final TextBlock t => _TextBlockView(
+                    block: t,
+                    controller: _controllerFor(t),
+                    focusNode: _focusFor(t.id),
+                    style: t is HeadingBlock
+                        ? headingStyle(t.level, colors.text)
+                        : editorTextStyle(
+                            size: 15,
+                            height: 1.6,
+                            color: colors.text,
                           ),
-                        )
-                      : null,
-                  onSplit: () => _splitBlock(t.id),
-                  onMergeBack: () => _mergeIntoPrevious(t.id),
-                  onMenu: (position) => _showBlockMenu(position, t),
-                ),
-                CodeBlock() => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: _CodeView(
-                    block: block,
-                    onChanged: (text) => _updateBlock(
-                      block.id,
-                      (b) => (b as CodeBlock).copyWith(text: text),
+                    ordinal: t is ListItemBlock && t.style == ListStyle.ordered
+                        ? _ordinalOf(t)
+                        : null,
+                    onToggleChecked: t is ListItemBlock && t.checked != null
+                        ? () => _updateBlock(
+                            t.id,
+                            (b) => (b as ListItemBlock).copyWith(
+                              checked: !(b.checked ?? false),
+                            ),
+                          )
+                        : null,
+                    onSplit: () => _splitBlock(t.id),
+                    onMergeBack: () => _mergeIntoPrevious(t.id),
+                    onMenu: (position) => _showBlockMenu(position, t),
+                    onPublish: () => unawaited(
+                      publishOpenDocumentWithFeedback(context, ref),
                     ),
-                    onMenu: (position) => _showBlockMenu(position, block),
                   ),
-                ),
-                DividerBlock() => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: GestureDetector(
-                    onSecondaryTapUp: (d) =>
-                        _showBlockMenu(d.globalPosition, block),
-                    child: Divider(color: colors.border, height: 24),
-                  ),
-                ),
-                TableBlock() => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: _TableView(
-                    block: block,
-                    controllerFor: _cellControllerFor,
-                    onMenu: (position) => _showBlockMenu(position, block),
-                  ),
-                ),
-                ImageBlock() => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: _ImageView(
-                    block: block,
-                    onCaptionChanged: (caption) => _updateBlock(
-                      block.id,
-                      (b) => (b as ImageBlock).copyWith(caption: caption),
+                  CodeBlock() => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _CodeView(
+                      block: block,
+                      onChanged: (text) => _updateBlock(
+                        block.id,
+                        (b) => (b as CodeBlock).copyWith(text: text),
+                      ),
+                      onMenu: (position) => _showBlockMenu(position, block),
                     ),
-                    onMenu: (position) => _showBlockMenu(position, block),
                   ),
-                ),
-              },
+                  DividerBlock() => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: GestureDetector(
+                      onSecondaryTapUp: (d) =>
+                          _showBlockMenu(d.globalPosition, block),
+                      child: Divider(color: colors.border, height: 24),
+                    ),
+                  ),
+                  TableBlock() => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _TableView(
+                      block: block,
+                      controllerFor: _cellControllerFor,
+                      onMenu: (position) => _showBlockMenu(position, block),
+                    ),
+                  ),
+                  ImageBlock() => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _ImageView(
+                      block: block,
+                      onCaptionChanged: (caption) => _updateBlock(
+                        block.id,
+                        (b) => (b as ImageBlock).copyWith(caption: caption),
+                      ),
+                      onMenu: (position) => _showBlockMenu(position, block),
+                    ),
+                  ),
+                },
+              ),
             ),
           const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: _AddParagraph(
-              onTap: () {
-                final block = ParagraphBlock(id: newId(), spans: const []);
-                _commit(
-                  _document.copyWith(blocks: [..._document.blocks, block]),
-                );
-                WidgetsBinding.instance.addPostFrameCallback(
-                  (_) => _focusFor(block.id).requestFocus(),
-                );
-              },
-              color: colors.muted,
+          AbsorbPointer(
+            absorbing: widget.readOnly,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: _AddParagraph(
+                onTap: () {
+                  final block = ParagraphBlock(id: newId(), spans: const []);
+                  _commit(
+                    _document.copyWith(blocks: [..._document.blocks, block]),
+                  );
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _focusFor(block.id).requestFocus(),
+                  );
+                },
+                color: colors.muted,
+              ),
             ),
           ),
         ],
@@ -835,37 +871,11 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     );
   }
 
-  /// Sends the document upstream. What that means depends on this account's
-  /// standing: the owner commits a revision, everyone else proposes one.
-  Future<void> _sync() async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    try {
-      final outcome = await ref
-          .read(sharingControllerProvider)
-          .syncOpenDocument();
-      messenger?.showSnackBar(
-        SnackBar(
-          content: Text(switch (outcome) {
-            SyncOutcome.committed => 'Saved as a new revision.',
-            SyncOutcome.proposed => 'Sent for review.',
-          }),
-        ),
-      );
-    } catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text('$error')));
-    }
-  }
-
   /// Everything the toolbar does not carry: colour, highlight, font, spacing,
   /// images and export.
   Future<void> _showBlockMenu(Offset position, Block block) async {
     final colors = context.ds;
     final isParagraph = block is ParagraphBlock;
-    final syncLabel = switch (ref.read(kbRoleProvider).valueOrNull) {
-      KbRole.owner => 'Sync document',
-      KbRole.editor => 'Propose changes',
-      _ => null,
-    };
 
     DsMenuItem<VoidCallback> item(
       String label,
@@ -1063,10 +1073,6 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
         const DsMenuDivider(),
         item('Export as .docx…', () => _export(DocumentFormat.docx)),
         item('Export as .odt…', () => _export(DocumentFormat.odt)),
-        if (syncLabel != null) ...[
-          const DsMenuDivider(),
-          item(syncLabel, _sync),
-        ],
       ],
     );
 
@@ -1124,6 +1130,7 @@ class _TextBlockView extends StatelessWidget {
     this.onToggleChecked,
     required this.onMergeBack,
     required this.onMenu,
+    required this.onPublish,
   });
 
   final TextBlock block;
@@ -1140,6 +1147,7 @@ class _TextBlockView extends StatelessWidget {
   final VoidCallback onSplit;
   final bool Function() onMergeBack;
   final void Function(Offset position) onMenu;
+  final VoidCallback onPublish;
 
   TextAlign get _align => switch (block.align) {
     BlockAlign.left => TextAlign.left,
@@ -1159,6 +1167,11 @@ class _TextBlockView extends StatelessWidget {
           shortcuts: {
             const SingleActivator(LogicalKeyboardKey.enter):
                 const _SplitIntent(),
+            SingleActivator(
+              LogicalKeyboardKey.keyS,
+              meta: defaultTargetPlatform == TargetPlatform.macOS,
+              control: defaultTargetPlatform != TargetPlatform.macOS,
+            ): const _PublishIntent(),
             for (final entry in kEditingKeybinds.entries)
               entry.value.activator(defaultTargetPlatform): _FormatIntent(
                 entry.key,
@@ -1171,6 +1184,9 @@ class _TextBlockView extends StatelessWidget {
               ),
               _FormatIntent: CallbackAction<_FormatIntent>(
                 onInvoke: (intent) => _toggleHere(intent.format),
+              ),
+              _PublishIntent: CallbackAction<_PublishIntent>(
+                onInvoke: (_) => onPublish(),
               ),
             },
             child: Focus(
@@ -1316,6 +1332,10 @@ class _TextBlockView extends StatelessWidget {
 
 class _SplitIntent extends Intent {
   const _SplitIntent();
+}
+
+class _PublishIntent extends Intent {
+  const _PublishIntent();
 }
 
 class _FormatIntent extends Intent {

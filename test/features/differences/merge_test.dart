@@ -1,5 +1,5 @@
 import 'package:dayseven/shared/blocks/blocks.dart';
-import 'package:dayseven/features/review/domain/merge.dart';
+import 'package:dayseven/features/differences/domain/merge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 ParagraphBlock p(String id, String text, {bool bold = false, String? color}) =>
@@ -21,6 +21,32 @@ ParagraphBlock paraOf(BlockDocument d, String blockId) =>
     d.blocks.firstWhere((b) => b.id == blockId) as ParagraphBlock;
 
 void main() {
+  group('three-way merge — title', () {
+    test('different title edits are surfaced as a conflict', () {
+      final base = doc(const [], title: 'Original');
+      final result = threeWayMerge(
+        base: base,
+        local: doc(const [], title: 'Current title'),
+        proposed: doc(const [], title: 'Proposed title'),
+      );
+
+      expect(result.titleConflict, isTrue);
+      expect(result.hasConflicts, isTrue);
+    });
+
+    test('a proposal-only title edit merges without conflict', () {
+      final base = doc(const [], title: 'Original');
+      final result = threeWayMerge(
+        base: base,
+        local: base,
+        proposed: doc(const [], title: 'Proposed title'),
+      );
+
+      expect(result.document.title, 'Proposed title');
+      expect(result.titleConflict, isFalse);
+    });
+  });
+
   group('three-way merge — block set', () {
     test('a paragraph added by only the proposal is kept', () {
       final base = doc([p('a', 'The moor is wide.')]);

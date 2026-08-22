@@ -10,11 +10,15 @@ import 'dart:io';
 import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/shell/shell.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
+import 'package:dayseven/app/workspace/kb_role.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/backend/document_protection.dart';
+import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:flutter/foundation.dart';
@@ -24,6 +28,42 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/test_fonts.dart';
+
+class ToolbarDocuments extends DocumentRepository {
+  ToolbarDocuments({this.currentProtection});
+
+  DocumentProtection? currentProtection;
+  BlockDocument? currentDocument;
+  String? currentPath;
+  int publishCalls = 0;
+
+  @override
+  Future<DocumentProtection?> protection(String documentId) async =>
+      currentProtection;
+
+  @override
+  Future<RemoteDocumentSnapshot?> snapshotForDocument(
+    String documentId,
+  ) async => RemoteDocumentSnapshot(
+    path: currentPath!,
+    revisionId: 'base-1',
+    document: currentDocument!,
+    protection: currentProtection,
+  );
+
+  @override
+  Future<DocumentPublishReceipt> publishChange({
+    required String kbId,
+    required String relativePath,
+    required BlockDocument document,
+    required String? expectedCurrentRevisionId,
+  }) async {
+    publishCalls++;
+    currentDocument = document;
+    currentPath = relativePath;
+    return const DocumentPublishReceipt.published('revision-2');
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -60,12 +100,16 @@ void main() {
   });
 
   /// Opens the shell on the Editor view with one two-paragraph document.
-  Future<ProviderContainer> openEditor(WidgetTester tester) async {
+  Future<ProviderContainer> openEditor(
+    WidgetTester tester, {
+    List<Override> overrides = const [],
+    ToolbarDocuments? documents,
+  }) async {
     tester.view.physicalSize = const Size(1100, 700);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: overrides);
     addTearDown(container.dispose);
 
     await tester.runAsync(() async {
@@ -74,18 +118,25 @@ void main() {
           .openFolder(temp.path, createWithName: 'MyWorld');
       final kb = container.read(kbSessionProvider)!.kb;
       final path = await kb.createDocument(title: 'Timeline');
-      await kb.writeDocument(
-        path,
-        BlockDocument(
-          id: 'd1',
-          title: 'Timeline',
-          blocks: [
-            ParagraphBlock(
-              id: 'p1',
-              spans: const [TextSpanNode(text: 'The first age ended.')],
-            ),
-          ],
-        ),
+      final document = BlockDocument(
+        id: 'd1',
+        title: 'Timeline',
+        blocks: [
+          ParagraphBlock(
+            id: 'p1',
+            spans: const [TextSpanNode(text: 'The first age ended.')],
+          ),
+        ],
+      );
+      await kb.writeDocument(path, document);
+      documents
+        ?..currentDocument = document
+        ..currentPath = path;
+      await (await SyncLedger.open(kb)).record(
+        document: document,
+        revisionId: 'base-1',
+        path: path,
+        protection: documents?.currentProtection,
       );
       await container.read(kbControllerProvider.notifier).refreshTree();
       await container.read(documentControllerProvider.notifier).open(path);
@@ -131,6 +182,120 @@ void main() {
   ) async {
     await openEditor(tester);
     expect(find.byType(EditingToolbar), findsNothing);
+  });
+
+  testWidgets('protected lower-rank edits show Propose and a locked shield', (
+    tester,
+  ) async {
+    const protection = DocumentProtection(
+      protectionClass: DocumentProtectionClass.protected,
+      minimumPublishRole: MinimumPublishRole.owner,
+    );
+    final documents = ToolbarDocuments(currentProtection: protection);
+    final container = await openEditor(
+      tester,
+      documents: documents,
+      overrides: [
+        kbRoleProvider.overrideWith((ref) async => KbRole.editor),
+        documentRepositoryProvider.overrideWithValue(documents),
+      ],
+    );
+    await selectInParagraph(tester, 3);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Propose'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('document-protection-button')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Owner access is required to change this protection.'),
+      findsOneWidget,
+    );
+
+    await tester.tapAt(const Offset(1, 1));
+    await tester.pumpAndSettle();
+    await settle(tester, container);
+  });
+
+  testWidgets('first protection defaults to the current collaborator rank', (
+    tester,
+  ) async {
+    final documents = ToolbarDocuments();
+    final container = await openEditor(
+      tester,
+      documents: documents,
+      overrides: [
+        kbRoleProvider.overrideWith((ref) async => KbRole.coOwner),
+        documentRepositoryProvider.overrideWithValue(documents),
+      ],
+    );
+    await selectInParagraph(tester, 3);
+    await tester.tap(find.byKey(const Key('document-protection-button')));
+    await tester.pumpAndSettle();
+
+    final roleField = tester
+        .widget<DropdownButtonFormField<MinimumPublishRole>>(
+          find.byKey(const Key('minimum-publish-role-field')),
+        );
+    expect(roleField.initialValue, MinimumPublishRole.coOwner);
+    expect(find.text('Owner'), findsNothing);
+
+    await tester.tapAt(const Offset(1, 1));
+    await tester.pumpAndSettle();
+    await settle(tester, container);
+  });
+
+  testWidgets('Ctrl+S is bound and Publish stays enabled after editing', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final documents = ToolbarDocuments();
+      final container = await openEditor(
+        tester,
+        documents: documents,
+        overrides: [
+          kbRoleProvider.overrideWith((ref) async => KbRole.editor),
+          documentRepositoryProvider.overrideWithValue(documents),
+        ],
+      );
+      await selectInParagraph(tester, 3);
+      final controller =
+          tester.widget<TextField>(paragraphField()).controller!
+              as RichTextController;
+      controller.value = const TextEditingValue(
+        text: 'Explicitly published words',
+        selection: TextSelection.collapsed(offset: 26),
+      );
+      await tester.pump();
+      expect(
+        container.read(documentControllerProvider)!.document.plainText,
+        'Explicitly published words',
+      );
+      expect(
+        tester.widget<TextField>(paragraphField()).focusNode?.hasFocus,
+        isTrue,
+      );
+
+      final hasSaveShortcut = tester
+          .widgetList<Shortcuts>(find.byType(Shortcuts))
+          .expand((widget) => widget.shortcuts.keys)
+          .whereType<SingleActivator>()
+          .any(
+            (shortcut) =>
+                shortcut.trigger == LogicalKeyboardKey.keyS &&
+                shortcut.control &&
+                !shortcut.meta,
+          );
+      expect(hasSaveShortcut, isTrue);
+      final publishButton = tester.widget<DsButton>(
+        find.byKey(const Key('document-publish-button')),
+      );
+      expect(publishButton.onPressed, isNotNull);
+      expect(documents.publishCalls, 0, reason: 'editing alone stays local');
+      await settle(tester, container);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('the toolbar appears once the caret is in a block', (
@@ -198,12 +363,26 @@ void main() {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 3);
 
-    expect(find.text('Differences'), findsNothing);
+    expect(find.text('Differences'), findsOneWidget);
+    expect(find.byKey(const Key('document-publish-button')), findsOneWidget);
+    expect(find.byKey(const Key('document-protection-button')), findsOneWidget);
     await tester.tap(find.byTooltip('Editor menu'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Publish directly'), findsNothing);
     expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
-    expect(find.text('Differences'), findsOneWidget);
+    expect(find.text('Differences'), findsNWidgets(2));
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.descendant(
+              of: find.byKey(const Key('editor-menu-differences')),
+              matching: find.byType(Tooltip),
+            ),
+          )
+          .message,
+      'No pending edits for this document.',
+    );
 
     await tester.tapAt(const Offset(1, 1));
     await tester.pumpAndSettle();

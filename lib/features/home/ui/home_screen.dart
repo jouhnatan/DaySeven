@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:file_selector/file_selector.dart';
 
 import '../../../app/view.dart';
 import '../../../app/workspace/kb_session.dart';
@@ -12,6 +13,7 @@ import '../../../shared/ui/controls.dart';
 import '../../../shared/ui/error_box.dart';
 import '../../../shared/ui/theme.dart';
 import '../../auth/ui/auth_button.dart';
+import '../../knowledge_base/data/kb_repository.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -50,6 +52,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  Future<void> _acceptInvitation(KbInvitation invitation) async {
+    final folder = await getDirectoryPath(
+      confirmButtonText: 'Download Knowledge Base',
+    );
+    if (folder == null) return;
+    setState(() => _accountError = null);
+    try {
+      await ref
+          .read(sharingControllerProvider)
+          .acceptInvitationIntoFolder(invitation, folder);
+      ref.read(viewProvider.notifier).state = DsView.editor;
+    } catch (error) {
+      if (mounted) {
+        if (ref.read(kbSessionProvider) != null) {
+          ref.read(viewProvider.notifier).state = DsView.editor;
+        }
+        setState(() => _accountError = describeError(error));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
@@ -57,6 +80,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final recents = ref.watch(recentEditedDocumentsProvider);
     final user = ref.watch(currentUserProvider);
     final displayName = ref.watch(accountDisplayNameProvider);
+    final invitations = ref.watch(kbInvitationsProvider);
     final greetingName = displayName ?? 'Guest';
 
     return Stack(
@@ -105,6 +129,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               error: _accountError,
                               onSignIn: () => showSignInDialog(context),
                               onLogOut: _logOut,
+                              invitations: invitations,
+                              onAcceptInvitation: _acceptInvitation,
                             ),
                           );
 
@@ -245,6 +271,8 @@ class _UserSettings extends StatelessWidget {
     required this.error,
     required this.onSignIn,
     required this.onLogOut,
+    required this.invitations,
+    required this.onAcceptInvitation,
   });
 
   final bool signedIn;
@@ -253,6 +281,8 @@ class _UserSettings extends StatelessWidget {
   final String? error;
   final VoidCallback onSignIn;
   final VoidCallback onLogOut;
+  final AsyncValue<List<KbInvitation>> invitations;
+  final Future<void> Function(KbInvitation) onAcceptInvitation;
 
   @override
   Widget build(BuildContext context) {
@@ -275,6 +305,33 @@ class _UserSettings extends StatelessWidget {
             style: uiTextStyle(size: 14, weight: 600, color: colors.text),
           ),
           const SizedBox(height: 12),
+          invitations.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+            data: (items) => items.isEmpty
+                ? const SizedBox.shrink()
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Invitations',
+                        style: uiTextStyle(
+                          size: 12,
+                          weight: 600,
+                          color: colors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      for (final invitation in items)
+                        _HomeLinkRow(
+                          label: invitation.name,
+                          detail: 'Join as ${invitation.role.label}',
+                          onTap: () => onAcceptInvitation(invitation),
+                        ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+          ),
           _HomeLinkRow(
             key: const Key('home-log-out'),
             label: loggingOut ? 'Logging out…' : 'Log out',

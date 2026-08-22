@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum DsView { home, editor }
+enum DsView { home, editor, differences }
 
 /// Cross-feature navigation belongs to the composition root: several features
 /// can open the editor without depending directly on the Views feature.
