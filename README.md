@@ -1,3 +1,5 @@
+/Users/johnathanbmeeks/.zshenv:.:3: no such file or directory: /Users/johnathanbmeeks/.aftman/env
+/Users/johnathanbmeeks/.zshenv:.:3: no such file or directory: /Users/johnathanbmeeks/.aftman/env
 # DaySeven
 
 A world-building knowledge base editor for macOS and Windows 11.
@@ -254,9 +256,9 @@ instructions. Artifacts expire after 30 days; anyone downloading from the
 private repository needs repository access, but the downloaded ZIP can be sent
 directly to a trusted friend.
 
-The CI build runs locally when the `SUPABASE_URL` and
-`SUPABASE_PUBLISHABLE_KEY` repository secrets are absent. Add those two Actions
-secrets if the packaged app should support collaboration.
+The workflow requires `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` repository
+secrets. It stops before packaging when either is absent, so it cannot publish
+an installer whose account controls have no configured backend.
 
 The workflow's certificate is self-signed and intended for trusted test
 distribution. A production release should use a persistent, publicly trusted
