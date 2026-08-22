@@ -4,6 +4,11 @@
 # decide there is something newer, so writing it first would briefly point
 # every client at an archive that is still uploading.
 #
+# Every request here sets an explicit User-Agent. Supabase refuses a secret API
+# key when the request looks like it came from a browser, and PowerShell's
+# default User-Agent string contains "Mozilla/5.0", which trips that check. The
+# macOS half of this uses curl and never hit it.
+#
 # Requires:
 #   SUPABASE_SERVICE_ROLE_KEY   bypasses RLS; the only role allowed to publish
 #   ENV_FILE                    optional, defaults to env/supabase.json
@@ -22,6 +27,7 @@ $supabaseUrl = $buildConfig.SUPABASE_URL.TrimEnd('/')
 $publicBase = "$supabaseUrl/storage/v1/object/public/releases"
 
 $version = & "$PSScriptRoot\pubspec_version.ps1"
+$userAgent = "DaySeven-CI"
 
 $zip = "dist\DaySeven-Windows-x64.zip"
 if (-not (Test-Path $zip)) {
@@ -43,6 +49,7 @@ Invoke-RestMethod `
         "cache-control" = "max-age=3600"
     } `
     -ContentType "application/zip" `
+    -UserAgent $userAgent `
     -InFile $zip | Out-Null
 
 # download_url and install_url are the same file here: there is only one thing
@@ -66,6 +73,7 @@ Invoke-RestMethod `
         "apikey"        = $env:SUPABASE_SERVICE_ROLE_KEY
     } `
     -ContentType "application/json" `
+    -UserAgent $userAgent `
     -Body $body | Out-Null
 
 Write-Host "Published DaySeven $($version.Full) for Windows."
