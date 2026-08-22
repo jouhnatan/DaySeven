@@ -6,9 +6,29 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
+import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 
 enum KbRole { local, owner, coOwner, editor, reviewer, invited }
+
+extension KbRolePublishing on KbRole {
+  int? get publishingRank => switch (this) {
+    KbRole.editor => MinimumPublishRole.editor.rank,
+    KbRole.coOwner => MinimumPublishRole.coOwner.rank,
+    KbRole.owner => MinimumPublishRole.owner.rank,
+    KbRole.local || KbRole.reviewer || KbRole.invited => null,
+  };
+
+  MinimumPublishRole? get minimumPublishRole => switch (this) {
+    KbRole.editor => MinimumPublishRole.editor,
+    KbRole.coOwner => MinimumPublishRole.coOwner,
+    KbRole.owner => MinimumPublishRole.owner,
+    KbRole.local || KbRole.reviewer || KbRole.invited => null,
+  };
+
+  bool meets(MinimumPublishRole minimumRole) =>
+      publishingRank != null && publishingRank! >= minimumRole.rank;
+}
 
 final kbRoleProvider = FutureProvider<KbRole>((ref) async {
   final session = ref.watch(kbSessionProvider);

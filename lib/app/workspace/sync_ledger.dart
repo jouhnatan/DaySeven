@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 
 class SyncedDocument {
@@ -14,23 +15,34 @@ class SyncedDocument {
     required this.revisionId,
     required this.contentHash,
     required this.path,
+    this.protection,
   });
 
   final String revisionId;
   final String contentHash;
   final String path;
+  final DocumentProtection? protection;
 
   Map<String, Object?> toJson() => {
     'revisionId': revisionId,
     'contentHash': contentHash,
     'path': path,
+    'protectionClass': protection?.protectionClass.databaseValue,
+    'minimumPublishRole': protection?.minimumPublishRole.databaseValue,
   };
 
-  factory SyncedDocument.fromJson(Map<String, Object?> json) => SyncedDocument(
-    revisionId: json['revisionId'] as String,
-    contentHash: json['contentHash'] as String,
-    path: json['path'] as String,
-  );
+  factory SyncedDocument.fromJson(Map<String, Object?> json) {
+    final protection = DocumentProtection.fromRow({
+      'protection_class': json['protectionClass'],
+      'minimum_publish_role': json['minimumPublishRole'],
+    });
+    return SyncedDocument(
+      revisionId: json['revisionId'] as String,
+      contentHash: json['contentHash'] as String,
+      path: json['path'] as String,
+      protection: protection,
+    );
+  }
 }
 
 class SyncLedger {
@@ -67,11 +79,13 @@ class SyncLedger {
     required BlockDocument document,
     required String revisionId,
     required String path,
+    DocumentProtection? protection,
   }) async {
     _documents[document.id] = SyncedDocument(
       revisionId: revisionId,
       contentHash: document.contentHash,
       path: path,
+      protection: protection,
     );
     await _write();
   }

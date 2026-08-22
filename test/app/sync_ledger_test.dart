@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dayseven/app/workspace/sync_ledger.dart';
+import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 
@@ -39,6 +40,43 @@ void main() {
       expect(reopened.document(document.id)?.revisionId, 'revision-1');
       expect(reopened.document(document.id)?.contentHash, document.contentHash);
       expect(reopened.document(document.id)?.path, 'Drafts/Chapter.md');
+    },
+  );
+
+  test(
+    'persists protection while remaining compatible with old ledgers',
+    () async {
+      final document = BlockDocument(
+        id: 'document-1',
+        title: 'Chapter',
+        blocks: const [],
+      );
+      final ledger = await SyncLedger.open(kb);
+      const protection = DocumentProtection(
+        protectionClass: DocumentProtectionClass.protected,
+        minimumPublishRole: MinimumPublishRole.coOwner,
+      );
+      await ledger.record(
+        document: document,
+        revisionId: 'revision-1',
+        path: 'Chapter.md',
+        protection: protection,
+      );
+
+      expect(
+        (await SyncLedger.open(kb)).document(document.id)?.protection,
+        protection,
+      );
+
+      await File('${kb.settingsPath}/sync.json').writeAsString(
+        '{"version":1,"documents":{"document-1":{'
+        '"revisionId":"revision-1","contentHash":"hash",'
+        '"path":"Chapter.md"}}}',
+      );
+      expect(
+        (await SyncLedger.open(kb)).document(document.id)?.protection,
+        isNull,
+      );
     },
   );
 

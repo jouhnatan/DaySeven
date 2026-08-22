@@ -20,6 +20,7 @@ import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/workspace/editing_keybinds.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/document_publish_controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
@@ -193,10 +194,25 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   }
 
   FocusNode _focusFor(String blockId) => _focusNodes.putIfAbsent(blockId, () {
-    final node = FocusNode();
+    final node = FocusNode(onKeyEvent: _handleDocumentShortcut);
     node.addListener(() => _publishFocus(blockId));
     return node;
   });
+
+  KeyEventResult _handleDocumentShortcut(FocusNode node, KeyEvent event) {
+    if (widget.readOnly || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    final modifier = defaultTargetPlatform == TargetPlatform.macOS
+        ? keyboard.isMetaPressed
+        : keyboard.isControlPressed;
+    if (event.logicalKey != LogicalKeyboardKey.keyS || !modifier) {
+      return KeyEventResult.ignored;
+    }
+    unawaited(publishOpenDocumentWithFeedback(context, ref));
+    return KeyEventResult.handled;
+  }
 
   /// Tells the toolbar what it is pointed at.
   ///
@@ -786,6 +802,9 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
                     onSplit: () => _splitBlock(t.id),
                     onMergeBack: () => _mergeIntoPrevious(t.id),
                     onMenu: (position) => _showBlockMenu(position, t),
+                    onPublish: () => unawaited(
+                      publishOpenDocumentWithFeedback(context, ref),
+                    ),
                   ),
                   CodeBlock() => Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1111,6 +1130,7 @@ class _TextBlockView extends StatelessWidget {
     this.onToggleChecked,
     required this.onMergeBack,
     required this.onMenu,
+    required this.onPublish,
   });
 
   final TextBlock block;
@@ -1127,6 +1147,7 @@ class _TextBlockView extends StatelessWidget {
   final VoidCallback onSplit;
   final bool Function() onMergeBack;
   final void Function(Offset position) onMenu;
+  final VoidCallback onPublish;
 
   TextAlign get _align => switch (block.align) {
     BlockAlign.left => TextAlign.left,
@@ -1146,6 +1167,11 @@ class _TextBlockView extends StatelessWidget {
           shortcuts: {
             const SingleActivator(LogicalKeyboardKey.enter):
                 const _SplitIntent(),
+            SingleActivator(
+              LogicalKeyboardKey.keyS,
+              meta: defaultTargetPlatform == TargetPlatform.macOS,
+              control: defaultTargetPlatform != TargetPlatform.macOS,
+            ): const _PublishIntent(),
             for (final entry in kEditingKeybinds.entries)
               entry.value.activator(defaultTargetPlatform): _FormatIntent(
                 entry.key,
@@ -1158,6 +1184,9 @@ class _TextBlockView extends StatelessWidget {
               ),
               _FormatIntent: CallbackAction<_FormatIntent>(
                 onInvoke: (intent) => _toggleHere(intent.format),
+              ),
+              _PublishIntent: CallbackAction<_PublishIntent>(
+                onInvoke: (_) => onPublish(),
               ),
             },
             child: Focus(
@@ -1303,6 +1332,10 @@ class _TextBlockView extends StatelessWidget {
 
 class _SplitIntent extends Intent {
   const _SplitIntent();
+}
+
+class _PublishIntent extends Intent {
+  const _PublishIntent();
 }
 
 class _FormatIntent extends Intent {

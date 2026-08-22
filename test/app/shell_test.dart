@@ -155,8 +155,8 @@ void main() {
     await tester.tap(find.byTooltip('Editor menu'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Publish directly'), findsOneWidget);
-    expect(find.byKey(const Key('editor-menu-publish-local')), findsOneWidget);
+    expect(find.text('Publish directly'), findsNothing);
+    expect(find.text('Sync latest'), findsOneWidget);
     expect(find.text('Differences'), findsNWidgets(2));
     expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
 

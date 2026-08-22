@@ -1,4 +1,4 @@
-/// Durable pending-review state and automatic reviewed-edit submission.
+/// Durable pending-review state and explicit reviewed-edit submission.
 ///
 /// Realtime only wakes this controller. Postgres is always queried before the
 /// queue changes, so a missed WebSocket event cannot lose a proposal.
@@ -28,8 +28,12 @@ enum DifferencesRealtimeHealth { inactive, connecting, connected, error }
 
 enum DifferenceSyncPhase {
   savingLocally,
+  savedLocally,
+  publishing,
+  proposing,
   syncingForReview,
   waitingForReview,
+  published,
   synced,
   offline,
   conflict,
@@ -45,8 +49,12 @@ class DocumentReviewSyncState {
 
   String get label => switch (phase) {
     DifferenceSyncPhase.savingLocally => 'Saving locally',
+    DifferenceSyncPhase.savedLocally => 'Saved locally',
+    DifferenceSyncPhase.publishing => 'Publishing',
+    DifferenceSyncPhase.proposing => 'Proposing',
     DifferenceSyncPhase.syncingForReview => 'Syncing for review',
     DifferenceSyncPhase.waitingForReview => 'Waiting for review',
+    DifferenceSyncPhase.published => 'Published',
     DifferenceSyncPhase.synced => 'Synced',
     DifferenceSyncPhase.offline => 'Offline',
     DifferenceSyncPhase.conflict => 'Conflict',
@@ -99,6 +107,10 @@ final differencesRealtimeEnabledProvider = Provider<bool>(
   (ref) => ref.watch(differencesNetworkEnabledProvider),
 );
 
+/// A Realtime/focus wake-up signal. Consumers must still read canonical state
+/// from Postgres before touching a local working copy.
+final canonicalSyncWakeProvider = StateProvider<int>((ref) => 0);
+
 final differencesControllerProvider =
     StateNotifierProvider<DifferencesController, DifferencesState>(
       DifferencesController.new,
@@ -138,7 +150,6 @@ class DifferencesController extends StateNotifier<DifferencesState>
 
   final Ref _ref;
   RealtimeChannel? _channel;
-  final Map<String, Timer> _networkDebounces = {};
   final Map<String, OpenDocument> _pendingDocuments = {};
   final Map<String, Future<void>> _activeSubmissions = {};
   String? _boundKbId;
@@ -197,6 +208,18 @@ class DifferencesController extends StateNotifier<DifferencesState>
             } on Object {
               // Unknown payloads never replace the durable REST state.
             }
+          },
+        )
+        .onBroadcast(
+          event: 'document_published',
+          callback: (_) {
+            _ref.read(canonicalSyncWakeProvider.notifier).state++;
+          },
+        )
+        .onBroadcast(
+          event: 'document_protection_changed',
+          callback: (_) {
+            _ref.read(canonicalSyncWakeProvider.notifier).state++;
           },
         )
         .subscribe((status, error) {
@@ -270,46 +293,25 @@ class DifferencesController extends StateNotifier<DifferencesState>
         previous != null &&
         previous.document.id == next.document.id &&
         previous.relativePath != next.relativePath;
-    if (!next.dirty && !pathChanged) return;
     final changed =
         previous == null ||
         previous.document.id != next.document.id ||
         previous.document.contentHash != next.document.contentHash ||
-        previous.relativePath != next.relativePath;
+        previous.relativePath != next.relativePath ||
+        previous.dirty != next.dirty;
     if (!changed) return;
-
-    if (!_ref.read(differencesNetworkEnabledProvider)) {
-      _setDocumentSync(
-        next.document.id,
-        const DocumentReviewSyncState(DifferenceSyncPhase.synced),
-      );
-      return;
-    }
-    final role = _ref.read(kbRoleProvider).valueOrNull;
-    if (role != null && role != KbRole.editor && role != KbRole.coOwner) {
-      _setDocumentSync(
-        next.document.id,
-        const DocumentReviewSyncState(DifferenceSyncPhase.synced),
-      );
-      return;
-    }
-
     _setDocumentSync(
       next.document.id,
-      const DocumentReviewSyncState(DifferenceSyncPhase.savingLocally),
+      DocumentReviewSyncState(
+        next.dirty || pathChanged
+            ? DifferenceSyncPhase.savingLocally
+            : DifferenceSyncPhase.savedLocally,
+      ),
     );
     _pendingDocuments[next.document.id] = next;
-    _networkDebounces.remove(next.document.id)?.cancel();
-    _networkDebounces[next.document.id] = Timer(
-      const Duration(milliseconds: 1800),
-      () {
-        unawaited(_submitDebounced(next.document.id));
-      },
-    );
   }
 
   Future<void> _submitDebounced(String documentId) async {
-    _networkDebounces.remove(documentId)?.cancel();
     final active = _activeSubmissions[documentId];
     if (active != null) {
       await active;
@@ -433,7 +435,6 @@ class DifferencesController extends StateNotifier<DifferencesState>
   }
 
   Future<void> submitPendingEditNow(String documentId) async {
-    _networkDebounces.remove(documentId)?.cancel();
     final open = _ref.read(documentControllerProvider);
     if (open != null && open.document.id == documentId) {
       _pendingDocuments[documentId] = open;
@@ -441,9 +442,8 @@ class DifferencesController extends StateNotifier<DifferencesState>
     await _submitDebounced(documentId);
   }
 
-  /// Stops the automatic Co-Owner proposal from racing an explicit publish.
+  /// Compatibility hook for explicit direct publishing on older UI paths.
   Future<void> prepareDirectPublish(String documentId) async {
-    _networkDebounces.remove(documentId)?.cancel();
     _pendingDocuments.remove(documentId);
     final active = _activeSubmissions[documentId];
     if (active != null) await active;
@@ -465,6 +465,57 @@ class DifferencesController extends StateNotifier<DifferencesState>
       const DocumentReviewSyncState(DifferenceSyncPhase.synced),
     );
     unawaited(refresh(showLoading: false));
+  }
+
+  void markPublishing(String documentId, {required bool willPropose}) {
+    _setDocumentSync(
+      documentId,
+      DocumentReviewSyncState(
+        willPropose
+            ? DifferenceSyncPhase.proposing
+            : DifferenceSyncPhase.publishing,
+      ),
+    );
+  }
+
+  void markPublished(String documentId) {
+    _pendingDocuments.remove(documentId);
+    _setDocumentSync(
+      documentId,
+      const DocumentReviewSyncState(DifferenceSyncPhase.published),
+    );
+    unawaited(refresh(showLoading: false));
+  }
+
+  void markProposed(String documentId, String proposalId) {
+    _pendingDocuments.remove(documentId);
+    _setDocumentSync(
+      documentId,
+      DocumentReviewSyncState(
+        DifferenceSyncPhase.waitingForReview,
+        proposalId: proposalId,
+      ),
+    );
+    unawaited(refresh(showLoading: false));
+  }
+
+  void markConflict(String documentId, String detail) {
+    _setDocumentSync(
+      documentId,
+      DocumentReviewSyncState(DifferenceSyncPhase.conflict, detail: detail),
+    );
+  }
+
+  void markPublishError(String documentId, Object error) {
+    _setDocumentSync(
+      documentId,
+      DocumentReviewSyncState(
+        _isOffline(error)
+            ? DifferenceSyncPhase.offline
+            : DifferenceSyncPhase.error,
+        detail: describeError(error),
+      ),
+    );
   }
 
   void remove(String changeSetId) {
@@ -495,12 +546,7 @@ class DifferencesController extends StateNotifier<DifferencesState>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(refresh(showLoading: false));
-      for (final documentId in _pendingDocuments.keys.toList()) {
-        if (this.state.documentSync[documentId]?.phase ==
-            DifferenceSyncPhase.offline) {
-          unawaited(_submitDebounced(documentId));
-        }
-      }
+      _ref.read(canonicalSyncWakeProvider.notifier).state++;
     }
   }
 
@@ -513,9 +559,6 @@ class DifferencesController extends StateNotifier<DifferencesState>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    for (final timer in _networkDebounces.values) {
-      timer.cancel();
-    }
     final channel = _channel;
     if (channel != null && _ref.read(differencesRealtimeEnabledProvider)) {
       unawaited(supabase.removeChannel(channel));

@@ -35,4 +35,33 @@ void main() {
       expect(sql, contains('returning id into v_revision_id'));
     },
   );
+
+  test('protected publishing migration routes and locks server-side', () async {
+    final sql = await File(
+      'supabase/migrations/20260822203229_protected_document_publishing.sql',
+    ).readAsString();
+
+    expect(sql, contains('documents_protection_consistent'));
+    expect(sql, contains("protection_class = 'protected'"));
+    expect(sql, contains('private.set_document_protection'));
+    expect(sql, contains('private.publish_document_change'));
+    expect(sql, contains("'outcome', 'proposed'"));
+    expect(sql, contains("'outcome', 'published'"));
+    expect(sql, contains('for update'));
+    expect(sql, contains('v_doc.current_revision_id is distinct from'));
+    expect(sql, contains("using errcode = '40001'"));
+    expect(sql, contains('private.can_publish_document(kb_id, id)'));
+    expect(sql, contains('document_published'));
+    expect(sql, contains('document_protection_changed'));
+    expect(sql, contains('perform realtime.send'));
+    expect(sql, contains('security invoker'));
+    expect(sql, contains("set search_path = ''"));
+    expect(sql, isNot(contains('grant all')));
+    expect(sql, isNot(contains('service_role')));
+    expect(
+      sql,
+      contains('and author_id = v_uid'),
+      reason: 'direct publish may withdraw only the publisher\'s own draft',
+    );
+  });
 }

@@ -10,7 +10,9 @@ import 'package:dayseven/features/differences/data/change_set_repository.dart';
 import 'package:dayseven/features/differences/domain/change_set.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
+import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/blocks/revision.dart';
 import 'package:dayseven/shared/blocks/search_index.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:flutter/widgets.dart';
@@ -145,11 +147,89 @@ class FakeChangeSets implements ChangeSetDataSource {
 }
 
 class FakeDocuments extends DocumentRepository {
+  FakeDocuments({required this.role});
+
+  final KbRole role;
   String? current = 'base-1';
   int commits = 0;
+  int deletions = 0;
+  BlockDocument? currentDocument;
+  String currentPath = 'Aldenmoor.md';
+  DocumentProtection? currentProtection;
+  final Map<String, Revision> revisions = {};
 
   @override
   Future<String?> currentRevisionId(String documentId) async => current;
+
+  @override
+  Future<RemoteDocumentSnapshot?> snapshotForDocument(String documentId) async {
+    if (current == null || currentDocument == null) return null;
+    return RemoteDocumentSnapshot(
+      path: currentPath,
+      revisionId: current!,
+      document: currentDocument!,
+      protection: currentProtection,
+    );
+  }
+
+  @override
+  Future<List<RemoteDocumentSnapshot>> snapshot(String kbId) async {
+    final one = await snapshotForDocument(currentDocument?.id ?? 'missing');
+    return one == null ? const [] : [one];
+  }
+
+  @override
+  Future<Revision?> revision(String revisionId) async => revisions[revisionId];
+
+  @override
+  Future<DocumentProtection?> protection(String documentId) async =>
+      currentProtection;
+
+  @override
+  Future<DocumentPublishReceipt> publishChange({
+    required String kbId,
+    required String relativePath,
+    required BlockDocument document,
+    required String? expectedCurrentRevisionId,
+  }) async {
+    final mayPublish =
+        currentProtection == null ||
+        role.meets(currentProtection!.minimumPublishRole);
+    if (!mayPublish) {
+      return const DocumentPublishReceipt.proposed('stable-pending-id');
+    }
+    commits++;
+    current = 'revision-$commits';
+    currentDocument = document;
+    currentPath = relativePath;
+    return DocumentPublishReceipt.published(current!);
+  }
+
+  @override
+  Future<DocumentPublishReceipt> publishDeletion({
+    required String kbId,
+    required String documentId,
+    required String relativePath,
+    required String expectedCurrentRevisionId,
+  }) async {
+    deletions++;
+    final mayPublish =
+        currentProtection == null ||
+        role.meets(currentProtection!.minimumPublishRole);
+    return mayPublish
+        ? DocumentPublishReceipt.published(documentId)
+        : const DocumentPublishReceipt.proposed('delete-proposal');
+  }
+
+  @override
+  Future<DocumentProtection?> setProtection({
+    required String kbId,
+    required String documentId,
+    DocumentProtection? protection,
+  }) async {
+    currentProtection = protection;
+    return protection;
+  }
 
   @override
   Future<String> commit({
@@ -159,6 +239,8 @@ class FakeDocuments extends DocumentRepository {
   }) async {
     commits++;
     current = 'revision-$commits';
+    currentDocument = document;
+    currentPath = relativePath;
     return current!;
   }
 
@@ -230,7 +312,18 @@ Future<TestContext> context({KbRole role = KbRole.editor}) async {
   final index = await SearchIndex.openFor(kb);
   await index.rebuild();
   final changes = FakeChangeSets();
-  final documents = FakeDocuments();
+  final documents = FakeDocuments(role: role)
+    ..currentDocument = base
+    ..currentPath = path
+    ..revisions['base-1'] = Revision(
+      id: 'base-1',
+      documentId: base.id,
+      parentRevisionId: null,
+      content: base,
+      contentHash: base.contentHash,
+      authorId: 'owner',
+      createdAt: DateTime.utc(2026, 8, 22),
+    );
   final session = KbSession(kb: kb, index: index, tree: await kb.readTree());
   final container = ProviderContainer(
     overrides: [
@@ -268,59 +361,85 @@ Future<void> settle() async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'editing and local autosave never transmit without an explicit action',
+    () async {
+      final test = await context();
+      addTearDown(test.close);
+      test.container.read(differencesControllerProvider);
+      final edited = test.base.copyWith(
+        blocks: const [
+          ParagraphBlock(
+            id: 'p-1',
+            spans: [TextSpanNode(text: 'Local only until Publish')],
+          ),
+        ],
+      );
+
+      test.container.read(documentControllerProvider.notifier).edit(edited);
+      await Future<void>.delayed(const Duration(milliseconds: 1900));
+      await test.container.read(documentControllerProvider.notifier).flush();
+      await settle();
+
+      expect(test.changes.proposals, 0);
+      expect(test.documents.commits, 0);
+      expect(
+        test.container
+            .read(differencesControllerProvider)
+            .documentSync[edited.id]
+            ?.phase,
+        DifferenceSyncPhase.savedLocally,
+      );
+    },
+  );
+
   for (final role in [KbRole.editor, KbRole.coOwner]) {
-    test(
-      '$role edits submit automatically and reuse the author proposal',
-      () async {
-        final test = await context(role: role);
-        addTearDown(test.close);
-        final controller = test.container.read(
-          differencesControllerProvider.notifier,
-        );
+    test('$role explicitly proposes and reuses the author proposal', () async {
+      final test = await context(role: role);
+      addTearDown(test.close);
+      final controller = test.container.read(
+        differencesControllerProvider.notifier,
+      );
 
-        final first = test.base.copyWith(
-          blocks: const [
-            ParagraphBlock(
-              id: 'p-1',
-              spans: [TextSpanNode(text: 'First reviewed edit')],
-            ),
-          ],
-        );
-        test.container.read(documentControllerProvider.notifier).edit(first);
-        await controller.submitPendingEditNow(first.id);
+      final first = test.base.copyWith(
+        blocks: const [
+          ParagraphBlock(
+            id: 'p-1',
+            spans: [TextSpanNode(text: 'First reviewed edit')],
+          ),
+        ],
+      );
+      test.container.read(documentControllerProvider.notifier).edit(first);
+      await controller.submitPendingEditNow(first.id);
 
-        expect(test.changes.proposals, 1);
-        expect(test.changes.latestContent?.plainText, 'First reviewed edit');
-        expect(
-          test.container
-              .read(differencesControllerProvider)
-              .documentSync[first.id]
-              ?.phase,
-          DifferenceSyncPhase.waitingForReview,
-        );
+      expect(test.changes.proposals, 1);
+      expect(test.changes.latestContent?.plainText, 'First reviewed edit');
+      expect(
+        test.container
+            .read(differencesControllerProvider)
+            .documentSync[first.id]
+            ?.phase,
+        DifferenceSyncPhase.waitingForReview,
+      );
 
-        final second = first.copyWith(
-          blocks: const [
-            ParagraphBlock(
-              id: 'p-1',
-              spans: [TextSpanNode(text: 'Continued reviewed edit')],
-            ),
-          ],
-        );
-        test.container.read(documentControllerProvider.notifier).edit(second);
-        await controller.submitPendingEditNow(second.id);
+      final second = first.copyWith(
+        blocks: const [
+          ParagraphBlock(
+            id: 'p-1',
+            spans: [TextSpanNode(text: 'Continued reviewed edit')],
+          ),
+        ],
+      );
+      test.container.read(documentControllerProvider.notifier).edit(second);
+      await controller.submitPendingEditNow(second.id);
 
-        expect(test.changes.proposals, 2);
-        expect(
-          test.changes.latestContent?.plainText,
-          'Continued reviewed edit',
-        );
-      },
-    );
+      expect(test.changes.proposals, 2);
+      expect(test.changes.latestContent?.plainText, 'Continued reviewed edit');
+    });
   }
 
-  for (final role in [KbRole.owner, KbRole.coOwner]) {
-    test('$role can explicitly publish directly', () async {
+  for (final role in [KbRole.owner, KbRole.coOwner, KbRole.editor]) {
+    test('$role explicitly publishes an unprotected document', () async {
       final test = await context(role: role);
       addTearDown(test.close);
       test.container.read(differencesControllerProvider);
@@ -336,19 +455,187 @@ void main() {
 
       await test.container
           .read(sharingControllerProvider)
-          .publishOpenDocumentDirectly();
+          .publishOpenDocument();
 
       expect(test.documents.commits, 1);
-      expect(test.changes.withdrawals, 1);
+      expect(test.changes.withdrawals, 0);
       expect(
         test.container
             .read(differencesControllerProvider)
             .documentSync[edited.id]
             ?.phase,
-        DifferenceSyncPhase.synced,
+        DifferenceSyncPhase.published,
       );
     });
   }
+
+  for (final role in [KbRole.editor, KbRole.coOwner]) {
+    test('$role proposes when Owner protection is required', () async {
+      final test = await context(role: role);
+      addTearDown(test.close);
+      test.documents.currentProtection = const DocumentProtection(
+        protectionClass: DocumentProtectionClass.protected,
+        minimumPublishRole: MinimumPublishRole.owner,
+      );
+      final edited = test.base.copyWith(
+        blocks: const [
+          ParagraphBlock(
+            id: 'p-1',
+            spans: [TextSpanNode(text: 'Protected local edit')],
+          ),
+        ],
+      );
+      test.container.read(documentControllerProvider.notifier).edit(edited);
+
+      final result = await test.container
+          .read(sharingControllerProvider)
+          .publishOpenDocument();
+
+      expect(result, SyncOutcome.proposed);
+      expect(test.documents.commits, 0);
+      expect(
+        test.container
+            .read(differencesControllerProvider)
+            .documentSync[edited.id]
+            ?.phase,
+        DifferenceSyncPhase.waitingForReview,
+      );
+    });
+  }
+
+  test('a clean local copy applies a collaborator publish', () async {
+    final test = await context(role: KbRole.editor);
+    addTearDown(test.close);
+    final remote = test.base.copyWith(
+      blocks: const [
+        ParagraphBlock(
+          id: 'p-1',
+          spans: [TextSpanNode(text: 'Published by collaborator')],
+        ),
+      ],
+    );
+    test.documents
+      ..current = 'revision-2'
+      ..currentDocument = remote;
+
+    final result = await test.container
+        .read(sharingControllerProvider)
+        .pullRemoteChanges();
+
+    expect(result.updated, 1);
+    expect(
+      (await test.kb.readDocument(test.path)).plainText,
+      'Published by collaborator',
+    );
+    expect(
+      (await SyncLedger.open(test.kb)).document(remote.id)?.revisionId,
+      'revision-2',
+    );
+  });
+
+  test(
+    'a divergent local copy is preserved when a collaborator publishes',
+    () async {
+      final test = await context(role: KbRole.editor);
+      addTearDown(test.close);
+      test.container.read(differencesControllerProvider);
+      final local = test.base.copyWith(
+        blocks: const [
+          ParagraphBlock(
+            id: 'p-1',
+            spans: [TextSpanNode(text: 'Unpublished local words')],
+          ),
+        ],
+      );
+      test.container.read(documentControllerProvider.notifier).edit(local);
+      await test.container.read(documentControllerProvider.notifier).flush();
+      test.documents
+        ..current = 'revision-2'
+        ..currentDocument = test.base.copyWith(
+          blocks: const [
+            ParagraphBlock(
+              id: 'p-1',
+              spans: [TextSpanNode(text: 'Different remote words')],
+            ),
+          ],
+        );
+
+      final result = await test.container
+          .read(sharingControllerProvider)
+          .pullRemoteChanges();
+
+      expect(result.conflicts, 1);
+      expect(
+        (await test.kb.readDocument(test.path)).plainText,
+        'Unpublished local words',
+      );
+      expect(
+        test.container
+            .read(differencesControllerProvider)
+            .documentSync[local.id]
+            ?.phase,
+        DifferenceSyncPhase.conflict,
+      );
+    },
+  );
+
+  test('non-overlapping simultaneous edits merge before publishing', () async {
+    final test = await context(role: KbRole.editor);
+    addTearDown(test.close);
+    final local = test.base.copyWith(
+      blocks: const [
+        ParagraphBlock(
+          id: 'p-1',
+          spans: [TextSpanNode(text: 'Local paragraph edit')],
+        ),
+      ],
+    );
+    test.container.read(documentControllerProvider.notifier).edit(local);
+    test.documents
+      ..current = 'revision-2'
+      ..currentDocument = test.base.copyWith(title: 'Remote title');
+
+    final result = await test.container
+        .read(sharingControllerProvider)
+        .publishOpenDocument();
+
+    expect(result, SyncOutcome.committed);
+    expect(test.documents.commits, 1);
+    expect(test.documents.currentDocument?.title, 'Remote title');
+    expect(test.documents.currentDocument?.plainText, 'Local paragraph edit');
+  });
+
+  test('overlapping simultaneous edits stay local as a conflict', () async {
+    final test = await context(role: KbRole.editor);
+    addTearDown(test.close);
+    final local = test.base.copyWith(
+      blocks: const [
+        ParagraphBlock(
+          id: 'p-1',
+          spans: [TextSpanNode(text: 'Local overlap')],
+        ),
+      ],
+    );
+    test.container.read(documentControllerProvider.notifier).edit(local);
+    test.documents
+      ..current = 'revision-2'
+      ..currentDocument = test.base.copyWith(
+        blocks: const [
+          ParagraphBlock(
+            id: 'p-1',
+            spans: [TextSpanNode(text: 'Remote overlap')],
+          ),
+        ],
+      );
+
+    await expectLater(
+      test.container.read(sharingControllerProvider).publishOpenDocument(),
+      throwsA(isA<PublishConflict>()),
+    );
+
+    expect(test.documents.commits, 0);
+    expect((await test.kb.readDocument(test.path)).plainText, 'Local overlap');
+  });
 
   test('switching documents does not strand a debounced proposal', () async {
     final test = await context();
@@ -423,7 +710,7 @@ void main() {
       await test.container
           .read(sharingControllerProvider)
           .syncDeletion(test.path);
-      expect(test.changes.deletes, 1);
+      expect(test.documents.deletions, 1);
     },
   );
 
@@ -527,42 +814,47 @@ void main() {
     },
   );
 
-  test('focus retries an offline reviewed edit', () async {
-    final test = await context();
-    addTearDown(test.close);
-    final controller = test.container.read(
-      differencesControllerProvider.notifier,
-    );
-    test.changes.proposalError = const SocketException('offline');
-    final edited = test.base.copyWith(
-      blocks: const [
-        ParagraphBlock(
-          id: 'p-1',
-          spans: [TextSpanNode(text: 'Retry this proposal')],
-        ),
-      ],
-    );
-    test.container.read(documentControllerProvider.notifier).edit(edited);
-    await controller.submitPendingEditNow(edited.id);
-    expect(
-      test.container
-          .read(differencesControllerProvider)
-          .documentSync[edited.id]
-          ?.phase,
-      DifferenceSyncPhase.offline,
-    );
+  test(
+    'focus does not transmit an offline local edit without Publish',
+    () async {
+      final test = await context();
+      addTearDown(test.close);
+      final controller = test.container.read(
+        differencesControllerProvider.notifier,
+      );
+      test.changes.proposalError = const SocketException('offline');
+      final edited = test.base.copyWith(
+        blocks: const [
+          ParagraphBlock(
+            id: 'p-1',
+            spans: [TextSpanNode(text: 'Retry this proposal')],
+          ),
+        ],
+      );
+      test.container.read(documentControllerProvider.notifier).edit(edited);
+      await controller.submitPendingEditNow(edited.id);
+      expect(
+        test.container
+            .read(differencesControllerProvider)
+            .documentSync[edited.id]
+            ?.phase,
+        DifferenceSyncPhase.offline,
+      );
 
-    test.changes.proposalError = null;
-    controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-    await Future<void>.delayed(const Duration(milliseconds: 30));
+      test.changes.proposalError = null;
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
 
-    expect(test.changes.proposals, 1);
-    expect(
-      test.container
-          .read(differencesControllerProvider)
-          .documentSync[edited.id]
-          ?.phase,
-      DifferenceSyncPhase.waitingForReview,
-    );
-  });
+      expect(test.changes.proposals, 0);
+      await controller.submitPendingEditNow(edited.id);
+      expect(test.changes.proposals, 1);
+      expect(
+        test.container
+            .read(differencesControllerProvider)
+            .documentSync[edited.id]
+            ?.phase,
+        DifferenceSyncPhase.waitingForReview,
+      );
+    },
+  );
 }

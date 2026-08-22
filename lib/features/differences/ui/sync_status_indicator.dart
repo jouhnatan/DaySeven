@@ -21,7 +21,11 @@ class DocumentReviewSyncIndicator extends ConsumerWidget {
       DifferenceSyncPhase.conflict => colors.conflict,
       DifferenceSyncPhase.error => colors.removal,
       DifferenceSyncPhase.savingLocally ||
+      DifferenceSyncPhase.publishing ||
+      DifferenceSyncPhase.proposing ||
       DifferenceSyncPhase.syncingForReview => colors.link,
+      DifferenceSyncPhase.savedLocally ||
+      DifferenceSyncPhase.published ||
       DifferenceSyncPhase.synced => colors.muted,
     };
     return Tooltip(
