@@ -90,10 +90,11 @@ bool FlutterWindow::OnCreate() {
         }
 
         uint32_t argb;
-        if (const auto* value = std::get_if<int64_t>(&color->second)) {
-          argb = static_cast<uint32_t>(*value);
-        } else if (const auto* value = std::get_if<int32_t>(&color->second)) {
-          argb = static_cast<uint32_t>(*value);
+        if (const auto* value64 = std::get_if<int64_t>(&color->second)) {
+          argb = static_cast<uint32_t>(*value64);
+        } else if (const auto* value32 =
+                       std::get_if<int32_t>(&color->second)) {
+          argb = static_cast<uint32_t>(*value32);
         } else {
           result->Error("invalid_arguments", "argb must be an integer");
           return;
