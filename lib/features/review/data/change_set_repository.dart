@@ -12,8 +12,30 @@ class ChangeSetRepository {
   static const _select =
       'id, kb_id, document_id, base_revision_id, content, author_id, status, '
       'resulting_revision_id, created_at, resolved_at, resolved_by, '
-      'operation, target_document_id, proposed_path, updated_at, review_note, '
-      'profiles!change_sets_author_id_fkey(display_name)';
+      'operation, target_document_id, proposed_path, updated_at, review_note';
+
+  Future<List<ChangeSet>> _withAuthorProfiles(
+    List<Map<String, Object?>> rows,
+  ) async {
+    if (rows.isEmpty) return const [];
+    final authorIds = rows.map((row) => row['author_id'] as String).toSet();
+    final profiles = await supabase
+        .from('profiles')
+        .select('id, display_name')
+        .inFilter('id', authorIds.toList());
+    final names = <String, String>{
+      for (final profile in profiles)
+        profile['id'] as String:
+            profile['display_name'] as String? ?? 'Unknown author',
+    };
+    return rows.map((row) {
+      final authorId = row['author_id'] as String;
+      return ChangeSet.fromRow({
+        ...row,
+        'profiles': {'display_name': names[authorId] ?? 'Unknown author'},
+      });
+    }).toList();
+  }
 
   /// Saves an edit as a proposal instead of writing it to the document.
   Future<ChangeSet> propose({
@@ -108,7 +130,8 @@ class ChangeSetRepository {
         .eq('document_id', documentId)
         .eq('status', 'pending')
         .maybeSingle();
-    return row == null ? null : ChangeSet.fromRow(row);
+    if (row == null) return null;
+    return (await _withAuthorProfiles([row])).single;
   }
 
   Future<List<ChangeSet>> pendingForKb(String kbId) async {
@@ -118,7 +141,7 @@ class ChangeSetRepository {
         .eq('kb_id', kbId)
         .eq('status', 'pending')
         .order('updated_at', ascending: false);
-    return rows.cast<Map<String, Object?>>().map(ChangeSet.fromRow).toList();
+    return _withAuthorProfiles(rows.cast<Map<String, Object?>>());
   }
 
   Future<ChangeSet?> byId(String changeSetId) async {
@@ -127,7 +150,8 @@ class ChangeSetRepository {
         .select(_select)
         .eq('id', changeSetId)
         .maybeSingle();
-    return row == null ? null : ChangeSet.fromRow(row);
+    if (row == null) return null;
+    return (await _withAuthorProfiles([row])).single;
   }
 
   /// Writes the merged document as a new revision and marks the proposal
