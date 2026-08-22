@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/editing_focus.dart';
+import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/shell/pane_visibility.dart';
 import 'package:dayseven/app/shell/pane_widths.dart';
 import 'package:dayseven/features/auth/ui/auth_button.dart';
@@ -17,8 +18,10 @@ import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
-import 'package:dayseven/features/review/data/proposals.dart';
-import 'package:dayseven/features/review/ui/review_inbox.dart';
+import 'package:dayseven/features/differences/application/differences_controller.dart';
+import 'package:dayseven/features/differences/application/differences_navigation.dart';
+import 'package:dayseven/features/differences/ui/differences_workspace.dart';
+import 'package:dayseven/features/differences/ui/sync_status_indicator.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/features/home/ui/home_screen.dart';
@@ -32,6 +35,9 @@ class DsShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final view = ref.watch(viewProvider);
+    final pendingDifferencesCount = ref.watch(
+      differencesStateProvider.select((state) => state.pendingCount),
+    );
     final colors = context.ds;
     final brightness = Theme.of(context).brightness;
 
@@ -133,7 +139,10 @@ class DsShell extends ConsumerWidget {
                                       children: [
                                         SizedBox(
                                           width: widths.rail,
-                                          child: const ViewsMenu(),
+                                          child: ViewsMenu(
+                                            pendingDifferencesCount:
+                                                pendingDifferencesCount,
+                                          ),
                                         ),
                                         _ResizeHandle(
                                           onDrag: (dx) => panes.dragRail(
@@ -170,6 +179,8 @@ class DsShell extends ConsumerWidget {
                                                         ),
                                                       ),
                                                     ),
+                                                  DsView.differences =>
+                                                    const DifferencesWorkspace(),
                                                 },
                                               ),
                                             ],
@@ -382,6 +393,8 @@ class _EditingToolbarIsland extends StatelessWidget {
               ),
             ),
             const SizedBox(width: DsSpace.islandGap),
+            const DocumentReviewSyncIndicator(),
+            const SizedBox(width: DsSpace.controlGap),
             const EditorToolbarMenuButton(),
           ],
         ),
@@ -441,7 +454,7 @@ class EditorToolbarMenuButton extends ConsumerWidget {
           value: _EditorToolbarMenuAction.publishLocalChanges,
           enabled: publishLocalChanges != null,
           child: Text(
-            'Publish local changes',
+            'Publish directly',
             style: uiTextStyle(
               size: 13,
               color: publishLocalChanges == null ? colors.muted : colors.text,
@@ -467,11 +480,18 @@ class EditorToolbarMenuButton extends ConsumerWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  'Differences',
-                  style: uiTextStyle(
-                    size: 13,
-                    color: openDifferences == null ? colors.muted : colors.text,
+                child: Tooltip(
+                  message: openDifferences == null
+                      ? 'No pending edits for this document.'
+                      : 'Review pending edits for this document.',
+                  child: Text(
+                    'Differences',
+                    style: uiTextStyle(
+                      size: 13,
+                      color: openDifferences == null
+                          ? colors.muted
+                          : colors.text,
+                    ),
                   ),
                 ),
               ),
@@ -505,14 +525,16 @@ class EditorToolbarMenuButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
-    final proposals = ref.watch(pendingProposalsProvider);
+    final documentProposals = ref.watch(differencesForOpenDocumentProvider);
+    final open = ref.watch(documentControllerProvider);
     final role = ref.watch(kbRoleProvider).valueOrNull;
     final mayReview =
         role == KbRole.owner ||
         role == KbRole.coOwner ||
         role == KbRole.reviewer;
-    final VoidCallback? openDifferences = mayReview && proposals.isNotEmpty
-        ? () => Navigator.of(context).push(reviewInboxRoute())
+    final VoidCallback? openDifferences =
+        mayReview && open != null && documentProposals.isNotEmpty
+        ? () => openDifferencesForDocument(context, ref, open.document.id)
         : null;
     final canSync =
         role != null && role != KbRole.local && role != KbRole.invited;
@@ -521,17 +543,10 @@ class EditorToolbarMenuButton extends ConsumerWidget {
     Future<void> publishLocalChanges() async {
       final messenger = ScaffoldMessenger.maybeOf(context);
       try {
-        final result = await ref
-            .read(sharingControllerProvider)
-            .pushLocalChanges();
-        final parts = <String>[
-          '${result.published} published',
-          '${result.unchanged} already current',
-        ];
-        if (result.conflicts > 0) {
-          parts.add('${result.conflicts} conflict(s) left untouched');
-        }
-        messenger?.showSnackBar(SnackBar(content: Text(parts.join(' · '))));
+        await ref.read(sharingControllerProvider).publishOpenDocumentDirectly();
+        messenger?.showSnackBar(
+          const SnackBar(content: Text('Published directly.')),
+        );
       } catch (error) {
         messenger?.showSnackBar(SnackBar(content: Text('$error')));
       }
@@ -569,13 +584,13 @@ class EditorToolbarMenuButton extends ConsumerWidget {
             openDifferences: openDifferences,
             publishLocalChanges: canPublish ? publishLocalChanges : null,
             syncLatest: canSync ? syncLatest : null,
-            hasPendingProposal: proposals.isNotEmpty,
+            hasPendingProposal: documentProposals.isNotEmpty,
           ),
           child: Stack(
             alignment: Alignment.center,
             children: [
               Icon(Icons.more_horiz, size: 18, color: colors.text),
-              if (proposals.isNotEmpty)
+              if (documentProposals.isNotEmpty)
                 Positioned(
                   top: 5,
                   right: 5,

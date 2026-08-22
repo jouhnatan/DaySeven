@@ -94,6 +94,29 @@ class DocumentRepository {
     return revisionId;
   }
 
+  /// Atomically publishes an Owner or Co-Owner edit against the revision the
+  /// device last observed. The server creates exactly one revision, or rejects
+  /// the request if another device moved the canonical document first.
+  Future<String> publishDirect({
+    required String kbId,
+    required String relativePath,
+    required BlockDocument document,
+    required String? expectedCurrentRevisionId,
+  }) async {
+    final revisionId = await supabase.rpc(
+      'publish_document_directly',
+      params: {
+        'p_kb_id': kbId,
+        'p_document_id': document.id,
+        'p_relative_path': relativePath,
+        'p_content': document.toJson(),
+        'p_content_hash': document.contentHash,
+        'p_expected_current_revision': expectedCurrentRevisionId,
+      },
+    );
+    return revisionId as String;
+  }
+
   Future<String?> currentRevisionId(String documentId) async {
     final row = await supabase
         .from('documents')

@@ -7,51 +7,74 @@
 ///   Return  — close the diff and leave the proposal pending.
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
-import 'package:dayseven/features/review/domain/merge.dart';
-import 'package:dayseven/shared/blocks/revision.dart';
-import 'package:dayseven/features/review/data/proposals.dart';
+import 'package:dayseven/features/differences/application/differences_controller.dart';
+import 'package:dayseven/features/differences/domain/change_set.dart';
+import 'package:dayseven/features/differences/domain/merge.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
-import 'package:dayseven/features/review/data/change_set_repository.dart';
+import 'package:dayseven/features/differences/data/change_set_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
 
-Route<void> diffRoute(ChangeSet proposal) => MaterialPageRoute<void>(
-  builder: (_) => DiffScreen(proposal: proposal),
+Route<void> reviewEditsRoute({
+  required List<ChangeSet> proposals,
+  required String initialProposalId,
+}) => MaterialPageRoute<void>(
+  builder: (_) => ReviewEditsScreen(
+    proposals: proposals,
+    initialProposalId: initialProposalId,
+  ),
   fullscreenDialog: true,
 );
 
-class DiffScreen extends ConsumerStatefulWidget {
-  const DiffScreen({super.key, required this.proposal});
+class ReviewEditsScreen extends ConsumerStatefulWidget {
+  const ReviewEditsScreen({
+    super.key,
+    required this.proposals,
+    required this.initialProposalId,
+  });
 
-  final ChangeSet proposal;
+  final List<ChangeSet> proposals;
+  final String initialProposalId;
 
   @override
-  ConsumerState<DiffScreen> createState() => _DiffScreenState();
+  ConsumerState<ReviewEditsScreen> createState() => _ReviewEditsScreenState();
 }
 
-class _DiffScreenState extends ConsumerState<DiffScreen> {
+class _ReviewEditsScreenState extends ConsumerState<ReviewEditsScreen> {
   bool _working = false;
   bool _loading = true;
   String? _error;
+  String? _notice;
   BlockDocument? _current;
   String? _currentRevisionId;
   MergeResult? _merge;
   final Map<String, bool> _conflictChoices = {};
   bool? _titleChoice;
   final _reviewNote = TextEditingController();
+  late int _proposalIndex;
+  late ChangeSet _proposal;
 
   @override
   void initState() {
     super.initState();
+    _proposalIndex = widget.proposals.indexWhere(
+      (proposal) => proposal.id == widget.initialProposalId,
+    );
+    if (_proposalIndex < 0) _proposalIndex = 0;
+    _proposal = widget.proposals[_proposalIndex];
     _prepare();
   }
 
@@ -62,21 +85,22 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
   }
 
   Future<void> _prepare() async {
+    _error = null;
     try {
       final documents = ref.read(documentRepositoryProvider);
       final empty = BlockDocument(
-        id: widget.proposal.targetDocumentId,
+        id: _proposal.targetDocumentId,
         title: '',
         blocks: const [],
       );
-      if (widget.proposal.operation == ChangeSetOperation.create) {
+      if (_proposal.operation == ChangeSetOperation.create) {
         _current = empty;
         _merge = MergeResult(
-          document: widget.proposal.content,
+          document: _proposal.content,
           conflictedBlockIds: const [],
         );
       } else {
-        final baseId = widget.proposal.baseRevisionId;
+        final baseId = _proposal.baseRevisionId;
         if (baseId == null) {
           throw const SyncException('The proposal has no base revision.');
         }
@@ -87,18 +111,18 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
           );
         }
         _currentRevisionId = await documents.currentRevisionId(
-          widget.proposal.targetDocumentId,
+          _proposal.targetDocumentId,
         );
         final currentRevision = _currentRevisionId == null
             ? null
             : await documents.revision(_currentRevisionId!);
         _current = currentRevision?.content ?? base.content;
-        _merge = widget.proposal.operation == ChangeSetOperation.delete
+        _merge = _proposal.operation == ChangeSetOperation.delete
             ? MergeResult(document: _current!, conflictedBlockIds: const [])
             : threeWayMerge(
                 base: base.content,
                 local: _current!,
-                proposed: widget.proposal.content,
+                proposed: _proposal.content,
               );
       }
     } catch (error) {
@@ -106,6 +130,24 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _selectProposal(int index) async {
+    if (_working || index < 0 || index >= widget.proposals.length) return;
+    setState(() {
+      _proposalIndex = index;
+      _proposal = widget.proposals[index];
+      _loading = true;
+      _error = null;
+      _notice = null;
+      _current = null;
+      _currentRevisionId = null;
+      _merge = null;
+      _conflictChoices.clear();
+      _titleChoice = null;
+      _reviewNote.clear();
+    });
+    await _prepare();
   }
 
   /// Returning leaves the proposal exactly as it was found.
@@ -119,8 +161,8 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
     try {
       await ref
           .read(changeSetRepositoryProvider)
-          .reject(widget.proposal.id, reviewNote: _reviewNote.text);
-      ref.read(pendingProposalsProvider.notifier).remove(widget.proposal.id);
+          .reject(_proposal.id, reviewNote: _reviewNote.text);
+      ref.read(differencesControllerProvider.notifier).remove(_proposal.id);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       setState(() {
@@ -140,10 +182,10 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
     });
 
     try {
-      await ref
+      final resultingRevisionId = await ref
           .read(changeSetRepositoryProvider)
           .approve(
-            changeSetId: widget.proposal.id,
+            changeSetId: _proposal.id,
             merged: merge,
             expectedCurrentRevisionId: _currentRevisionId,
             reviewNote: _reviewNote.text,
@@ -151,18 +193,47 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
 
       final open = ref.read(documentControllerProvider);
       final session = ref.read(kbSessionProvider);
-      if (open?.document.id == widget.proposal.targetDocumentId &&
+      if (open != null &&
+          open.document.id == _proposal.targetDocumentId &&
           session != null &&
-          widget.proposal.operation != ChangeSetOperation.delete) {
-        await session.kb.writeDocument(open!.relativePath, merge);
-        session.index.upsert(open.relativePath, merge);
-        await ref
-            .read(documentControllerProvider.notifier)
-            .open(open.relativePath);
+          _proposal.operation != ChangeSetOperation.delete &&
+          resultingRevisionId != null) {
+        final targetPath = _proposal.proposedPath ?? open.relativePath;
+        await session.kb.writeDocument(targetPath, merge);
+        session.index.upsert(targetPath, merge);
+        if (targetPath != open.relativePath) {
+          final oldFile = File(session.kb.absolutePathFor(open.relativePath));
+          if (await oldFile.exists()) await oldFile.delete();
+          session.index.remove(open.relativePath);
+          await ref.read(kbControllerProvider.notifier).refreshTree();
+        }
+        final ledger = await SyncLedger.open(session.kb);
+        await ledger.record(
+          document: merge,
+          revisionId: resultingRevisionId,
+          path: targetPath,
+        );
+        await ref.read(documentControllerProvider.notifier).open(targetPath);
       }
 
-      ref.read(pendingProposalsProvider.notifier).remove(widget.proposal.id);
+      ref.read(differencesControllerProvider.notifier).remove(_proposal.id);
       if (mounted) Navigator.of(context).pop();
+    } on PostgrestException catch (error) {
+      if (error.code == '40001') {
+        setState(() {
+          _working = false;
+          _loading = true;
+          _notice = 'The canonical revision changed. The merge was recomputed.';
+          _conflictChoices.clear();
+          _titleChoice = null;
+        });
+        await _prepare();
+        return;
+      }
+      setState(() {
+        _error = describeError(error);
+        _working = false;
+      });
     } catch (error) {
       setState(() {
         _error = describeError(error);
@@ -210,11 +281,11 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
     final local =
         _current ??
         BlockDocument(
-          id: widget.proposal.targetDocumentId,
+          id: _proposal.targetDocumentId,
           title: '',
           blocks: const [],
         );
-    final proposed = widget.proposal.content;
+    final proposed = _proposal.content;
     final rows = alignBlocks(local, proposed);
 
     if (_loading) {
@@ -238,13 +309,39 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
             child: Row(
               children: [
                 Text(
+                  'Review edits',
+                  style: uiTextStyle(size: 18, weight: 600, color: colors.text),
+                ),
+                const SizedBox(width: 14),
+                Text(
                   local.title,
                   style: uiTextStyle(size: 14, weight: 600, color: colors.text),
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'proposed by ${widget.proposal.authorDisplayName}',
+                  'proposed by ${_proposal.usernameLabel}',
                   style: uiTextStyle(size: 12, color: colors.muted),
+                ),
+                const Spacer(),
+                Text(
+                  '${_proposalIndex + 1} of ${widget.proposals.length}',
+                  style: uiTextStyle(size: 11, color: colors.muted),
+                ),
+                IconButton(
+                  key: const Key('review-previous-proposal'),
+                  tooltip: 'Previous proposal',
+                  onPressed: _proposalIndex > 0
+                      ? () => _selectProposal(_proposalIndex - 1)
+                      : null,
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                IconButton(
+                  key: const Key('review-next-proposal'),
+                  tooltip: 'Next proposal',
+                  onPressed: _proposalIndex + 1 < widget.proposals.length
+                      ? () => _selectProposal(_proposalIndex + 1)
+                      : null,
+                  icon: const Icon(Icons.chevron_right),
                 ),
               ],
             ),
@@ -282,6 +379,14 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: DsSpace.pane),
               child: DsErrorBox(_error!),
+            ),
+          if (_notice != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DsSpace.pane),
+              child: Text(
+                _notice!,
+                style: uiTextStyle(size: 12, color: colors.pending),
+              ),
             ),
           if (_merge?.hasConflicts ?? false)
             Padding(

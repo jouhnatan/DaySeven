@@ -19,7 +19,11 @@ void main() {
         child: MaterialApp(
           theme: dsTheme(Brightness.dark),
           home: const Scaffold(
-            body: SizedBox(width: 180, height: 400, child: ViewsMenu()),
+            body: SizedBox(
+              width: 180,
+              height: 400,
+              child: ViewsMenu(pendingDifferencesCount: 1),
+            ),
           ),
         ),
       ),
@@ -34,11 +38,19 @@ void main() {
     );
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Editor'), findsOneWidget);
+    expect(find.text('Differences'), findsOneWidget);
+    expect(find.byKey(const Key('views-differences-badge')), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
     expect(container.read(viewProvider), DsView.home);
 
     await tester.tap(find.text('Editor'));
     await tester.pumpAndSettle();
 
     expect(container.read(viewProvider), DsView.editor);
+
+    await tester.tap(find.text('Differences'));
+    await tester.pumpAndSettle();
+
+    expect(container.read(viewProvider), DsView.differences);
   });
 }

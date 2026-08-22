@@ -40,7 +40,7 @@ lib/
     editor/        The document editor and its rich-text controller
     home/          The landing screen
     knowledge_base/The right-side menu, dialogs, and KB repository
-    review/        Diff view, three-way merge, proposals, change sets
+    differences/   Review queue, previews, merge, proposals and Realtime state
     search/        Query state and the search bar
     views/         The left-side Home and Editor navigation menu
   shared/        Used by more than one feature; depends on no feature
@@ -73,7 +73,7 @@ Three rules, checked by `scripts/check_layers.sh`:
 
 `app/workspace/` holds the open Knowledge Base and the open document. They live
 there rather than in a feature because nearly every feature reads them: the
-editor edits the open document, but search, review, home and the KB menu all
+editor edits the open document, but search, Differences, home and the KB menu all
 read it too.
 
 Application-wide preferences live together in
@@ -168,13 +168,19 @@ diff view compares, so a document has one shape everywhere.
 
 | Step | What happens |
 |---|---|
-| A collaborator saves | Their local file is written; nothing upstream changes |
-| They choose *Propose changes* | A `change_set` is created with `base_revision_id` and the full proposed JSON |
-| Realtime fires | A private channel carries only ids and the author's display name — never content |
-| You open the toolbar's ellipsis menu and choose *Differences* | The proposal is fetched and shown: your file left, the proposal right |
+| An Editor or Co-Owner saves | Their local file is written immediately; a separate network debounce upserts their pending `change_set` against the sync-ledger base |
+| They keep editing | The same author/document proposal is updated; another collaborator gets a separate proposal card |
+| Realtime fires | A private channel carries only wake-up metadata — never proposal content — and the client refreshes from Postgres |
+| You open *Views → Differences* | The complete pending queue appears as read-only document paper previews with `@username` bands |
+| You choose toolbar *Differences* | Only proposals for the open document are offered; one proposal opens directly |
 | **Approve** | A three-way merge runs, then one server-side transaction writes the new revision; only then is your file rewritten |
 | **Reject** | The proposal is marked rejected. No revision is written, your file is untouched |
 | **Return** | The diff closes and the proposal stays pending |
+
+Editors always use reviewed submission. Co-Owners use reviewed submission by
+default, while Owners and Co-Owners have an explicit *Publish directly* action
+that is protected by optimistic revision locking. Reviewers can inspect and
+resolve proposals but cannot edit the Knowledge Base working copy.
 
 The merge aligns paragraphs by their stable ids and merges *within* a paragraph
 at character level, with formatting attached to the characters it applies to.
@@ -187,7 +193,7 @@ the block is marked as conflicted in the diff before you approve.
 - **Three panes** — the Views menu, the editor and the Knowledge Base menu
   are rounded panes on the application background, each a subtle tone apart.
 - **Left** — a Geist Pixel heading, *Views*, above a rounded island containing
-  Home and Editor.
+  Home, Editor and Differences. Differences carries the durable pending count.
 - **Top** — a persistent search bar over the Knowledge Base's local FTS5 index,
   matching as you type.
 - **Right** — a Geist Pixel *Knowledge Base* heading, a rounded control naming
@@ -204,13 +210,14 @@ the block is marked as conflicted in the diff before you approve.
   sessions.
 - **Bottom** — an editor-width toolbar island with extra vertical breathing
   room. Formatting controls stay as individual buttons; an ellipsis menu holds
-  *Differences* and carries a subdued dot when a proposal is waiting.
+  the open-document *Differences* shortcut and *Publish directly* for Owners
+  and Co-Owners. The reviewed-edit save state remains visible beside it.
 - **Top right** — one rounded button: "Sign in" when signed out, your display
   name when signed in, opening a short menu to change that name or sign out.
 - **Home** — "Welcome back!" in Archivo, and recent files.
 
 Accounts are **username and password**. The username is what a collaborator
-invites you by; the display name is what they see on a proposal. Sharing a
+invites you by and what appears on proposal paper bands. Sharing a
 Knowledge Base and inviting someone to it sit in the Knowledge Base dropdown,
 since they belong to the Knowledge Base rather than to the account.
 

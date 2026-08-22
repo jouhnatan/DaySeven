@@ -198,13 +198,24 @@ void main() {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 3);
 
-    expect(find.text('Differences'), findsNothing);
+    expect(find.text('Differences'), findsOneWidget);
     await tester.tap(find.byTooltip('Editor menu'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Publish local changes'), findsOneWidget);
+    expect(find.text('Publish directly'), findsOneWidget);
     expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
-    expect(find.text('Differences'), findsOneWidget);
+    expect(find.text('Differences'), findsNWidgets(2));
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.descendant(
+              of: find.byKey(const Key('editor-menu-differences')),
+              matching: find.byType(Tooltip),
+            ),
+          )
+          .message,
+      'No pending edits for this document.',
+    );
 
     await tester.tapAt(const Offset(1, 1));
     await tester.pumpAndSettle();

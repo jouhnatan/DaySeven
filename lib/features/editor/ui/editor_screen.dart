@@ -852,38 +852,11 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     );
   }
 
-  /// Sends the document upstream. What that means depends on this account's
-  /// standing: the owner commits a revision, everyone else proposes one.
-  Future<void> _sync() async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    try {
-      final outcome = await ref
-          .read(sharingControllerProvider)
-          .syncOpenDocument();
-      messenger?.showSnackBar(
-        SnackBar(
-          content: Text(switch (outcome) {
-            SyncOutcome.committed => 'Saved as a new revision.',
-            SyncOutcome.proposed => 'Sent for review.',
-          }),
-        ),
-      );
-    } catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text('$error')));
-    }
-  }
-
   /// Everything the toolbar does not carry: colour, highlight, font, spacing,
   /// images and export.
   Future<void> _showBlockMenu(Offset position, Block block) async {
     final colors = context.ds;
     final isParagraph = block is ParagraphBlock;
-    final syncLabel = switch (ref.read(kbRoleProvider).valueOrNull) {
-      KbRole.owner => 'Sync document',
-      KbRole.coOwner => 'Sync document',
-      KbRole.editor => 'Propose changes',
-      _ => null,
-    };
 
     DsMenuItem<VoidCallback> item(
       String label,
@@ -1081,10 +1054,6 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
         const DsMenuDivider(),
         item('Export as .docx…', () => _export(DocumentFormat.docx)),
         item('Export as .odt…', () => _export(DocumentFormat.odt)),
-        if (syncLabel != null) ...[
-          const DsMenuDivider(),
-          item(syncLabel, _sync),
-        ],
       ],
     );
 
