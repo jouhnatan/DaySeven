@@ -254,9 +254,9 @@ instructions. Artifacts expire after 30 days; anyone downloading from the
 private repository needs repository access, but the downloaded ZIP can be sent
 directly to a trusted friend.
 
-The workflow requires `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` repository
-secrets. It stops before packaging when either is absent, so it cannot publish
-an installer whose account controls have no configured backend.
+The workflow copies the checked-in `env/supabase.production.json` client
+configuration into the build. The Supabase publishable key is intended for
+client applications; database authorization remains enforced by RLS policies.
 
 The workflow's certificate is self-signed and intended for trusted test
 distribution. A production release should use a persistent, publicly trusted
