@@ -645,6 +645,11 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
     final open = ref.watch(documentControllerProvider);
     final isFolder = node is KbFolder;
     final selected = node is KbFile && open?.relativePath == node.relativePath;
+    final protection = isFolder
+        ? null
+        : ref
+              .watch(protectedDocumentsByPathProvider)
+              .valueOrNull?[node.relativePath];
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -712,6 +717,19 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
                   ),
                 ),
               ),
+              if (protection != null) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message:
+                      'Protected · ${protection.minimumPublishRole.label} required',
+                  child: Icon(
+                    Icons.shield,
+                    key: ValueKey('protected-document-${node.relativePath}'),
+                    size: 13,
+                    color: colors.text,
+                  ),
+                ),
+              ],
               const SizedBox(width: 8),
             ],
           ),

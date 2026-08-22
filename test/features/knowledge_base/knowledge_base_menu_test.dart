@@ -4,8 +4,11 @@ import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
+import 'package:dayseven/shared/backend/document_protection.dart';
+import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -23,6 +26,15 @@ User _signedInUser() => User(
   aud: 'authenticated',
   createdAt: DateTime.utc(2026, 8, 20).toIso8601String(),
 );
+
+class _DocumentRepositoryStub extends DocumentRepository {
+  _DocumentRepositoryStub(this.rows);
+
+  final List<Map<String, Object?>> rows;
+
+  @override
+  Future<List<Map<String, Object?>>> documentsIn(String kbId) async => rows;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -126,6 +138,111 @@ void main() {
     expect(active.width, lessThan(hierarchy.width));
     expect(active.right, lessThan(settings.left));
     expect(active.height, settings.height);
+  });
+
+  testWidgets('marks protected documents with a shield in the hierarchy', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final document = await kb.readDocument(originalPath);
+      final ledger = await SyncLedger.open(kb);
+      await ledger.record(
+        document: document,
+        revisionId: 'protected-revision',
+        path: originalPath,
+        protection: const DocumentProtection(
+          protectionClass: DocumentProtectionClass.protected,
+          minimumPublishRole: MinimumPublishRole.owner,
+        ),
+      );
+      container.invalidate(protectedDocumentsByPathProvider);
+      await container.read(protectedDocumentsByPathProvider.future);
+    });
+
+    tester.view.physicalSize = const Size(500, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(Brightness.dark),
+          home: const Scaffold(body: KnowledgeBaseMenu()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(ValueKey('protected-document-$originalPath')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Protected · Owner required'), findsOneWidget);
+  });
+
+  testWidgets('shows every protected document returned by canonical metadata', (
+    tester,
+  ) async {
+    late String secondPath;
+    late String firstId;
+    late String secondId;
+    await tester.runAsync(() async {
+      secondPath = await kb.createDocument(title: 'Kuras');
+      firstId = (await kb.readDocument(originalPath)).id;
+      secondId = (await kb.readDocument(secondPath)).id;
+
+      container.dispose();
+      container = ProviderContainer(
+        overrides: [
+          currentUserProvider.overrideWithValue(_signedInUser()),
+          kbRoleProvider.overrideWith((ref) async => KbRole.owner),
+          recentKbPathsProvider.overrideWith((ref) async => const []),
+          documentRepositoryProvider.overrideWithValue(
+            _DocumentRepositoryStub([
+              {
+                'id': firstId,
+                'path': originalPath,
+                'protection_class': 'protected',
+                'minimum_publish_role': 'owner',
+              },
+              {
+                'id': secondId,
+                'path': secondPath,
+                'protection_class': 'protected',
+                'minimum_publish_role': 'co_owner',
+              },
+            ]),
+          ),
+        ],
+      );
+      await container.read(kbControllerProvider.notifier).openFolder(temp.path);
+      await container.read(protectedDocumentsByPathProvider.future);
+    });
+
+    tester.view.physicalSize = const Size(500, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(Brightness.dark),
+          home: const Scaffold(body: KnowledgeBaseMenu()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(ValueKey('protected-document-$originalPath')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey('protected-document-$secondPath')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('invites the user to open a folder when no base is active', (
@@ -240,9 +357,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Creation no longer competes with folder access in the KB dropdown.
-      await tester.tap(
-        find.byKey(const Key('active-knowledge-base-button')),
-      );
+      await tester.tap(find.byKey(const Key('active-knowledge-base-button')));
       await tester.pumpAndSettle();
       expect(find.text('Import .docx or .odt…'), findsOneWidget);
       expect(find.text('New document'), findsNothing);

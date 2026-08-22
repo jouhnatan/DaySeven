@@ -62,8 +62,10 @@ class DsShell extends ConsumerWidget {
               meta: isMac,
               control: !isMac,
             ): () {
-              if (ref.read(openDocumentPublishActionProvider).valueOrNull !=
-                  null) {
+              final openId = ref.read(documentControllerProvider)?.document.id;
+              final action = ref.read(openDocumentPublishActionProvider);
+              if (!action.isLoading &&
+                  action.valueOrNull?.documentId == openId) {
                 unawaited(publishOpenDocumentWithFeedback(context, ref));
               }
             },
@@ -434,11 +436,11 @@ class _EditingToolbarIsland extends StatelessWidget {
               ),
             ),
             const SizedBox(width: DsSpace.islandGap),
+            const DocumentReviewSyncIndicator(),
+            const SizedBox(width: DsSpace.controlGap),
             const DocumentPublishButton(),
             const SizedBox(width: DsSpace.controlGap),
             const DocumentProtectionButton(),
-            const SizedBox(width: DsSpace.controlGap),
-            const DocumentReviewSyncIndicator(),
             const SizedBox(width: DsSpace.controlGap),
             const EditorToolbarMenuButton(),
           ],

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/sharing.dart';
+import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
@@ -53,11 +54,17 @@ class DocumentPublishButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final action = ref.watch(openDocumentPublishActionProvider);
+    final openDocumentId = ref.watch(
+      documentControllerProvider.select((open) => open?.document.id),
+    );
     final sync = ref.watch(openDocumentReviewSyncProvider);
     final busy =
         sync?.phase == DifferenceSyncPhase.publishing ||
         sync?.phase == DifferenceSyncPhase.proposing;
-    final value = action.valueOrNull;
+    final value =
+        action.isLoading || action.valueOrNull?.documentId != openDocumentId
+        ? null
+        : action.valueOrNull;
     final colors = context.ds;
     final label = value?.label ?? 'Publish';
     final tooltip = action.hasError
@@ -107,7 +114,13 @@ class DocumentProtectionButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final action = ref.watch(openDocumentPublishActionProvider);
-    final value = action.valueOrNull;
+    final openDocumentId = ref.watch(
+      documentControllerProvider.select((open) => open?.document.id),
+    );
+    final value =
+        action.isLoading || action.valueOrNull?.documentId != openDocumentId
+        ? null
+        : action.valueOrNull;
     final protection = value?.protection;
     final colors = context.ds;
     final tooltip = action.hasError
@@ -175,7 +188,11 @@ class _DocumentProtectionDialogState
     try {
       await ref
           .read(sharingControllerProvider)
-          .setOpenDocumentProtection(protection);
+          .setDocumentProtection(
+            documentId: widget.action.documentId,
+            relativePath: widget.action.relativePath,
+            protection: protection,
+          );
       if (mounted) Navigator.of(context).pop();
     } on Object catch (error) {
       if (mounted) {

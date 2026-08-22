@@ -10,8 +10,8 @@ import 'dart:io';
 import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/shell/shell.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
-import 'package:dayseven/app/workspace/kb_role.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
@@ -35,6 +35,7 @@ class ToolbarDocuments extends DocumentRepository {
   DocumentProtection? currentProtection;
   BlockDocument? currentDocument;
   String? currentPath;
+  String? protectedDocumentId;
   int publishCalls = 0;
 
   @override
@@ -44,12 +45,14 @@ class ToolbarDocuments extends DocumentRepository {
   @override
   Future<RemoteDocumentSnapshot?> snapshotForDocument(
     String documentId,
-  ) async => RemoteDocumentSnapshot(
-    path: currentPath!,
-    revisionId: 'base-1',
-    document: currentDocument!,
-    protection: currentProtection,
-  );
+  ) async => currentDocument?.id != documentId
+      ? null
+      : RemoteDocumentSnapshot(
+          path: currentPath!,
+          revisionId: 'base-1',
+          document: currentDocument!,
+          protection: currentProtection,
+        );
 
   @override
   Future<DocumentPublishReceipt> publishChange({
@@ -62,6 +65,17 @@ class ToolbarDocuments extends DocumentRepository {
     currentDocument = document;
     currentPath = relativePath;
     return const DocumentPublishReceipt.published('revision-2');
+  }
+
+  @override
+  Future<DocumentProtection?> setProtection({
+    required String kbId,
+    required String documentId,
+    DocumentProtection? protection,
+  }) async {
+    protectedDocumentId = documentId;
+    currentProtection = protection;
+    return protection;
   }
 }
 
@@ -242,6 +256,53 @@ void main() {
     await tester.tapAt(const Offset(1, 1));
     await tester.pumpAndSettle();
     await settle(tester, container);
+  });
+
+  test('protecting a copied document cannot protect its original', () async {
+    final documents = ToolbarDocuments();
+    final container = ProviderContainer(
+      overrides: [
+        kbRoleProvider.overrideWith((ref) => KbRole.owner),
+        documentRepositoryProvider.overrideWithValue(documents),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container
+        .read(kbControllerProvider.notifier)
+        .openFolder(temp.path, createWithName: 'MyWorld');
+    final session = container.read(kbSessionProvider)!;
+    final originalPath = await session.kb.createDocument(title: 'Timeline');
+    final original = await session.kb.readDocument(originalPath);
+    documents
+      ..currentDocument = original
+      ..currentPath = originalPath;
+    await (await SyncLedger.open(session.kb))
+        .record(document: original, revisionId: 'base-1', path: originalPath);
+    const copyPath = 'Ammur.md';
+    await session.kb.writeDocument(
+      copyPath,
+      BlockDocument(id: original.id, title: 'Ammur', blocks: original.blocks),
+    );
+    await container.read(kbControllerProvider.notifier).refreshTree();
+    await container.read(documentControllerProvider.notifier).open(copyPath);
+
+    await container
+        .read(sharingControllerProvider)
+        .setDocumentProtection(
+          documentId: original.id,
+          relativePath: copyPath,
+          protection: const DocumentProtection(
+            protectionClass: DocumentProtectionClass.protected,
+            minimumPublishRole: MinimumPublishRole.owner,
+          ),
+        );
+
+    final copy = await session.kb.readDocument(copyPath);
+    final originalAfter = await session.kb.readDocument(originalPath);
+    expect(copy.id, isNot(original.id));
+    expect(documents.publishCalls, 1);
+    expect(documents.protectedDocumentId, copy.id);
+    expect(originalAfter.id, original.id);
   });
 
   testWidgets('Ctrl+S is bound and Publish stays enabled after editing', (

@@ -41,14 +41,18 @@ class DocumentController extends StateNotifier<OpenDocument?> {
 
   final Ref _ref;
   Timer? _saveDebounce;
+  int _openGeneration = 0;
   static const _saveDelay = Duration(milliseconds: 600);
 
   Future<void> open(String relativePath) async {
+    final generation = ++_openGeneration;
     final session = _ref.read(kbSessionProvider);
     if (session == null) return;
 
     await flush();
+    if (!mounted || generation != _openGeneration) return;
     final stored = await session.kb.readDocument(relativePath);
+    if (!mounted || generation != _openGeneration) return;
     final fileTitle = documentTitleFromPath(relativePath);
     final document = stored.title == fileTitle
         ? stored
@@ -60,10 +64,12 @@ class DocumentController extends StateNotifier<OpenDocument?> {
     );
 
     final store = await _ref.read(appStoreProvider.future);
+    if (!mounted || generation != _openGeneration) return;
     await store.noteDocumentOpened(session.kb.manifest.kbId, relativePath);
   }
 
   void close({bool save = true}) {
+    _openGeneration++;
     if (save) {
       unawaited(flush());
     } else {
@@ -96,6 +102,27 @@ class DocumentController extends StateNotifier<OpenDocument?> {
       document: title == null
           ? current.document
           : current.document.copyWith(title: title),
+    );
+  }
+
+  /// Replaces an exact clean on-disk identity without disturbing a document
+  /// the user may have opened while the filesystem operation was in flight.
+  void replacePersistedDocument({
+    required String relativePath,
+    required String previousDocumentId,
+    required BlockDocument document,
+  }) {
+    final current = state;
+    if (current == null ||
+        current.relativePath != relativePath ||
+        current.document.id != previousDocumentId) {
+      return;
+    }
+    _saveDebounce?.cancel();
+    state = OpenDocument(
+      relativePath: relativePath,
+      document: document,
+      dirty: false,
     );
   }
 

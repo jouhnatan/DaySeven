@@ -25,11 +25,15 @@ import 'package:dayseven/shared/blocks/blocks.dart';
 
 class OpenDocumentPublishAction {
   const OpenDocumentPublishAction({
+    required this.documentId,
+    required this.relativePath,
     required this.role,
     required this.protection,
     required this.willPropose,
   });
 
+  final String documentId;
+  final String relativePath;
   final KbRole role;
   final DocumentProtection? protection;
   final bool willPropose;
@@ -53,15 +57,105 @@ final openDocumentProtectionProvider = FutureProvider<DocumentProtection?>((
   return ref.watch(documentRepositoryProvider).protection(documentId);
 });
 
+typedef _ProtectedDocumentMetadata = ({
+  String path,
+  DocumentProtection protection,
+});
+
+/// Canonical protection metadata for every document, keyed by its local path.
+///
+/// One KB-scoped query supplies the complete shared state. The sync ledger is
+/// retained as an offline fallback, and immutable document ids keep markers
+/// attached when a protected file has been renamed locally.
+final protectedDocumentsByPathProvider =
+    FutureProvider<Map<String, DocumentProtection>>((ref) async {
+      final session = ref.watch(kbSessionProvider);
+      if (session == null) return const {};
+      final repository = ref.watch(documentRepositoryProvider);
+      final role = await ref.watch(kbRoleProvider.future);
+
+      if (role != KbRole.local && role != KbRole.invited) {
+        try {
+          final rows = await repository.documentsIn(session.kb.manifest.kbId);
+          final remote = <String, _ProtectedDocumentMetadata>{};
+          for (final row in rows) {
+            final protection = DocumentProtection.fromRow(row);
+            if (protection == null) continue;
+            remote[row['id'] as String] = (
+              path: row['path'] as String,
+              protection: protection,
+            );
+          }
+          return await _resolveProtectedDocumentPaths(session, remote);
+        } on Object {
+          // Offline hierarchy markers fall back to the last durable ledger.
+        }
+      }
+
+      final ledger = await SyncLedger.open(session.kb);
+      final local = <String, _ProtectedDocumentMetadata>{};
+      for (final entry in ledger.documents) {
+        final protection = entry.value.protection;
+        if (protection == null) continue;
+        local[entry.key] = (path: entry.value.path, protection: protection);
+      }
+      return _resolveProtectedDocumentPaths(session, local);
+    });
+
+Future<Map<String, DocumentProtection>> _resolveProtectedDocumentPaths(
+  KbSession session,
+  Map<String, _ProtectedDocumentMetadata> protectedById,
+) async {
+  final byPath = <String, DocumentProtection>{};
+  final unresolved = <String, DocumentProtection>{};
+  final paths = documentPathsIn(session.tree).toList();
+  final currentPaths = paths.toSet();
+
+  for (final entry in protectedById.entries) {
+    if (currentPaths.contains(entry.value.path)) {
+      try {
+        final document = await session.kb.readDocument(entry.value.path);
+        if (document.id == entry.key) {
+          byPath[entry.value.path] = entry.value.protection;
+          continue;
+        }
+      } on Object {
+        // Resolve a moved or temporarily unreadable path by document id below.
+      }
+    }
+    unresolved[entry.key] = entry.value.protection;
+  }
+  if (unresolved.isEmpty) return byPath;
+
+  for (final path in paths) {
+    if (byPath.containsKey(path)) continue;
+    try {
+      final document = await session.kb.readDocument(path);
+      final protection = unresolved.remove(document.id);
+      if (protection != null) byPath[path] = protection;
+      if (unresolved.isEmpty) break;
+    } on Object {
+      // Do not attach protection metadata that cannot be tied to a document.
+    }
+  }
+  return byPath;
+}
+
 final openDocumentPublishActionProvider =
     FutureProvider<OpenDocumentPublishAction?>((ref) async {
-      final documentId = ref.watch(
-        documentControllerProvider.select((open) => open?.document.id),
+      final target = ref.watch(
+        documentControllerProvider.select(
+          (open) => open == null
+              ? null
+              : (id: open.document.id, path: open.relativePath),
+        ),
       );
       final role = await ref.watch(kbRoleProvider.future);
-      if (documentId == null || role.publishingRank == null) return null;
+      if (target == null || role.publishingRank == null) return null;
       final protection = await ref.watch(openDocumentProtectionProvider.future);
       return OpenDocumentPublishAction(
+        documentId: target.id,
+        relativePath: target.path,
         role: role,
         protection: protection,
         willPropose:
@@ -79,6 +173,7 @@ final incomingCanonicalSyncProvider = Provider<void>((ref) {
         await ref.read(sharingControllerProvider).pullRemoteChanges();
         ref.invalidate(openDocumentProtectionProvider);
         ref.invalidate(openDocumentPublishActionProvider);
+        ref.invalidate(protectedDocumentsByPathProvider);
       } on Object {
         // Manual Sync latest remains available and surfaces its error. A wake
         // signal must never replace durable state with an assumed empty value.
@@ -305,9 +400,7 @@ class SharingController {
 
     // Whatever is on screen is what gets sent.
     await _ref.read(documentControllerProvider.notifier).flush();
-    final currentOpen = _ref.read(documentControllerProvider) ?? open;
-    final document = currentOpen.document;
-    final relativePath = currentOpen.relativePath;
+    var currentOpen = _ref.read(documentControllerProvider) ?? open;
 
     final role = await _ref.read(kbRoleProvider.future);
     final kbId = session.kb.manifest.kbId;
@@ -318,10 +411,18 @@ class SharingController {
 
     final documents = _ref.read(documentRepositoryProvider);
     final ledger = await SyncLedger.open(session.kb);
+    var current = await documents.snapshotForDocument(currentOpen.document.id);
+    currentOpen = await _forkCopiedOpenDocumentIfNeeded(
+      session: session,
+      open: currentOpen,
+      canonical: current,
+    );
+    final document = currentOpen.document;
+    final relativePath = currentOpen.relativePath;
+    if (current?.document.id != document.id) current = null;
     var synced = ledger.document(document.id);
     var workingDocument = document;
     var workingPath = relativePath;
-    var current = await documents.snapshotForDocument(document.id);
 
     if (current != null && synced == null) {
       final error = const SyncException(
@@ -455,39 +556,116 @@ class SharingController {
   bool _isOptimisticMove(Object error) =>
       error is PostgrestException && error.code == '40001';
 
-  Future<DocumentProtection?> setOpenDocumentProtection(
-    DocumentProtection? protection,
-  ) async {
+  Future<DocumentProtection?> setDocumentProtection({
+    required String documentId,
+    required String relativePath,
+    required DocumentProtection? protection,
+  }) async {
     final session = _ref.read(kbSessionProvider);
-    final open = _ref.read(documentControllerProvider);
+    await _ref.read(documentControllerProvider.notifier).flush();
+    var open = _ref.read(documentControllerProvider);
     if (session == null || open == null) {
       throw const SyncException('Open a document first.');
+    }
+    if (open.document.id != documentId || open.relativePath != relativePath) {
+      throw const SyncException(
+        'The open document changed. Reopen protection from the document you '
+        'want to protect.',
+      );
     }
     final role = await _ref.read(kbRoleProvider.future);
     if (role.publishingRank == null) {
       throw const SyncException('Your role cannot protect documents.');
     }
-    final ledger = await SyncLedger.open(session.kb);
-    final synced = ledger.document(open.document.id);
-    if (synced == null) {
-      throw const SyncException('Publish this document before protecting it.');
+    final documents = _ref.read(documentRepositoryProvider);
+    var canonical = await documents.snapshotForDocument(open.document.id);
+    open = await _forkCopiedOpenDocumentIfNeeded(
+      session: session,
+      open: open,
+      canonical: canonical,
+    );
+    final currentOpen = _ref.read(documentControllerProvider);
+    if (currentOpen?.document.id != open.document.id ||
+        currentOpen?.relativePath != open.relativePath) {
+      throw const SyncException(
+        'The open document changed before protection was saved. Try again.',
+      );
     }
-    final updated = await _ref
-        .read(documentRepositoryProvider)
-        .setProtection(
-          kbId: session.kb.manifest.kbId,
-          documentId: open.document.id,
-          protection: protection,
+    if (canonical?.document.id != open.document.id) canonical = null;
+
+    // Protecting a new or copied file is one explicit operation: first give
+    // that file its own canonical row, then protect that exact row.
+    if (canonical == null) {
+      final outcome = await publishOpenDocument();
+      if (outcome == SyncOutcome.proposed) {
+        throw const SyncException(
+          'This document must be approved before it can be protected.',
         );
+      }
+      canonical = await documents.snapshotForDocument(open.document.id);
+      if (canonical == null) {
+        throw const SyncException(
+          'The document was published but its canonical copy is unavailable.',
+        );
+      }
+    }
+
+    final updated = await documents.setProtection(
+      kbId: session.kb.manifest.kbId,
+      documentId: open.document.id,
+      protection: protection,
+    );
+    final ledger = await SyncLedger.open(session.kb);
+    // Protection changes metadata only. Preserve the actual canonical base;
+    // never mark un-published local words or a local rename as synchronized.
     await ledger.record(
-      document: open.document,
-      revisionId: synced.revisionId,
-      path: open.relativePath,
+      document: canonical.document,
+      revisionId: canonical.revisionId,
+      path: canonical.path,
       protection: updated,
     );
     _ref.invalidate(openDocumentProtectionProvider);
     _ref.invalidate(openDocumentPublishActionProvider);
+    _ref.invalidate(protectedDocumentsByPathProvider);
     return updated;
+  }
+
+  /// A Markdown file copied outside the app retains its embedded UUID. If the
+  /// original canonical file is also present locally, publishing the copy by
+  /// that UUID would update the original. Fork the copy before any remote
+  /// write so its visible path and its shared identity stay aligned.
+  Future<OpenDocument> _forkCopiedOpenDocumentIfNeeded({
+    required KbSession session,
+    required OpenDocument open,
+    required RemoteDocumentSnapshot? canonical,
+  }) async {
+    if (canonical == null || canonical.path == open.relativePath) return open;
+
+    final canonicalFile = File(session.kb.absolutePathFor(canonical.path));
+    if (!await canonicalFile.exists()) return open;
+    final localCanonical = await session.kb.readDocument(canonical.path);
+    if (localCanonical.id != open.document.id) return open;
+
+    final forked = BlockDocument(
+      id: newId(),
+      title: open.document.title,
+      blocks: open.document.blocks,
+      schemaVersion: open.document.schemaVersion,
+    );
+    await session.kb.writeDocument(open.relativePath, forked);
+    session.index.upsert(open.relativePath, forked);
+    _ref
+        .read(documentControllerProvider.notifier)
+        .replacePersistedDocument(
+          relativePath: open.relativePath,
+          previousDocumentId: open.document.id,
+          document: forked,
+        );
+    return OpenDocument(
+      relativePath: open.relativePath,
+      document: forked,
+      dirty: false,
+    );
   }
 
   /// Resolves an overlapping publish after the user explicitly chooses which
@@ -750,6 +928,7 @@ class SharingController {
             'unpublished edits. Your local copy was kept.',
           );
     }
+    _ref.invalidate(protectedDocumentsByPathProvider);
     return SyncPullResult(
       updated: updated,
       conflicts: conflicts,
