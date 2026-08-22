@@ -181,6 +181,98 @@ class SharingController {
     _ref.invalidate(kbRoleProvider);
   }
 
+  /// Publishes every locally changed document in the open Knowledge Base.
+  ///
+  /// This is intentionally separate from [pullRemoteChanges]: publishing is a
+  /// visible owner/co-owner action, while downloading never treats this device
+  /// as the source of truth. If the cloud moved since this local copy's last
+  /// sync point, the local file is left untouched and reported as a conflict.
+  Future<SyncPushResult> pushLocalChanges() async {
+    final session = _ref.read(kbSessionProvider);
+    if (session == null) {
+      throw const SyncException('Open a Knowledge Base first.');
+    }
+    final role = await _ref.read(kbRoleProvider.future);
+    if (role != KbRole.owner && role != KbRole.coOwner) {
+      throw const SyncException(
+        'Only an Owner or Co-Owner can publish local changes.',
+      );
+    }
+
+    await _ref.read(documentControllerProvider.notifier).flush();
+    final kb = session.kb;
+    final kbId = kb.manifest.kbId;
+    final documents = _ref.read(documentRepositoryProvider);
+    final assets = _ref.read(assetRepositoryProvider);
+    final ledger = await SyncLedger.open(kb);
+    final remote = await documents.snapshot(kbId);
+    final remoteById = {
+      for (final snapshot in remote) snapshot.document.id: snapshot,
+    };
+    final tree = await kb.readTree();
+    var published = 0;
+    var unchanged = 0;
+    var conflicts = 0;
+
+    for (final path in documentPathsIn(tree)) {
+      final document = await kb.readDocument(path);
+      final snapshot = remoteById[document.id];
+      final previous = ledger.document(document.id);
+
+      if (snapshot != null &&
+          snapshot.document.contentHash == document.contentHash &&
+          snapshot.path == path) {
+        await ledger.record(
+          document: document,
+          revisionId: snapshot.revisionId,
+          path: path,
+        );
+        unchanged++;
+        continue;
+      }
+
+      if (snapshot != null) {
+        final localChanged =
+            previous == null ||
+            previous.contentHash != document.contentHash ||
+            previous.path != path;
+        if (!localChanged) {
+          unchanged++;
+          continue;
+        }
+        if (previous == null || previous.revisionId != snapshot.revisionId) {
+          conflicts++;
+          continue;
+        }
+      }
+
+      await assets.uploadReferenced(kb: kb, document: document);
+      final revisionId = snapshot == null
+          ? await documents.publish(
+              kbId: kbId,
+              relativePath: path,
+              document: document,
+            )
+          : await documents.commit(
+              kbId: kbId,
+              relativePath: path,
+              document: document,
+            );
+      await ledger.record(
+        document: document,
+        revisionId: revisionId,
+        path: path,
+      );
+      published++;
+    }
+
+    return SyncPushResult(
+      published: published,
+      unchanged: unchanged,
+      conflicts: conflicts,
+    );
+  }
+
   /// Sends the open document upstream: a commit if this account owns the
   /// Knowledge Base, a proposal if it does not.
   ///
@@ -346,14 +438,15 @@ class SharingController {
 
     for (final snapshot in snapshots) {
       final previous = ledger.document(snapshot.document.id);
+      final target = File(kb.absolutePathFor(snapshot.path));
       if (previous?.revisionId == snapshot.revisionId &&
-          previous?.path == snapshot.path) {
+          previous?.path == snapshot.path &&
+          await target.exists()) {
         continue;
       }
 
       final oldPath = previous?.path ?? snapshot.path;
       final oldFile = File(kb.absolutePathFor(oldPath));
-      final target = File(kb.absolutePathFor(snapshot.path));
       if (previous == null) {
         if (await target.exists()) {
           conflicts++;
@@ -456,6 +549,18 @@ class SyncPullResult {
   final int updated;
   final int conflicts;
   final int recoveredDeletions;
+}
+
+class SyncPushResult {
+  const SyncPushResult({
+    required this.published,
+    required this.unchanged,
+    required this.conflicts,
+  });
+
+  final int published;
+  final int unchanged;
+  final int conflicts;
 }
 
 final sharingControllerProvider = Provider((ref) => SharingController(ref));

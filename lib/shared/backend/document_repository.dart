@@ -35,6 +35,7 @@ class DocumentRepository {
       'kb_id': kbId,
       'path': relativePath,
       'title': document.title,
+      'deleted_at': null,
     }, onConflict: 'id');
 
     final revision = await supabase

@@ -154,6 +154,8 @@ void main() {
     await tester.tap(find.byTooltip('Editor menu'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Publish local changes'), findsOneWidget);
+    expect(find.byKey(const Key('editor-menu-publish-local')), findsOneWidget);
     expect(find.text('Differences'), findsOneWidget);
     expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
 

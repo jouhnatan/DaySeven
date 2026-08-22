@@ -416,7 +416,7 @@ class _BottomBarFootprint extends StatelessWidget {
   }
 }
 
-enum _EditorToolbarMenuAction { syncLatest, differences }
+enum _EditorToolbarMenuAction { publishLocalChanges, syncLatest, differences }
 
 /// Overflow actions for the active document.
 ///
@@ -428,6 +428,7 @@ class EditorToolbarMenuButton extends ConsumerWidget {
   Future<void> _show(
     BuildContext context, {
     required VoidCallback? openDifferences,
+    required Future<void> Function()? publishLocalChanges,
     required Future<void> Function()? syncLatest,
     required bool hasPendingProposal,
   }) async {
@@ -435,6 +436,18 @@ class EditorToolbarMenuButton extends ConsumerWidget {
     final choice = await showDsMenu<_EditorToolbarMenuAction>(
       context: context,
       items: [
+        DsMenuItem<_EditorToolbarMenuAction>(
+          key: const Key('editor-menu-publish-local'),
+          value: _EditorToolbarMenuAction.publishLocalChanges,
+          enabled: publishLocalChanges != null,
+          child: Text(
+            'Publish local changes',
+            style: uiTextStyle(
+              size: 13,
+              color: publishLocalChanges == null ? colors.muted : colors.text,
+            ),
+          ),
+        ),
         DsMenuItem<_EditorToolbarMenuAction>(
           value: _EditorToolbarMenuAction.syncLatest,
           enabled: syncLatest != null,
@@ -480,7 +493,9 @@ class EditorToolbarMenuButton extends ConsumerWidget {
     );
 
     if (!context.mounted) return;
-    if (choice == _EditorToolbarMenuAction.differences) {
+    if (choice == _EditorToolbarMenuAction.publishLocalChanges) {
+      await publishLocalChanges?.call();
+    } else if (choice == _EditorToolbarMenuAction.differences) {
       openDifferences?.call();
     } else if (choice == _EditorToolbarMenuAction.syncLatest) {
       await syncLatest?.call();
@@ -501,6 +516,26 @@ class EditorToolbarMenuButton extends ConsumerWidget {
         : null;
     final canSync =
         role != null && role != KbRole.local && role != KbRole.invited;
+    final canPublish = role == KbRole.owner || role == KbRole.coOwner;
+
+    Future<void> publishLocalChanges() async {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      try {
+        final result = await ref
+            .read(sharingControllerProvider)
+            .pushLocalChanges();
+        final parts = <String>[
+          '${result.published} published',
+          '${result.unchanged} already current',
+        ];
+        if (result.conflicts > 0) {
+          parts.add('${result.conflicts} conflict(s) left untouched');
+        }
+        messenger?.showSnackBar(SnackBar(content: Text(parts.join(' · '))));
+      } catch (error) {
+        messenger?.showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
 
     Future<void> syncLatest() async {
       final messenger = ScaffoldMessenger.maybeOf(context);
@@ -532,6 +567,7 @@ class EditorToolbarMenuButton extends ConsumerWidget {
           onPressed: () => _show(
             context,
             openDifferences: openDifferences,
+            publishLocalChanges: canPublish ? publishLocalChanges : null,
             syncLatest: canSync ? syncLatest : null,
             hasPendingProposal: proposals.isNotEmpty,
           ),
