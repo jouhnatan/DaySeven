@@ -13,6 +13,8 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
 import 'package:dayseven/shared/ui/theme.dart';
+import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
+import 'package:dayseven/features/knowledge_base/ui/invite_dialog.dart';
 
 const double kKnowledgeBaseControlHeight = 38;
 
@@ -64,6 +66,33 @@ class _KnowledgeBaseSettingsDialogState
     extends ConsumerState<_KnowledgeBaseSettingsDialog> {
   bool _working = false;
   String? _error;
+
+  Future<void> _setRole(
+    String kbId,
+    String userId,
+    CollaborationRole role,
+  ) async {
+    try {
+      await ref
+          .read(kbRepositoryProvider)
+          .setRole(kbId: kbId, userId: userId, role: role);
+      ref.invalidate(kbCollaboratorsProvider(kbId));
+      ref.invalidate(kbRoleProvider);
+    } catch (error) {
+      if (mounted) setState(() => _error = describeError(error));
+    }
+  }
+
+  Future<void> _removeMember(String kbId, String userId) async {
+    try {
+      await ref
+          .read(kbRepositoryProvider)
+          .removeMember(kbId: kbId, userId: userId);
+      ref.invalidate(kbCollaboratorsProvider(kbId));
+    } catch (error) {
+      if (mounted) setState(() => _error = describeError(error));
+    }
+  }
 
   Future<void> _share() async {
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -155,9 +184,17 @@ class _KnowledgeBaseSettingsDialogState
     final role = ref.watch(kbRoleProvider).valueOrNull;
     final session = ref.watch(kbSessionProvider);
     final canManage = user != null && session != null;
+    final kbId = session?.kb.manifest.kbId;
+    final collaborators = kbId == null
+        ? const AsyncValue<List<KbCollaborator>>.data([])
+        : ref.watch(kbCollaboratorsProvider(kbId));
+    final health = kbId == null
+        ? SyncHealth.inactive
+        : ref.watch(kbSyncHealthProvider(kbId)).valueOrNull ??
+              SyncHealth.checking;
 
     return DsDialog(
-      width: 400,
+      width: 680,
       title: Text(
         'Knowledge Base Settings',
         style: uiTextStyle(size: 16, weight: 600, color: colors.text),
@@ -177,6 +214,30 @@ class _KnowledgeBaseSettingsDialogState
           style: uiTextStyle(size: 13, color: colors.muted),
         ),
         const SizedBox(height: 12),
+        if (kbId != null && role != null && role != KbRole.local) ...[
+          _SyncStatusCard(
+            health: health,
+            onRetry: () => ref.invalidate(kbSyncHealthProvider(kbId)),
+          ),
+          const SizedBox(height: 12),
+          _CollaboratorsCard(
+            collaborators: collaborators,
+            currentRole: role,
+            onSetRole: (userId, next) => _setRole(kbId, userId, next),
+            onRemove: (userId) => _removeMember(kbId, userId),
+            onInvite: role == KbRole.owner || role == KbRole.coOwner
+                ? () async {
+                    await showDialog<void>(
+                      context: context,
+                      builder: (_) =>
+                          InviteDialog(allowCoOwner: role == KbRole.owner),
+                    );
+                    ref.invalidate(kbCollaboratorsProvider(kbId));
+                  }
+                : null,
+          ),
+          const SizedBox(height: 12),
+        ],
         if (!canManage)
           Text(
             'Sign in to share or manage this Knowledge Base connection.',
@@ -192,6 +253,17 @@ class _KnowledgeBaseSettingsDialogState
           Text(
             'This Knowledge Base is shared by its owner. Your edits can be '
             'proposed for review, but only the owner can delete the shared copy.',
+            style: uiTextStyle(size: 13, color: colors.muted),
+          )
+        else if (role == KbRole.reviewer)
+          Text(
+            'You can review proposed changes. Document editing is read-only.',
+            style: uiTextStyle(size: 13, color: colors.muted),
+          )
+        else if (role == KbRole.coOwner)
+          Text(
+            'You can edit, review, invite Editors and Reviewers, and manage '
+            'their access. Only the Owner controls Co-Owners and deletion.',
             style: uiTextStyle(size: 13, color: colors.muted),
           )
         else ...[
@@ -232,6 +304,227 @@ class _KnowledgeBaseSettingsDialogState
           DsErrorBox(_error!),
         ],
       ],
+    );
+  }
+}
+
+class _SyncStatusCard extends StatelessWidget {
+  const _SyncStatusCard({required this.health, required this.onRetry});
+
+  final SyncHealth health;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    final active = health == SyncHealth.active;
+    final label = switch (health) {
+      SyncHealth.active => 'Active',
+      SyncHealth.checking => 'Checking…',
+      SyncHealth.offline => 'Inactive · Offline',
+      SyncHealth.unauthorized => 'Inactive · Access removed',
+      SyncHealth.error => 'Inactive · Error',
+      SyncHealth.inactive => 'Inactive',
+    };
+    return DsCard(
+      key: const Key('kb-sync-status-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: active ? colors.pending : colors.muted,
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Sync',
+                    style: uiTextStyle(
+                      size: 13,
+                      weight: 600,
+                      color: colors.text,
+                    ),
+                  ),
+                  Text(
+                    label,
+                    style: uiTextStyle(size: 11, color: colors.muted),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CollaboratorsCard extends StatelessWidget {
+  const _CollaboratorsCard({
+    required this.collaborators,
+    required this.currentRole,
+    required this.onSetRole,
+    required this.onRemove,
+    required this.onInvite,
+  });
+
+  final AsyncValue<List<KbCollaborator>> collaborators;
+  final KbRole currentRole;
+  final Future<void> Function(String, CollaborationRole) onSetRole;
+  final Future<void> Function(String) onRemove;
+  final VoidCallback? onInvite;
+
+  bool _canManage(KbCollaborator member) => switch (currentRole) {
+    KbRole.owner => member.role != CollaborationRole.owner,
+    KbRole.coOwner =>
+      member.role == CollaborationRole.editor ||
+          member.role == CollaborationRole.reviewer,
+    _ => false,
+  };
+
+  List<CollaborationRole> _rolesFor(KbCollaborator member) => [
+    if (currentRole == KbRole.owner) CollaborationRole.coOwner,
+    CollaborationRole.editor,
+    CollaborationRole.reviewer,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    return DsCard(
+      key: const Key('kb-collaborators-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Collaborators',
+                    style: uiTextStyle(
+                      size: 13,
+                      weight: 600,
+                      color: colors.text,
+                    ),
+                  ),
+                ),
+                if (onInvite != null)
+                  TextButton(onPressed: onInvite, child: const Text('Invite')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            collaborators.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (error, _) => DsErrorBox(describeError(error)),
+              data: (members) => LayoutBuilder(
+                builder: (context, constraints) => Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final member in members)
+                      SizedBox(
+                        width: constraints.maxWidth >= 560
+                            ? (constraints.maxWidth - 8) / 2
+                            : constraints.maxWidth,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: colors.selection,
+                            borderRadius: const BorderRadius.all(
+                              DsRadius.control,
+                            ),
+                            border: Border.all(color: colors.border),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 15,
+                                  backgroundColor: colors.buttonHighlight,
+                                  child: Text(
+                                    member.displayName.isEmpty
+                                        ? '?'
+                                        : member.displayName[0].toUpperCase(),
+                                    style: uiTextStyle(
+                                      size: 12,
+                                      weight: 600,
+                                      color: colors.text,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 9),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        member.displayName,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: uiTextStyle(
+                                          size: 12,
+                                          weight: 600,
+                                          color: colors.text,
+                                        ),
+                                      ),
+                                      Text(
+                                        '@${member.username} · '
+                                        '${member.accepted ? member.role.label : 'Invited ${member.role.label}'}',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: uiTextStyle(
+                                          size: 10,
+                                          color: colors.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (_canManage(member))
+                                  PopupMenuButton<Object>(
+                                    tooltip: 'Manage collaborator',
+                                    itemBuilder: (_) => [
+                                      for (final role in _rolesFor(member))
+                                        PopupMenuItem<Object>(
+                                          value: role,
+                                          child: Text(role.label),
+                                        ),
+                                      const PopupMenuDivider(),
+                                      const PopupMenuItem<Object>(
+                                        value: 'remove',
+                                        child: Text('Remove'),
+                                      ),
+                                    ],
+                                    onSelected: (value) {
+                                      if (value == 'remove') {
+                                        onRemove(member.userId);
+                                      } else if (value is CollaborationRole) {
+                                        onSetRole(member.userId, value);
+                                      }
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

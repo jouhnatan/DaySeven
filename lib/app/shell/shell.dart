@@ -9,7 +9,6 @@ import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/shell/pane_visibility.dart';
 import 'package:dayseven/app/shell/pane_widths.dart';
-import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/features/auth/ui/auth_button.dart';
 import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
 import 'package:dayseven/features/gradient_background/ui/gradient_background.dart';
@@ -19,7 +18,8 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/review/data/proposals.dart';
-import 'package:dayseven/features/review/ui/diff_screen.dart';
+import 'package:dayseven/features/review/ui/review_inbox.dart';
+import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/features/home/ui/home_screen.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
@@ -416,7 +416,7 @@ class _BottomBarFootprint extends StatelessWidget {
   }
 }
 
-enum _EditorToolbarMenuAction { differences }
+enum _EditorToolbarMenuAction { publishLocalChanges, syncLatest, differences }
 
 /// Overflow actions for the active document.
 ///
@@ -428,12 +428,38 @@ class EditorToolbarMenuButton extends ConsumerWidget {
   Future<void> _show(
     BuildContext context, {
     required VoidCallback? openDifferences,
+    required Future<void> Function()? publishLocalChanges,
+    required Future<void> Function()? syncLatest,
     required bool hasPendingProposal,
   }) async {
     final colors = context.ds;
     final choice = await showDsMenu<_EditorToolbarMenuAction>(
       context: context,
       items: [
+        DsMenuItem<_EditorToolbarMenuAction>(
+          key: const Key('editor-menu-publish-local'),
+          value: _EditorToolbarMenuAction.publishLocalChanges,
+          enabled: publishLocalChanges != null,
+          child: Text(
+            'Publish local changes',
+            style: uiTextStyle(
+              size: 13,
+              color: publishLocalChanges == null ? colors.muted : colors.text,
+            ),
+          ),
+        ),
+        DsMenuItem<_EditorToolbarMenuAction>(
+          value: _EditorToolbarMenuAction.syncLatest,
+          enabled: syncLatest != null,
+          child: Text(
+            'Sync latest',
+            style: uiTextStyle(
+              size: 13,
+              color: syncLatest == null ? colors.muted : colors.text,
+            ),
+          ),
+        ),
+        const DsMenuDivider(),
         DsMenuItem<_EditorToolbarMenuAction>(
           key: const Key('editor-menu-differences'),
           value: _EditorToolbarMenuAction.differences,
@@ -466,19 +492,69 @@ class EditorToolbarMenuButton extends ConsumerWidget {
       ],
     );
 
-    if (choice == _EditorToolbarMenuAction.differences && context.mounted) {
+    if (!context.mounted) return;
+    if (choice == _EditorToolbarMenuAction.publishLocalChanges) {
+      await publishLocalChanges?.call();
+    } else if (choice == _EditorToolbarMenuAction.differences) {
       openDifferences?.call();
+    } else if (choice == _EditorToolbarMenuAction.syncLatest) {
+      await syncLatest?.call();
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
-    final open = ref.watch(documentControllerProvider);
-    final pending = ref.watch(pendingProposalProvider);
-    final VoidCallback? openDifferences = open != null && pending != null
-        ? () => Navigator.of(context).push(diffRoute(pending))
+    final proposals = ref.watch(pendingProposalsProvider);
+    final role = ref.watch(kbRoleProvider).valueOrNull;
+    final mayReview =
+        role == KbRole.owner ||
+        role == KbRole.coOwner ||
+        role == KbRole.reviewer;
+    final VoidCallback? openDifferences = mayReview && proposals.isNotEmpty
+        ? () => Navigator.of(context).push(reviewInboxRoute())
         : null;
+    final canSync =
+        role != null && role != KbRole.local && role != KbRole.invited;
+    final canPublish = role == KbRole.owner || role == KbRole.coOwner;
+
+    Future<void> publishLocalChanges() async {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      try {
+        final result = await ref
+            .read(sharingControllerProvider)
+            .pushLocalChanges();
+        final parts = <String>[
+          '${result.published} published',
+          '${result.unchanged} already current',
+        ];
+        if (result.conflicts > 0) {
+          parts.add('${result.conflicts} conflict(s) left untouched');
+        }
+        messenger?.showSnackBar(SnackBar(content: Text(parts.join(' · '))));
+      } catch (error) {
+        messenger?.showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
+
+    Future<void> syncLatest() async {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      try {
+        final result = await ref
+            .read(sharingControllerProvider)
+            .pullRemoteChanges();
+        final parts = <String>[
+          '${result.updated} updated',
+          '${result.recoveredDeletions} recovered deletion(s)',
+        ];
+        if (result.conflicts > 0) {
+          parts.add('${result.conflicts} local conflict(s) left untouched');
+        }
+        messenger?.showSnackBar(SnackBar(content: Text(parts.join(' · '))));
+      } catch (error) {
+        messenger?.showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
 
     return Tooltip(
       message: 'Editor menu',
@@ -491,13 +567,15 @@ class EditorToolbarMenuButton extends ConsumerWidget {
           onPressed: () => _show(
             context,
             openDifferences: openDifferences,
-            hasPendingProposal: pending != null,
+            publishLocalChanges: canPublish ? publishLocalChanges : null,
+            syncLatest: canSync ? syncLatest : null,
+            hasPendingProposal: proposals.isNotEmpty,
           ),
           child: Stack(
             alignment: Alignment.center,
             children: [
               Icon(Icons.more_horiz, size: 18, color: colors.text),
-              if (pending != null)
+              if (proposals.isNotEmpty)
                 Positioned(
                   top: 5,
                   right: 5,

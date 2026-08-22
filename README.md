@@ -246,9 +246,22 @@ folder fail without security-scoped bookmarks.
 updates and uninstall. Knowledge Bases go wherever the user picks, through the
 system folder picker.
 
-Both build scripts work unsigned. Signing and notarisation are documented in
-`scripts/build_macos.sh` and `pubspec.yaml`'s `msix_config`, and need an Apple
-Developer membership and an Authenticode certificate respectively.
+To create a Windows installer without owning a Windows machine, open the
+repository's **Actions** tab, choose **Build Windows MSIX**, and select **Run
+workflow**. Download and extract the `DaySeven-Windows-x64` artifact when the
+job finishes. It contains the `.msix`, its test certificate, and installation
+instructions. Artifacts expire after 30 days; anyone downloading from the
+private repository needs repository access, but the downloaded ZIP can be sent
+directly to a trusted friend.
+
+The workflow copies the checked-in `env/supabase.production.json` client
+configuration into the build. The Supabase publishable key is intended for
+client applications; database authorization remains enforced by RLS policies.
+
+The workflow's certificate is self-signed and intended for trusted test
+distribution. A production release should use a persistent, publicly trusted
+Authenticode certificate. macOS signing and notarisation are documented in
+`scripts/build_macos.sh`.
 
 ## Tests
 
