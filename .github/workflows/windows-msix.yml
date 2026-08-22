@@ -41,21 +41,8 @@ jobs:
 
       - name: Write build configuration
         shell: pwsh
-        env:
-          DAYSEVEN_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          DAYSEVEN_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          if (-not $env:DAYSEVEN_SUPABASE_URL) {
-            throw "The SUPABASE_URL repository secret is required for the Windows installer."
-          }
-          if (-not $env:DAYSEVEN_SUPABASE_PUBLISHABLE_KEY) {
-            throw "The SUPABASE_PUBLISHABLE_KEY repository secret is required for the Windows installer."
-          }
-
-          @{
-            SUPABASE_URL = $env:DAYSEVEN_SUPABASE_URL
-            SUPABASE_PUBLISHABLE_KEY = $env:DAYSEVEN_SUPABASE_PUBLISHABLE_KEY
-          } | ConvertTo-Json | Set-Content -Path env/supabase.json -Encoding utf8
+          Copy-Item env/supabase.production.json env/supabase.json
 
       - name: Install dependencies
         shell: pwsh
