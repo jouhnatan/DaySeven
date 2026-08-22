@@ -1,0 +1,618 @@
+/// Keeping the installed application up to date.
+///
+/// Both platforms work the same way, because on both of them DaySeven is
+/// installed by unpacking an archive rather than by anything the operating
+/// system manages. `app_releases` in Supabase is the source of truth: it says
+/// which build is current, and the app compares its own version against it
+/// when the person asks it to, from Menu -> Run updates.
+///
+/// Applying an update means replacing the files the running process was
+/// started from, which cannot be done by that process. So every path here ends
+/// the same way: unpack beside the install, write a small script that waits for
+/// this process to exit, hand it off, and quit. The script does the swap and
+/// reopens the app.
+library;
+
+import 'dart:async';
+import 'dart:io';
+
+import 'package:archive/archive_io.dart';
+import 'package:crypto/crypto.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
+
+import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/platform/install_location.dart';
+
+/// A version as the pubspec writes it: `1.3.0+5`.
+///
+/// The build number is half the identity, not a footnote: two releases of
+/// `1.3.0` are told apart only by it.
+class AppVersion implements Comparable<AppVersion> {
+  const AppVersion(this.name, this.build);
+
+  final String name;
+  final int build;
+
+  static AppVersion? tryParse(String name, int build) {
+    if (!RegExp(r'^\d+\.\d+\.\d+$').hasMatch(name)) return null;
+    return AppVersion(name, build);
+  }
+
+  List<int> get _parts => name.split('.').map(int.parse).toList();
+
+  @override
+  int compareTo(AppVersion other) {
+    final mine = _parts;
+    final theirs = other._parts;
+    for (var i = 0; i < 3; i++) {
+      final difference = mine[i].compareTo(theirs[i]);
+      if (difference != 0) return difference;
+    }
+    return build.compareTo(other.build);
+  }
+
+  bool operator >(AppVersion other) => compareTo(other) > 0;
+  bool operator <(AppVersion other) => compareTo(other) < 0;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AppVersion && other.name == name && other.build == build;
+
+  @override
+  int get hashCode => Object.hash(name, build);
+
+  @override
+  String toString() => '$name+$build';
+}
+
+/// One row of `app_releases`.
+class AppRelease {
+  const AppRelease({
+    required this.platform,
+    required this.version,
+    required this.downloadUrl,
+    required this.sha256,
+    required this.sizeBytes,
+    this.installUrl,
+    this.releaseNotes,
+    this.minimumVersion,
+  });
+
+  final String platform;
+  final AppVersion version;
+
+  /// The archive the updater fetches.
+  final String downloadUrl;
+
+  /// What a person opens by hand — the `.dmg` on macOS, the same archive on
+  /// Windows. The fallback for every path where updating in place cannot
+  /// proceed.
+  final String? installUrl;
+
+  final String sha256;
+  final int sizeBytes;
+  final String? releaseNotes;
+
+  /// Below this, the update stops being advisory. Null leaves every update
+  /// optional, which is the normal case.
+  final AppVersion? minimumVersion;
+
+  static AppRelease? fromRow(Map<String, dynamic> row) {
+    final version = AppVersion.tryParse(
+      '${row['version']}',
+      (row['build_number'] as num?)?.toInt() ?? -1,
+    );
+    final downloadUrl = row['download_url'] as String?;
+    final sha256 = row['sha256'] as String?;
+    final size = (row['size_bytes'] as num?)?.toInt();
+
+    // A row missing any of these describes a release nothing could install, so
+    // it is treated as no release rather than as a broken one.
+    if (version == null ||
+        version.build < 0 ||
+        downloadUrl == null ||
+        downloadUrl.isEmpty ||
+        sha256 == null ||
+        size == null ||
+        size <= 0) {
+      return null;
+    }
+
+    final minimum = row['minimum_version'] as String?;
+
+    return AppRelease(
+      platform: '${row['platform']}',
+      version: version,
+      downloadUrl: downloadUrl,
+      installUrl: row['install_url'] as String?,
+      sha256: sha256.toLowerCase(),
+      sizeBytes: size,
+      releaseNotes: row['release_notes'] as String?,
+      minimumVersion: minimum == null ? null : AppVersion.tryParse(minimum, 0),
+    );
+  }
+
+  bool isNewerThan(AppVersion current) => version > current;
+
+  /// True when the running build is old enough that the release feed says it
+  /// should no longer be treated as a version worth staying on.
+  bool isMandatoryFor(AppVersion current) {
+    final minimum = minimumVersion;
+    return minimum != null && current < minimum;
+  }
+}
+
+/// The name this platform goes by in the release feed.
+String? get currentReleasePlatform => switch (Platform.operatingSystem) {
+  'windows' => 'windows',
+  'macos' => 'macos',
+  _ => null,
+};
+
+/// Where releases are read from. An interface so tests can answer without a
+/// server, in the same shape as the repository seams elsewhere in the app.
+abstract class ReleaseDataSource {
+  Future<AppRelease?> currentRelease(String platform);
+}
+
+class SupabaseReleases implements ReleaseDataSource {
+  const SupabaseReleases();
+
+  @override
+  Future<AppRelease?> currentRelease(String platform) async {
+    final row = await supabase
+        .from('app_releases')
+        .select()
+        .eq('platform', platform)
+        .eq('channel', 'stable')
+        .eq('is_current', true)
+        .maybeSingle();
+
+    return row == null ? null : AppRelease.fromRow(row);
+  }
+}
+
+final releaseDataSourceProvider = Provider<ReleaseDataSource>(
+  (ref) => const SupabaseReleases(),
+);
+
+/// Reads the running build's version. Injectable because the plugin channel is
+/// not available in a plain widget test.
+final currentVersionProvider = FutureProvider<AppVersion>((ref) async {
+  final info = await PackageInfo.fromPlatform();
+  return AppVersion(info.version, int.tryParse(info.buildNumber) ?? 0);
+});
+
+sealed class AppUpdateState {
+  const AppUpdateState();
+}
+
+/// Nothing to do: either the check has not run, or it found nothing newer.
+class UpToDate extends AppUpdateState {
+  const UpToDate();
+}
+
+class CheckingForUpdate extends AppUpdateState {
+  const CheckingForUpdate();
+}
+
+class UpdateAvailable extends AppUpdateState {
+  const UpdateAvailable(this.release, {required this.mandatory});
+  final AppRelease release;
+  final bool mandatory;
+}
+
+class DownloadingUpdate extends AppUpdateState {
+  const DownloadingUpdate(this.release, this.receivedBytes);
+  final AppRelease release;
+  final int receivedBytes;
+
+  /// Null until the download reports a length, so the UI can show an
+  /// indeterminate bar rather than a wrong one.
+  double? get fraction =>
+      release.sizeBytes <= 0 ? null : receivedBytes / release.sizeBytes;
+}
+
+/// Downloaded and verified; the swap happens as the app exits.
+class InstallingUpdate extends AppUpdateState {
+  const InstallingUpdate(this.release);
+  final AppRelease release;
+}
+
+/// The check itself could not be made — offline, or the feed did not answer.
+///
+/// Distinct from [UpToDate] because this is only ever reached when somebody
+/// asked. Reporting "you are up to date" to a question the app could not
+/// actually answer would be a lie.
+class UpdateCheckFailed extends AppUpdateState {
+  const UpdateCheckFailed(this.message);
+  final String message;
+}
+
+class UpdateFailed extends AppUpdateState {
+  const UpdateFailed(this.release, this.message);
+  final AppRelease release;
+  final String message;
+}
+
+/// Raised when the update cannot be applied in place. Always carries something
+/// worth showing: every one of these ends with the user being offered the
+/// manual download instead.
+class UpdateException implements Exception {
+  const UpdateException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class AppUpdateController extends StateNotifier<AppUpdateState> {
+  AppUpdateController(
+    this._releases,
+    this._currentVersion, {
+    required this.enabled,
+  }) : super(const UpToDate());
+
+  final ReleaseDataSource _releases;
+  final Future<AppVersion> _currentVersion;
+
+  /// Whether there is a server to ask. Passed in rather than read from
+  /// [isSupabaseConfigured] directly so a test can exercise the check without
+  /// build-time credentials — the same reason the data source is an interface.
+  final bool enabled;
+
+  /// The step that replaces the install and quits. Held as a field rather than
+  /// called directly so a test can observe the install being requested without
+  /// the test process exiting.
+  Future<void> Function(AppRelease, String) installer = installUpdate;
+
+  Future<void> check() async {
+    final platform = currentReleasePlatform;
+    // Collaboration needs a server, and so does this; without one there is no
+    // feed to read.
+    if (platform == null || !enabled) {
+      state = const UpdateCheckFailed(
+        'DaySeven was built without a server to check for updates against.',
+      );
+      return;
+    }
+
+    state = const CheckingForUpdate();
+    try {
+      final release = await _releases.currentRelease(platform);
+      final current = await _currentVersion;
+
+      if (release == null || !release.isNewerThan(current)) {
+        state = const UpToDate();
+        return;
+      }
+
+      state = UpdateAvailable(
+        release,
+        mandatory: release.isMandatoryFor(current),
+      );
+    } catch (error) {
+      state = UpdateCheckFailed(describeError(error));
+    }
+  }
+
+  /// Downloads the release and hands it to the platform's installer.
+  Future<void> download(AppRelease release) async {
+    if (currentReleasePlatform == null) return;
+
+    // On macOS an app outside /Applications is an unmanaged copy, and
+    // replacing it would leave the person with two DaySevens. The check is a
+    // no-op on Windows, where the install directory is wherever it was
+    // unpacked and any of them is as legitimate as another.
+    final location = checkInstallLocation();
+    if (!location.isCorrect) {
+      state = UpdateFailed(
+        release,
+        'DaySeven can only update itself from the Applications folder. '
+        'Move it there, or download the new version by hand.',
+      );
+      return;
+    }
+
+    Directory? workspace;
+    try {
+      state = DownloadingUpdate(release, 0);
+      workspace = await Directory.systemTemp.createTemp('dayseven-update-');
+      final archive = File(p.join(workspace.path, 'DaySeven-macos.zip'));
+
+      await _fetch(
+        release.downloadUrl,
+        archive,
+        onProgress: (received) {
+          if (mounted) state = DownloadingUpdate(release, received);
+        },
+      );
+
+      // The feed publishes the hash; checking it here is what makes an
+      // interrupted or substituted download fail loudly instead of replacing
+      // a working app with a broken one.
+      final actual = await sha256.bind(archive.openRead()).first;
+      if (actual.toString() != release.sha256) {
+        throw const UpdateException(
+          'The downloaded update did not match the published checksum.',
+        );
+      }
+
+      if (!mounted) return;
+      state = InstallingUpdate(release);
+      await installer(release, archive.path);
+    } catch (error) {
+      // The workspace is only cleaned up on failure. On success the swap
+      // script is still reading from it as this process exits.
+      if (workspace != null) {
+        await workspace.delete(recursive: true).catchError((_) => workspace!);
+      }
+      if (mounted) {
+        state = UpdateFailed(
+          release,
+          error is UpdateException ? error.message : describeError(error),
+        );
+      }
+    }
+  }
+
+  /// Streams to disk rather than buffering: the archive is tens of megabytes,
+  /// and a byte count is the only honest progress signal available.
+  static Future<void> _fetch(
+    String url,
+    File destination, {
+    required void Function(int received) onProgress,
+  }) async {
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(Uri.parse(url));
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        throw UpdateException(
+          'The update could not be downloaded (HTTP ${response.statusCode}).',
+        );
+      }
+
+      final sink = destination.openWrite();
+      var received = 0;
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+          received += chunk.length;
+          onProgress(received);
+        }
+      } finally {
+        await sink.close();
+      }
+    } finally {
+      client.close(force: true);
+    }
+  }
+}
+
+/// Unpacks the archive and arranges for the install to be replaced.
+Future<void> installUpdate(AppRelease release, String archivePath) async {
+  if (Platform.isMacOS) return installMacOSUpdate(release, archivePath);
+  if (Platform.isWindows) return installWindowsUpdate(release, archivePath);
+  throw const UpdateException(
+    'DaySeven does not know how to update itself on this platform.',
+  );
+}
+
+/// macOS: replace the application bundle.
+///
+/// The bundle cannot be replaced while the process is running out of it, so
+/// this ends by starting a detached script and quitting. The script waits for
+/// the process to go, moves the new bundle into place, and reopens the app.
+Future<void> installMacOSUpdate(AppRelease release, String archivePath) async {
+  final workspace = p.dirname(archivePath);
+  final unpacked = p.join(workspace, 'unpacked');
+
+  // `ditto`, not the archive package: an .app is a tree of symlinks and
+  // extended attributes, and anything that flattens those produces a bundle
+  // that will not launch.
+  await _run('/usr/bin/ditto', ['-x', '-k', archivePath, unpacked]);
+
+  final staged = Directory(unpacked)
+      .listSync()
+      .whereType<Directory>()
+      .firstWhere(
+        (entry) => entry.path.endsWith('.app'),
+        orElse: () => throw const UpdateException(
+          'The downloaded update did not contain an application bundle.',
+        ),
+      )
+      .path;
+
+  // Downloads arrive quarantined. Left in place, the replaced app would be
+  // treated as freshly downloaded and refuse to open without a prompt.
+  await _run('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', staged]);
+
+  // .../DaySeven.app/Contents/MacOS/dayseven -> .../DaySeven.app
+  final target = p.dirname(p.dirname(p.dirname(Platform.resolvedExecutable)));
+  if (!target.endsWith('.app')) {
+    throw const UpdateException(
+      'DaySeven is not running from an application bundle, so it cannot '
+      'replace itself.',
+    );
+  }
+
+  await _requireWritable(p.dirname(target));
+
+  final quotedTarget = _shellQuote(target);
+  final quotedStaged = _shellQuote(staged);
+  final quotedWorkspace = _shellQuote(workspace);
+
+  // `$pid` is this process's id, from dart:io — interpolated in as a literal
+  // number, so the script waits for *this* app and nothing else.
+  final script = File(p.join(workspace, 'swap.sh'));
+  await script.writeAsString('''
+#!/bin/sh
+# Replaces the running DaySeven with the freshly downloaded one, then reopens
+# it. Written and started by the app itself; deletes itself when done.
+set -e
+
+# Wait for the old process to exit. The bundle cannot be replaced underneath a
+# running app, and that app is quitting as this script starts.
+while kill -0 $pid 2>/dev/null; do sleep 0.2; done
+
+# Move the old bundle aside rather than deleting it, so a failure at the next
+# step leaves a working app rather than nothing at all.
+rm -rf $quotedTarget.previous
+mv $quotedTarget $quotedTarget.previous
+if ! mv $quotedStaged $quotedTarget; then
+  mv $quotedTarget.previous $quotedTarget
+  open $quotedTarget
+  exit 1
+fi
+
+rm -rf $quotedTarget.previous
+open $quotedTarget
+rm -rf $quotedWorkspace
+''');
+  await _run('/bin/chmod', ['+x', script.path]);
+
+  // Detached, so it outlives the process that started it.
+  await Process.start(
+    '/bin/sh',
+    [script.path],
+    mode: ProcessStartMode.detached,
+  );
+
+  exit(0);
+}
+
+/// Windows: replace the contents of the install directory.
+///
+/// There is no bundle here, just the folder the zip was unpacked into, so the
+/// swap is a mirror of one directory onto another. Windows will not let a
+/// running executable be replaced at all, so as on macOS this hands off to a
+/// script and quits.
+Future<void> installWindowsUpdate(
+  AppRelease release,
+  String archivePath,
+) async {
+  final workspace = p.dirname(archivePath);
+  final staged = p.join(workspace, 'unpacked');
+
+  // The archive package rather than a shelled-out Expand-Archive: a Windows
+  // build is plain files with none of the symlinks or extended attributes that
+  // make an .app need `ditto`, and this keeps the failure inside Dart.
+  await extractFileToDisk(archivePath, staged);
+
+  if (!File(p.join(staged, 'dayseven.exe')).existsSync()) {
+    throw const UpdateException(
+      'The downloaded update did not contain dayseven.exe.',
+    );
+  }
+
+  // ...\\DaySeven\\dayseven.exe -> ...\\DaySeven
+  final target = p.dirname(Platform.resolvedExecutable);
+  await _requireWritable(target);
+
+  final quotedTarget = _powerShellQuote(target);
+  final quotedStaged = _powerShellQuote(staged);
+  final quotedWorkspace = _powerShellQuote(workspace);
+  final quotedExe = _powerShellQuote(p.join(target, 'dayseven.exe'));
+
+  final script = File(p.join(workspace, 'swap.ps1'));
+  await script.writeAsString('''
+# Replaces the running DaySeven with the freshly downloaded one, then reopens
+# it. Written and started by the app itself.
+
+# Wait for the old process to exit. Windows will not let a running executable
+# be replaced, and that process is quitting as this script starts.
+Wait-Process -Id $pid -Timeout 120 -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+
+# /MIR so files dropped between versions do not linger. Nothing of the user's
+# lives here — documents are wherever they chose, and app state is in AppData —
+# so mirroring is safe.
+robocopy $quotedStaged $quotedTarget /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+
+# robocopy uses exit codes 0-7 for success; 8 and above are real failures.
+if (\$LASTEXITCODE -ge 8) {
+  Start-Process $quotedExe
+  exit 1
+}
+
+Start-Process $quotedExe
+Remove-Item $quotedWorkspace -Recurse -Force -ErrorAction SilentlyContinue
+''');
+
+  // Detached and hidden, so it outlives the process that started it without
+  // flashing a console window.
+  await Process.start(
+    'powershell',
+    [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-WindowStyle',
+      'Hidden',
+      '-File',
+      script.path,
+    ],
+    mode: ProcessStartMode.detached,
+  );
+
+  exit(0);
+}
+
+/// Single-quotes a path for /bin/sh, the way any path interpolated into a
+/// generated script has to be.
+String _shellQuote(String value) => "'${value.replaceAll("'", r"'\''")}'";
+
+/// The PowerShell equivalent: single quotes, with internal ones doubled.
+String _powerShellQuote(String value) => "'${value.replaceAll("'", "''")}'";
+
+/// Fails with something worth reading when the install cannot be written to —
+/// most often DaySeven unpacked into Program Files on Windows, or installed by
+/// another user on macOS.
+Future<void> _requireWritable(String directory) async {
+  final probe = File(p.join(directory, '.dayseven-write-probe'));
+  try {
+    await probe.writeAsString('');
+    await probe.delete();
+  } on FileSystemException {
+    throw const UpdateException(
+      'DaySeven does not have permission to replace its own files. Move it '
+      'somewhere you can write to, or download the new version by hand.',
+    );
+  }
+}
+
+/// Hands a URL to the desktop, for the paths where the app cannot install the
+/// update itself and the person has to fetch it by hand.
+///
+/// Done with the platform's own opener rather than a plugin: this is a
+/// desktop-only application, and both commands are one line.
+Future<void> openExternally(String url) async {
+  if (Platform.isWindows) {
+    // The empty argument is the window title `start` would otherwise take the
+    // URL to be.
+    await Process.run('cmd', ['/c', 'start', '', url]);
+  } else if (Platform.isMacOS) {
+    await Process.run('/usr/bin/open', [url]);
+  }
+}
+
+Future<void> _run(String executable, List<String> arguments) async {
+  final result = await Process.run(executable, arguments);
+  if (result.exitCode != 0) {
+    throw UpdateException(
+      '${p.basename(executable)} failed: ${result.stderr}'.trim(),
+    );
+  }
+}
+
+final appUpdateProvider =
+    StateNotifierProvider<AppUpdateController, AppUpdateState>((ref) {
+      return AppUpdateController(
+        ref.watch(releaseDataSourceProvider),
+        ref.watch(currentVersionProvider.future),
+        enabled: isSupabaseConfigured,
+      );
+    });

@@ -1,13 +1,13 @@
-# Builds DaySeven for Windows 11 and packages it as an MSIX.
+# Builds DaySeven for Windows 11 and zips it.
 #
-# Run from the repository root on a Windows machine with the Flutter Windows
-# toolchain installed (Visual Studio 2022 with the "Desktop development with
-# C++" workload).
+# A Flutter Windows build is a folder — dayseven.exe, the Flutter DLLs, and
+# data/ — so the zip is that folder, and installing is extracting it somewhere
+# writable. There is no installer and no signing certificate: the app updates
+# itself from the release feed rather than through anything the operating
+# system manages, which is the whole reason it can be this plain.
 #
-# For a signed build, set MSIX_CERTIFICATE_PATH and
-# MSIX_CERTIFICATE_PASSWORD. GitHub Actions creates a temporary test certificate
-# and publishes its public half beside the installer. Use a publicly trusted
-# code-signing certificate for a production release.
+# The trade is a one-time SmartScreen warning the first time an unsigned
+# executable runs. Everything after that, including every update, is silent.
 
 $ErrorActionPreference = "Stop"
 
@@ -30,33 +30,40 @@ if (-not $buildConfig.SUPABASE_PUBLISHABLE_KEY) {
     throw "SUPABASE_PUBLISHABLE_KEY is missing from $envFile."
 }
 
+$version = & "$PSScriptRoot\pubspec_version.ps1"
+Write-Host "Building DaySeven $($version.Full) for Windows"
+
 flutter build windows --release --dart-define-from-file=$envFile
 if ($LASTEXITCODE -ne 0) {
     throw "flutter build windows failed with exit code $LASTEXITCODE."
 }
 
-# The MSIX tool rebuilds Windows by default. That second build would omit the
-# --dart-define-from-file argument above and package an app with no Supabase
-# configuration, so package the release files we just built instead.
-$msixArguments = @("run", "msix:create", "--build-windows", "false")
-if ($env:MSIX_CERTIFICATE_PATH) {
-    if (-not (Test-Path $env:MSIX_CERTIFICATE_PATH)) {
-        throw "MSIX certificate not found: $env:MSIX_CERTIFICATE_PATH"
-    }
-    if (-not $env:MSIX_CERTIFICATE_PASSWORD) {
-        throw "MSIX_CERTIFICATE_PASSWORD is required when MSIX_CERTIFICATE_PATH is set."
-    }
-
-    $msixArguments += @(
-        "--certificate-path", $env:MSIX_CERTIFICATE_PATH,
-        "--certificate-password", $env:MSIX_CERTIFICATE_PASSWORD,
-        "--install-certificate", "false"
-    )
+$release = "build\windows\x64\runner\Release"
+if (-not (Test-Path "$release\dayseven.exe")) {
+    throw "The build completed without producing $release\dayseven.exe."
 }
 
-& dart $msixArguments
-if ($LASTEXITCODE -ne 0) {
-    throw "dart run msix:create failed with exit code $LASTEXITCODE."
-}
+New-Item -ItemType Directory -Force -Path dist | Out-Null
+$zip = "dist\DaySeven-Windows-x64.zip"
+Remove-Item $zip -ErrorAction SilentlyContinue
 
-Write-Host "Built build/windows/x64/runner/Release and the MSIX beside it."
+# The contents of Release\, not the folder itself: the updater replaces an
+# install directory in place, so the archive has to unpack to the same shape
+# the install already has.
+Compress-Archive -Path "$release\*" -DestinationPath $zip -CompressionLevel Optimal
+
+@"
+DAYSEVEN FOR WINDOWS
+
+1. Extract this ZIP somewhere you can write to — somewhere under your user
+   folder is ideal. Program Files is not: DaySeven updates itself by replacing
+   its own files, and that needs write access without prompting for admin.
+2. Run dayseven.exe.
+3. Windows will warn that it does not recognise the app, because it is not
+   signed. Choose "More info", then "Run anyway". This happens once.
+
+After that, use Menu (top right) -> Run updates to move to a newer version.
+DaySeven downloads it, replaces itself and reopens.
+"@ | Set-Content -Path "dist\INSTALL.txt" -Encoding utf8
+
+Write-Host "Built $zip"

@@ -23,6 +23,7 @@ import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
+import 'package:dayseven/shared/ui/update_dialog.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/features/differences/application/differences_navigation.dart';
 import 'package:dayseven/features/differences/ui/differences_workspace.dart';
@@ -149,6 +150,19 @@ class DsShell extends ConsumerWidget {
                                                   onSelected: DsGlobalSettings
                                                       .toggleGradientBackground,
                                                 ),
+                                                // Updates come from the same
+                                                // server collaboration does,
+                                                // so without one there is
+                                                // nothing to check against.
+                                                if (isSupabaseConfigured)
+                                                  HamburgerMenuEntry.action(
+                                                    label: 'Run updates',
+                                                    onSelected: () =>
+                                                        runUpdateCheck(
+                                                          context,
+                                                          ref,
+                                                        ),
+                                                  ),
                                               ],
                                             ),
                                           ],
