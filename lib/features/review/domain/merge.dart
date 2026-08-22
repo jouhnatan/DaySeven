@@ -18,15 +18,20 @@ import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
 import 'package:dayseven/shared/blocks/blocks.dart';
 
 class MergeResult {
-  const MergeResult({required this.document, required this.conflictedBlockIds});
+  const MergeResult({
+    required this.document,
+    required this.conflictedBlockIds,
+    this.titleConflict = false,
+  });
 
   final BlockDocument document;
 
   /// Blocks where both sides changed the same region. The proposal's version
   /// was taken; the diff view marks these before Approve is pressed.
   final List<String> conflictedBlockIds;
+  final bool titleConflict;
 
-  bool get hasConflicts => conflictedBlockIds.isNotEmpty;
+  bool get hasConflicts => titleConflict || conflictedBlockIds.isNotEmpty;
 }
 
 /// Merges [proposed] into [local], both derived from [base].
@@ -84,6 +89,10 @@ MergeResult threeWayMerge({
       schemaVersion: local.schemaVersion,
     ),
     conflictedBlockIds: conflicts,
+    titleConflict:
+        local.title != base.title &&
+        proposed.title != base.title &&
+        local.title != proposed.title,
   );
 }
 

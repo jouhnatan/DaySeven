@@ -7,6 +7,17 @@ import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/blocks/revision.dart';
 
+class RemoteDocumentSnapshot {
+  const RemoteDocumentSnapshot({
+    required this.path,
+    required this.revisionId,
+    required this.document,
+  });
+  final String path;
+  final String revisionId;
+  final BlockDocument document;
+}
+
 class DocumentRepository {
   /// Publishes a local document as a document row plus its first revision.
   /// The document id is the one generated locally, so the same document has one
@@ -91,6 +102,11 @@ class DocumentRepository {
     return row?['current_revision_id'] as String?;
   }
 
+  Future<void> softDelete(String documentId) => supabase
+      .from('documents')
+      .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
+      .eq('id', documentId);
+
   Future<Revision?> revision(String revisionId) async {
     final row = await supabase
         .from('revisions')
@@ -104,8 +120,28 @@ class DocumentRepository {
     final rows = await supabase
         .from('documents')
         .select('id, path, title, current_revision_id')
-        .eq('kb_id', kbId);
+        .eq('kb_id', kbId)
+        .isFilter('deleted_at', null);
     return rows.cast<Map<String, Object?>>();
+  }
+
+  Future<List<RemoteDocumentSnapshot>> snapshot(String kbId) async {
+    final documents = await documentsIn(kbId);
+    final result = <RemoteDocumentSnapshot>[];
+    for (final row in documents) {
+      final revisionId = row['current_revision_id'] as String?;
+      if (revisionId == null) continue;
+      final current = await revision(revisionId);
+      if (current == null) continue;
+      result.add(
+        RemoteDocumentSnapshot(
+          path: row['path'] as String,
+          revisionId: revisionId,
+          document: current.content,
+        ),
+      );
+    }
+    return result;
   }
 }
 

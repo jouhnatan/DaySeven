@@ -34,19 +34,26 @@ class Revision {
   );
 }
 
-enum ChangeSetStatus { pending, approved, rejected }
+enum ChangeSetStatus { pending, approved, rejected, withdrawn, superseded }
+
+enum ChangeSetOperation { create, update, delete }
 
 class ChangeSet {
   const ChangeSet({
     required this.id,
     required this.kbId,
     required this.documentId,
+    required this.targetDocumentId,
     required this.baseRevisionId,
     required this.content,
     required this.authorId,
     required this.authorDisplayName,
     required this.status,
     required this.createdAt,
+    required this.updatedAt,
+    this.operation = ChangeSetOperation.update,
+    this.proposedPath,
+    this.reviewNote,
     this.resultingRevisionId,
     this.resolvedAt,
     this.resolvedBy,
@@ -54,10 +61,11 @@ class ChangeSet {
 
   final String id;
   final String kbId;
-  final String documentId;
+  final String? documentId;
+  final String targetDocumentId;
 
   /// The revision the author edited from. The merge base.
-  final String baseRevisionId;
+  final String? baseRevisionId;
 
   /// The full proposed block document, as structured JSON — never binary.
   final BlockDocument content;
@@ -69,6 +77,10 @@ class ChangeSet {
 
   final ChangeSetStatus status;
   final DateTime createdAt;
+  final DateTime updatedAt;
+  final ChangeSetOperation operation;
+  final String? proposedPath;
+  final String? reviewNote;
   final String? resultingRevisionId;
   final DateTime? resolvedAt;
   final String? resolvedBy;
@@ -80,14 +92,30 @@ class ChangeSet {
     return ChangeSet(
       id: row['id'] as String,
       kbId: row['kb_id'] as String,
-      documentId: row['document_id'] as String,
-      baseRevisionId: row['base_revision_id'] as String,
-      content: BlockDocument.fromJson(row['content'] as Map<String, Object?>),
+      documentId: row['document_id'] as String?,
+      targetDocumentId:
+          (row['target_document_id'] ?? row['document_id']) as String,
+      baseRevisionId: row['base_revision_id'] as String?,
+      content: row['content'] == null
+          ? BlockDocument(
+              id: (row['target_document_id'] ?? row['document_id']) as String,
+              title: '',
+              blocks: const [],
+            )
+          : BlockDocument.fromJson(row['content'] as Map<String, Object?>),
       authorId: row['author_id'] as String,
       authorDisplayName:
           profile?['display_name'] as String? ?? 'Unknown author',
       status: ChangeSetStatus.values.byName(row['status'] as String),
       createdAt: DateTime.parse(row['created_at'] as String),
+      updatedAt: DateTime.parse(
+        (row['updated_at'] ?? row['created_at']) as String,
+      ),
+      operation: ChangeSetOperation.values.byName(
+        (row['operation'] as String?) ?? 'update',
+      ),
+      proposedPath: row['proposed_path'] as String?,
+      reviewNote: row['review_note'] as String?,
       resultingRevisionId: row['resulting_revision_id'] as String?,
       resolvedAt: row['resolved_at'] == null
           ? null

@@ -40,7 +40,73 @@ class DiffScreen extends ConsumerStatefulWidget {
 
 class _DiffScreenState extends ConsumerState<DiffScreen> {
   bool _working = false;
+  bool _loading = true;
   String? _error;
+  BlockDocument? _current;
+  String? _currentRevisionId;
+  MergeResult? _merge;
+  final Map<String, bool> _conflictChoices = {};
+  bool? _titleChoice;
+  final _reviewNote = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _prepare();
+  }
+
+  @override
+  void dispose() {
+    _reviewNote.dispose();
+    super.dispose();
+  }
+
+  Future<void> _prepare() async {
+    try {
+      final documents = ref.read(documentRepositoryProvider);
+      final empty = BlockDocument(
+        id: widget.proposal.targetDocumentId,
+        title: '',
+        blocks: const [],
+      );
+      if (widget.proposal.operation == ChangeSetOperation.create) {
+        _current = empty;
+        _merge = MergeResult(
+          document: widget.proposal.content,
+          conflictedBlockIds: const [],
+        );
+      } else {
+        final baseId = widget.proposal.baseRevisionId;
+        if (baseId == null) {
+          throw const SyncException('The proposal has no base revision.');
+        }
+        final base = await documents.revision(baseId);
+        if (base == null) {
+          throw const SyncException(
+            'The revision this was written against is gone.',
+          );
+        }
+        _currentRevisionId = await documents.currentRevisionId(
+          widget.proposal.targetDocumentId,
+        );
+        final currentRevision = _currentRevisionId == null
+            ? null
+            : await documents.revision(_currentRevisionId!);
+        _current = currentRevision?.content ?? base.content;
+        _merge = widget.proposal.operation == ChangeSetOperation.delete
+            ? MergeResult(document: _current!, conflictedBlockIds: const [])
+            : threeWayMerge(
+                base: base.content,
+                local: _current!,
+                proposed: widget.proposal.content,
+              );
+      }
+    } catch (error) {
+      _error = describeError(error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   /// Returning leaves the proposal exactly as it was found.
   void _return() => Navigator.of(context).pop();
@@ -51,8 +117,10 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
       _error = null;
     });
     try {
-      await ref.read(changeSetRepositoryProvider).reject(widget.proposal.id);
-      ref.read(pendingProposalProvider.notifier).clear();
+      await ref
+          .read(changeSetRepositoryProvider)
+          .reject(widget.proposal.id, reviewNote: _reviewNote.text);
+      ref.read(pendingProposalsProvider.notifier).remove(widget.proposal.id);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       setState(() {
@@ -63,9 +131,8 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
   }
 
   Future<void> _approve() async {
-    final open = ref.read(documentControllerProvider);
-    final session = ref.read(kbSessionProvider);
-    if (open == null || session == null) return;
+    final merge = _resolvedMerge();
+    if (merge == null) return;
 
     setState(() {
       _working = true;
@@ -73,41 +140,28 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
     });
 
     try {
-      final documents = ref.read(documentRepositoryProvider);
-      final base = await documents.revision(widget.proposal.baseRevisionId);
-      if (base == null) {
-        throw const SyncException(
-          'The revision this was written against is gone.',
-        );
-      }
-      final currentRevisionId = await documents.currentRevisionId(
-        open.document.id,
-      );
-
-      final merge = threeWayMerge(
-        base: base.content,
-        local: open.document,
-        proposed: widget.proposal.content,
-      );
-
       await ref
           .read(changeSetRepositoryProvider)
           .approve(
             changeSetId: widget.proposal.id,
-            merged: merge.document,
-            expectedCurrentRevisionId: currentRevisionId,
+            merged: merge,
+            expectedCurrentRevisionId: _currentRevisionId,
+            reviewNote: _reviewNote.text,
           );
 
-      // Only once the server has accepted the revision is the local file
-      // rewritten, so a failed approval can never leave the folder ahead of the
-      // history.
-      await session.kb.writeDocument(open.relativePath, merge.document);
-      session.index.upsert(open.relativePath, merge.document);
-      await ref
-          .read(documentControllerProvider.notifier)
-          .open(open.relativePath);
+      final open = ref.read(documentControllerProvider);
+      final session = ref.read(kbSessionProvider);
+      if (open?.document.id == widget.proposal.targetDocumentId &&
+          session != null &&
+          widget.proposal.operation != ChangeSetOperation.delete) {
+        await session.kb.writeDocument(open!.relativePath, merge);
+        session.index.upsert(open.relativePath, merge);
+        await ref
+            .read(documentControllerProvider.notifier)
+            .open(open.relativePath);
+      }
 
-      ref.read(pendingProposalProvider.notifier).clear();
+      ref.read(pendingProposalsProvider.notifier).remove(widget.proposal.id);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       setState(() {
@@ -117,14 +171,58 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
     }
   }
 
+  BlockDocument? _resolvedMerge() {
+    final merge = _merge;
+    final current = _current;
+    if (merge == null || current == null) return null;
+    if (merge.titleConflict && _titleChoice == null) return null;
+    if (merge.conflictedBlockIds.any(
+      (id) => !_conflictChoices.containsKey(id),
+    )) {
+      return null;
+    }
+
+    final currentById = {for (final block in current.blocks) block.id: block};
+    final blocks = [...merge.document.blocks];
+    for (final id in merge.conflictedBlockIds) {
+      if (_conflictChoices[id] == true) continue;
+      final at = blocks.indexWhere((block) => block.id == id);
+      final replacement = currentById[id];
+      if (at >= 0 && replacement != null) {
+        blocks[at] = replacement;
+      } else if (at >= 0) {
+        blocks.removeAt(at);
+      } else if (replacement != null) {
+        blocks.add(replacement);
+      }
+    }
+    return merge.document.copyWith(
+      title: merge.titleConflict && _titleChoice == false
+          ? current.title
+          : merge.document.title,
+      blocks: blocks,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    final open = ref.watch(documentControllerProvider);
     final local =
-        open?.document ?? const BlockDocument(id: '', title: '', blocks: []);
+        _current ??
+        BlockDocument(
+          id: widget.proposal.targetDocumentId,
+          title: '',
+          blocks: const [],
+        );
     final proposed = widget.proposal.content;
     final rows = alignBlocks(local, proposed);
+
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: colors.appBackground,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: colors.appBackground,
@@ -185,6 +283,50 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
               padding: const EdgeInsets.symmetric(horizontal: DsSpace.pane),
               child: DsErrorBox(_error!),
             ),
+          if (_merge?.hasConflicts ?? false)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                DsSpace.pane,
+                8,
+                DsSpace.pane,
+                0,
+              ),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (_merge!.titleConflict)
+                    _ConflictChoice(
+                      label: 'Title',
+                      selected: _titleChoice,
+                      onChanged: (choice) =>
+                          setState(() => _titleChoice = choice),
+                    ),
+                  for (final id in _merge!.conflictedBlockIds)
+                    _ConflictChoice(
+                      label: 'Block',
+                      selected: _conflictChoices[id],
+                      onChanged: (choice) =>
+                          setState(() => _conflictChoices[id] = choice),
+                    ),
+                ],
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DsSpace.pane,
+              8,
+              DsSpace.pane,
+              0,
+            ),
+            child: TextField(
+              controller: _reviewNote,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Optional review note',
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: DsSpace.pane),
             child: Row(
@@ -192,7 +334,10 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
               children: [
                 DsLabelButton(
                   label: 'Approve',
-                  onPressed: _working ? null : _approve,
+                  onPressed:
+                      _working || _error != null || _resolvedMerge() == null
+                      ? null
+                      : _approve,
                   horizontalPadding: 18,
                 ),
                 const SizedBox(width: DsSpace.islandGap),
@@ -214,6 +359,38 @@ class _DiffScreenState extends ConsumerState<DiffScreen> {
       ),
     );
   }
+}
+
+class _ConflictChoice extends StatelessWidget {
+  const _ConflictChoice({
+    required this.label,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final String label;
+  final bool? selected;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text('$label conflict'),
+      const SizedBox(width: 6),
+      SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(value: false, label: Text('Current')),
+          ButtonSegment(value: true, label: Text('Proposed')),
+        ],
+        emptySelectionAllowed: true,
+        selected: selected == null ? const {} : {selected!},
+        onSelectionChanged: (selection) {
+          if (selection.isNotEmpty) onChanged(selection.first);
+        },
+      ),
+    ],
+  );
 }
 
 // ------------------------------------------------------------- diff model --

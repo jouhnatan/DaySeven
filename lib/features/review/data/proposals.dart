@@ -53,57 +53,57 @@ final proposalNoticeProvider = StreamProvider<ProposalNotification>((ref) {
   return controller.stream;
 });
 
-/// The proposal waiting on the document currently open, or null. This is what
-/// lights the dot on the Differences button and what the diff view reviews.
-final pendingProposalProvider =
-    StateNotifierProvider<PendingProposalController, ChangeSet?>((ref) {
-      final controller = PendingProposalController(ref);
-
-      ref.listen<OpenDocument?>(documentControllerProvider, (_, open) {
-        controller.refresh();
-      });
-
-      // A notice for the open document means re-checking; a notice for another
-      // document is not this view's concern.
+/// Every proposal awaiting review in the open Knowledge Base.
+final pendingProposalsProvider =
+    StateNotifierProvider<PendingProposalsController, List<ChangeSet>>((ref) {
+      final controller = PendingProposalsController(ref);
       ref.listen(proposalNoticeProvider, (_, next) {
-        final notice = next.valueOrNull;
-        final open = ref.read(documentControllerProvider);
-        if (notice == null || open == null) return;
-        if (notice.documentId == open.document.id) controller.refresh();
+        if (next.valueOrNull != null) controller.refresh();
       });
-
+      ref.listen(kbSessionProvider, (_, _) => controller.refresh());
       controller.refresh();
       return controller;
     });
 
-class PendingProposalController extends StateNotifier<ChangeSet?> {
-  PendingProposalController(this._ref) : super(null);
+/// Compatibility/current-document projection used by the toolbar dot.
+final pendingProposalProvider = Provider<ChangeSet?>((ref) {
+  final open = ref.watch(documentControllerProvider);
+  final user = ref.watch(currentUserProvider);
+  final proposals = ref.watch(pendingProposalsProvider);
+  if (open == null || user == null) return null;
+  for (final proposal in proposals) {
+    if (proposal.targetDocumentId == open.document.id &&
+        proposal.authorId != user.id) {
+      return proposal;
+    }
+  }
+  return null;
+});
+
+class PendingProposalsController extends StateNotifier<List<ChangeSet>> {
+  PendingProposalsController(this._ref) : super(const []);
 
   final Ref _ref;
 
   Future<void> refresh() async {
-    final open = _ref.read(documentControllerProvider);
+    final session = _ref.read(kbSessionProvider);
     final user = _ref.read(currentUserProvider);
-    if (open == null || user == null || !isSupabaseConfigured) {
-      if (mounted) state = null;
+    if (session == null || user == null || !isSupabaseConfigured) {
+      if (mounted) state = const [];
       return;
     }
 
     try {
       final pending = await _ref
           .read(changeSetRepositoryProvider)
-          .pendingFor(open.document.id);
-      // Your own proposal is not yours to review.
-      if (mounted) {
-        state = pending?.authorId == user.id ? null : pending;
-      }
+          .pendingForKb(session.kb.manifest.kbId);
+      if (mounted) state = pending.where((p) => p.authorId != user.id).toList();
     } on PostgrestException {
-      if (mounted) state = null;
+      if (mounted) state = const [];
     }
   }
 
-  /// Called after Approve or Reject, both of which end the proposal.
-  void clear() {
-    if (mounted) state = null;
+  void remove(String changeSetId) {
+    if (mounted) state = state.where((p) => p.id != changeSetId).toList();
   }
 }
