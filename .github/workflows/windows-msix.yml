@@ -45,9 +45,16 @@ jobs:
           DAYSEVEN_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           DAYSEVEN_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
+          if (-not $env:DAYSEVEN_SUPABASE_URL) {
+            throw "The SUPABASE_URL repository secret is required for the Windows installer."
+          }
+          if (-not $env:DAYSEVEN_SUPABASE_PUBLISHABLE_KEY) {
+            throw "The SUPABASE_PUBLISHABLE_KEY repository secret is required for the Windows installer."
+          }
+
           @{
-            SUPABASE_URL = if ($env:DAYSEVEN_SUPABASE_URL) { $env:DAYSEVEN_SUPABASE_URL } else { "" }
-            SUPABASE_PUBLISHABLE_KEY = if ($env:DAYSEVEN_SUPABASE_PUBLISHABLE_KEY) { $env:DAYSEVEN_SUPABASE_PUBLISHABLE_KEY } else { "" }
+            SUPABASE_URL = $env:DAYSEVEN_SUPABASE_URL
+            SUPABASE_PUBLISHABLE_KEY = $env:DAYSEVEN_SUPABASE_PUBLISHABLE_KEY
           } | ConvertTo-Json | Set-Content -Path env/supabase.json -Encoding utf8
 
       - name: Install dependencies
