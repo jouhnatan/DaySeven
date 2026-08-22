@@ -161,14 +161,15 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
           ),
         ),
         if (ref.read(kbSessionProvider) != null) ...[
-          DsMenuItem<Object>(
-            value: _KbAction.importDocument,
-            height: kDsMenuItemHeight,
-            child: Text(
-              'Import .docx or .odt…',
-              style: uiTextStyle(size: 13, color: colors.text),
+          if (role != KbRole.reviewer)
+            DsMenuItem<Object>(
+              value: _KbAction.importDocument,
+              height: kDsMenuItemHeight,
+              child: Text(
+                'Import .docx or .odt…',
+                style: uiTextStyle(size: 13, color: colors.text),
+              ),
             ),
-          ),
           // Connection creation and deletion live behind the adjacent gear.
           // The owner's invite and a member's acceptance stay with the active
           // Knowledge Base because they are ordinary workspace actions.
@@ -178,8 +179,9 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
               value: switch (role) {
                 KbRole.local => null,
                 KbRole.owner => _KbAction.invite,
+                KbRole.coOwner => _KbAction.invite,
                 KbRole.invited => _KbAction.accept,
-                KbRole.editor => null,
+                KbRole.editor || KbRole.reviewer => null,
               },
               enabled: role != KbRole.editor,
               height: kDsMenuItemHeight,
@@ -187,12 +189,16 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
                 switch (role) {
                   KbRole.local => '',
                   KbRole.owner => 'Invite a collaborator…',
+                  KbRole.coOwner => 'Invite a collaborator…',
                   KbRole.invited => 'Accept invitation',
                   KbRole.editor => 'Your edits are proposed for review',
+                  KbRole.reviewer => 'Reviewer access is read-only',
                 },
                 style: uiTextStyle(
                   size: 13,
-                  color: role == KbRole.editor ? colors.muted : colors.text,
+                  color: role == KbRole.editor || role == KbRole.reviewer
+                      ? colors.muted
+                      : colors.text,
                 ),
               ),
             ),
@@ -214,7 +220,7 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
         if (!mounted) return;
         await showDialog<void>(
           context: context,
-          builder: (_) => const InviteDialog(),
+          builder: (_) => InviteDialog(allowCoOwner: role == KbRole.owner),
         );
       case _KbAction.accept:
         await _guard(() async {
@@ -305,6 +311,7 @@ class _KbTree extends ConsumerWidget {
     WidgetRef ref,
     Offset position,
   ) async {
+    if (ref.read(kbRoleProvider).valueOrNull == KbRole.reviewer) return;
     final colors = context.ds;
     final choice = await showDsMenu<_HierarchyAction>(
       context: context,
@@ -340,6 +347,7 @@ class _KbTree extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final readOnly = ref.watch(kbRoleProvider).valueOrNull == KbRole.reviewer;
     final tree = session.tree.isEmpty
         ? Align(
             alignment: Alignment.topLeft,
@@ -355,9 +363,10 @@ class _KbTree extends ConsumerWidget {
             // Dropping on the panel itself, rather than on a folder, moves an
             // item back out to the top level.
             onWillAcceptWithDetails: (details) =>
-                p.posix.dirname(details.data) != '.',
-            onAcceptWithDetails: (details) =>
-                moveNode(context, ref, details.data, ''),
+                !readOnly && p.posix.dirname(details.data) != '.',
+            onAcceptWithDetails: readOnly
+                ? (_) {}
+                : (details) => moveNode(context, ref, details.data, ''),
             builder: (context, candidate, _) => Container(
               color: candidate.isEmpty
                   ? Colors.transparent
@@ -380,8 +389,9 @@ class _KbTree extends ConsumerWidget {
     return GestureDetector(
       key: const Key('knowledge-base-root-context-target'),
       behavior: HitTestBehavior.opaque,
-      onSecondaryTapUp: (details) =>
-          _showRootMenu(context, ref, details.globalPosition),
+      onSecondaryTapUp: readOnly
+          ? null
+          : (details) => _showRootMenu(context, ref, details.globalPosition),
       child: tree,
     );
   }
@@ -420,6 +430,7 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
   /// Right-clicking a folder creates inside it, so a Knowledge Base can be
   /// organised without moving files around in Finder or Explorer.
   Future<void> _showFolderMenu(Offset position, KbFolder folder) async {
+    if (ref.read(kbRoleProvider).valueOrNull == KbRole.reviewer) return;
     final colors = context.ds;
 
     final choice = await showDsMenu<_FolderAction>(
@@ -476,6 +487,7 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
   }
 
   Future<void> _showDocumentMenu(Offset position, KbFile file) async {
+    if (ref.read(kbRoleProvider).valueOrNull == KbRole.reviewer) return;
     final colors = context.ds;
     final choice = await showDsMenu<_DocumentAction>(
       context: context,
@@ -571,6 +583,11 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
 
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
+      for (final file in walkKbTree([node]).whereType<KbFile>()) {
+        await ref
+            .read(sharingControllerProvider)
+            .syncDeletion(file.relativePath);
+      }
       await ref
           .read(kbControllerProvider.notifier)
           .deleteNode(node.relativePath);
@@ -583,11 +600,12 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
   Widget build(BuildContext context) {
     final node = widget.node;
     final isFolder = node is KbFolder;
+    final readOnly = ref.watch(kbRoleProvider).valueOrNull == KbRole.reviewer;
 
     final row = isFolder
         ? DragTarget<String>(
             onWillAcceptWithDetails: (details) =>
-                _accepts(details.data, node.relativePath),
+                !readOnly && _accepts(details.data, node.relativePath),
             onAcceptWithDetails: (details) {
               setState(() => _expanded = true);
               moveNode(context, ref, details.data, node.relativePath);
@@ -602,6 +620,7 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
       children: [
         Draggable<String>(
           data: node.relativePath,
+          maxSimultaneousDrags: readOnly ? 0 : 1,
           feedback: _DragLabel(
             label: node is KbFile ? node.displayName : node.name,
             isFolder: isFolder,

@@ -44,6 +44,7 @@ class EditorScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
     final open = ref.watch(documentControllerProvider);
+    final readOnly = ref.watch(kbRoleProvider).valueOrNull == KbRole.reviewer;
 
     final editor = open == null
         ? Center(
@@ -54,7 +55,11 @@ class EditorScreen extends ConsumerWidget {
           )
         // A path can change while this document remains open. Its stable id
         // keeps the editing surface and caret alive through a rename or move.
-        : DocumentEditor(key: ValueKey(open.document.id), open: open);
+        : DocumentEditor(
+            key: ValueKey(open.document.id),
+            open: open,
+            readOnly: readOnly,
+          );
 
     final card = searchCard;
     if (card == null) return editor;
@@ -97,9 +102,10 @@ class _EditorSearchCard extends StatelessWidget {
 }
 
 class DocumentEditor extends ConsumerStatefulWidget {
-  const DocumentEditor({super.key, required this.open});
+  const DocumentEditor({super.key, required this.open, this.readOnly = false});
 
   final OpenDocument open;
+  final bool readOnly;
 
   @override
   ConsumerState<DocumentEditor> createState() => _DocumentEditorState();
@@ -309,12 +315,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   }
 
   void _commit(BlockDocument document, {bool rebuild = true}) {
+    if (widget.readOnly) return;
     _document = document;
     ref.read(documentControllerProvider.notifier).edit(document);
     if (rebuild && mounted) setState(() {});
   }
 
   Future<String?> _renameTitle(String title) async {
+    if (widget.readOnly) return _document.title;
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       final destination = await ref
@@ -723,11 +731,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
       child: ListView(
         padding: const EdgeInsets.fromLTRB(48, 40, 48, 120),
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: DocumentTitleField(
-              title: _document.title,
-              onRename: _renameTitle,
+          AbsorbPointer(
+            absorbing: widget.readOnly,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: DocumentTitleField(
+                title: _document.title,
+                onRename: _renameTitle,
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -743,91 +754,97 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
           ),
           const SizedBox(height: 20),
           for (final block in _document.blocks)
-            Padding(
-              padding: EdgeInsets.only(top: block.spaceBefore),
-              child: switch (block) {
-                // Headings differ from paragraphs only in the style the text
-                // sits on, so both use the same view and the same controller.
-                final TextBlock t => _TextBlockView(
-                  block: t,
-                  controller: _controllerFor(t),
-                  focusNode: _focusFor(t.id),
-                  style: t is HeadingBlock
-                      ? headingStyle(t.level, colors.text)
-                      : editorTextStyle(
-                          size: 15,
-                          height: 1.6,
-                          color: colors.text,
-                        ),
-                  ordinal: t is ListItemBlock && t.style == ListStyle.ordered
-                      ? _ordinalOf(t)
-                      : null,
-                  onToggleChecked: t is ListItemBlock && t.checked != null
-                      ? () => _updateBlock(
-                          t.id,
-                          (b) => (b as ListItemBlock).copyWith(
-                            checked: !(b.checked ?? false),
+            AbsorbPointer(
+              absorbing: widget.readOnly,
+              child: Padding(
+                padding: EdgeInsets.only(top: block.spaceBefore),
+                child: switch (block) {
+                  // Headings differ from paragraphs only in the style the text
+                  // sits on, so both use the same view and the same controller.
+                  final TextBlock t => _TextBlockView(
+                    block: t,
+                    controller: _controllerFor(t),
+                    focusNode: _focusFor(t.id),
+                    style: t is HeadingBlock
+                        ? headingStyle(t.level, colors.text)
+                        : editorTextStyle(
+                            size: 15,
+                            height: 1.6,
+                            color: colors.text,
                           ),
-                        )
-                      : null,
-                  onSplit: () => _splitBlock(t.id),
-                  onMergeBack: () => _mergeIntoPrevious(t.id),
-                  onMenu: (position) => _showBlockMenu(position, t),
-                ),
-                CodeBlock() => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: _CodeView(
-                    block: block,
-                    onChanged: (text) => _updateBlock(
-                      block.id,
-                      (b) => (b as CodeBlock).copyWith(text: text),
+                    ordinal: t is ListItemBlock && t.style == ListStyle.ordered
+                        ? _ordinalOf(t)
+                        : null,
+                    onToggleChecked: t is ListItemBlock && t.checked != null
+                        ? () => _updateBlock(
+                            t.id,
+                            (b) => (b as ListItemBlock).copyWith(
+                              checked: !(b.checked ?? false),
+                            ),
+                          )
+                        : null,
+                    onSplit: () => _splitBlock(t.id),
+                    onMergeBack: () => _mergeIntoPrevious(t.id),
+                    onMenu: (position) => _showBlockMenu(position, t),
+                  ),
+                  CodeBlock() => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _CodeView(
+                      block: block,
+                      onChanged: (text) => _updateBlock(
+                        block.id,
+                        (b) => (b as CodeBlock).copyWith(text: text),
+                      ),
+                      onMenu: (position) => _showBlockMenu(position, block),
                     ),
-                    onMenu: (position) => _showBlockMenu(position, block),
                   ),
-                ),
-                DividerBlock() => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: GestureDetector(
-                    onSecondaryTapUp: (d) =>
-                        _showBlockMenu(d.globalPosition, block),
-                    child: Divider(color: colors.border, height: 24),
-                  ),
-                ),
-                TableBlock() => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: _TableView(
-                    block: block,
-                    controllerFor: _cellControllerFor,
-                    onMenu: (position) => _showBlockMenu(position, block),
-                  ),
-                ),
-                ImageBlock() => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: _ImageView(
-                    block: block,
-                    onCaptionChanged: (caption) => _updateBlock(
-                      block.id,
-                      (b) => (b as ImageBlock).copyWith(caption: caption),
+                  DividerBlock() => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: GestureDetector(
+                      onSecondaryTapUp: (d) =>
+                          _showBlockMenu(d.globalPosition, block),
+                      child: Divider(color: colors.border, height: 24),
                     ),
-                    onMenu: (position) => _showBlockMenu(position, block),
                   ),
-                ),
-              },
+                  TableBlock() => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _TableView(
+                      block: block,
+                      controllerFor: _cellControllerFor,
+                      onMenu: (position) => _showBlockMenu(position, block),
+                    ),
+                  ),
+                  ImageBlock() => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _ImageView(
+                      block: block,
+                      onCaptionChanged: (caption) => _updateBlock(
+                        block.id,
+                        (b) => (b as ImageBlock).copyWith(caption: caption),
+                      ),
+                      onMenu: (position) => _showBlockMenu(position, block),
+                    ),
+                  ),
+                },
+              ),
             ),
           const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: _AddParagraph(
-              onTap: () {
-                final block = ParagraphBlock(id: newId(), spans: const []);
-                _commit(
-                  _document.copyWith(blocks: [..._document.blocks, block]),
-                );
-                WidgetsBinding.instance.addPostFrameCallback(
-                  (_) => _focusFor(block.id).requestFocus(),
-                );
-              },
-              color: colors.muted,
+          AbsorbPointer(
+            absorbing: widget.readOnly,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: _AddParagraph(
+                onTap: () {
+                  final block = ParagraphBlock(id: newId(), spans: const []);
+                  _commit(
+                    _document.copyWith(blocks: [..._document.blocks, block]),
+                  );
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _focusFor(block.id).requestFocus(),
+                  );
+                },
+                color: colors.muted,
+              ),
             ),
           ),
         ],
@@ -863,6 +880,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     final isParagraph = block is ParagraphBlock;
     final syncLabel = switch (ref.read(kbRoleProvider).valueOrNull) {
       KbRole.owner => 'Sync document',
+      KbRole.coOwner => 'Sync document',
       KbRole.editor => 'Propose changes',
       _ => null,
     };

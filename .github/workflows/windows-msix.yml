@@ -41,14 +41,8 @@ jobs:
 
       - name: Write build configuration
         shell: pwsh
-        env:
-          DAYSEVEN_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          DAYSEVEN_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          @{
-            SUPABASE_URL = if ($env:DAYSEVEN_SUPABASE_URL) { $env:DAYSEVEN_SUPABASE_URL } else { "" }
-            SUPABASE_PUBLISHABLE_KEY = if ($env:DAYSEVEN_SUPABASE_PUBLISHABLE_KEY) { $env:DAYSEVEN_SUPABASE_PUBLISHABLE_KEY } else { "" }
-          } | ConvertTo-Json | Set-Content -Path env/supabase.json -Encoding utf8
+          Copy-Item env/supabase.production.json env/supabase.json
 
       - name: Install dependencies
         shell: pwsh
