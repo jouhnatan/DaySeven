@@ -56,46 +56,46 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
         constraints: const BoxConstraints(maxWidth: 580),
         child: GrainOverlay(
           borderRadius: BorderRadius.circular(10),
-          child: DecoratedBox(
+          background: DecoratedBox(
             decoration: BoxDecoration(
               color: AppSettingsPalette.paperHi,
               borderRadius: BorderRadius.circular(10),
               // Flat: one hairline rule instead of a shadow.
               border: Border.all(color: AppSettingsPalette.rule),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const _Header(),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const SizedBox(height: 4),
-                          const _SectionHeading('Version'),
-                          _VersionRow(),
-                          const _SectionHeading('Updates'),
-                          _UpdateRow(state: state, enabled: enabled),
-                          if (state case UpdateCheckFailed(:final message))
-                            _Alert(message: message),
-                          if (state case UpdateFailed(
-                            :final message,
-                            :final release,
-                          ))
-                            _Alert(message: message, release: release),
-                          const SizedBox(height: 14),
-                        ],
-                      ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _Header(),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 4),
+                        const _SectionHeading('Version'),
+                        _VersionRow(),
+                        const _SectionHeading('Updates'),
+                        _UpdateRow(state: state, enabled: enabled),
+                        if (state case UpdateCheckFailed(:final message))
+                          _Alert(message: message),
+                        if (state case UpdateFailed(
+                          :final message,
+                          :final release,
+                        ))
+                          _Alert(message: message, release: release),
+                        const SizedBox(height: 14),
+                      ],
                     ),
                   ),
-                  const _Footer(),
-                ],
-              ),
+                ),
+                const _Footer(),
+              ],
             ),
           ),
         ),
@@ -113,32 +113,30 @@ class _Header extends StatelessWidget {
       tile: GrainTile.coarse,
       opacity: 0.30,
       blendMode: BlendMode.overlay,
-      child: ColoredBox(
-        color: AppSettingsPalette.charcoal,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'App settings',
-                  style: appSettingsDisplay(
-                    size: AppSettingsType.title,
-                    color: AppSettingsPalette.paper,
-                    height: 1.15,
-                  ),
+      background: const ColoredBox(color: AppSettingsPalette.charcoal),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'App settings',
+                style: appSettingsDisplay(
+                  size: AppSettingsType.title,
+                  color: AppSettingsPalette.paper,
+                  height: 1.15,
                 ),
               ),
-              _IconButton(
-                icon: Icons.close,
-                tooltip: 'Close',
-                onPressed: () => Navigator.of(context).pop(),
-                background: AppSettingsPalette.paper,
-                foreground: AppSettingsPalette.green,
-                hoverBackground: const Color(0xFFE9E9E7),
-              ),
-            ],
-          ),
+            ),
+            _IconButton(
+              icon: Icons.close,
+              tooltip: 'Close',
+              onPressed: () => Navigator.of(context).pop(),
+              background: AppSettingsPalette.paper,
+              foreground: AppSettingsPalette.green,
+              hoverBackground: const Color(0xFFE9E9E7),
+            ),
+          ],
         ),
       ),
     );
@@ -186,48 +184,55 @@ class _Row extends StatelessWidget {
   final Widget? trailing;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-    padding: const EdgeInsets.all(14),
-    constraints: const BoxConstraints(minHeight: 66),
-    decoration: BoxDecoration(
-      color: AppSettingsPalette.paper,
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+    child: GrainOverlay(
       borderRadius: BorderRadius.circular(8),
-    ),
-    child: Row(
-      children: [
-        plate,
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: appSettingsDisplay(
-                  weight: FontWeight.w500,
-                  height: 1.34,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: appSettingsMeta(
-                  color: subtitleIsMeta
-                      ? AppSettingsPalette.ink40
-                      : AppSettingsPalette.ink60,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
+      background: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppSettingsPalette.paper,
+          borderRadius: BorderRadius.circular(8),
         ),
-        if (trailing case final trailing?) ...[
-          const SizedBox(width: 14),
-          trailing,
-        ],
-      ],
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        constraints: const BoxConstraints(minHeight: 66),
+        child: Row(
+          children: [
+            plate,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: appSettingsDisplay(
+                      weight: FontWeight.w500,
+                      height: 1.34,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: appSettingsMeta(
+                      color: subtitleIsMeta
+                          ? AppSettingsPalette.ink40
+                          : AppSettingsPalette.ink60,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (trailing case final trailing?) ...[
+              const SizedBox(width: 14),
+              trailing,
+            ],
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -240,17 +245,26 @@ class _Plate extends StatelessWidget {
   final bool pale;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => SizedBox(
     width: 42,
     height: 42,
-    decoration: BoxDecoration(
-      color: pale ? AppSettingsPalette.greenTint2 : AppSettingsPalette.green,
+    child: GrainOverlay(
       borderRadius: BorderRadius.circular(8),
-    ),
-    child: Icon(
-      icon,
-      size: 20,
-      color: pale ? AppSettingsPalette.green : AppSettingsPalette.paper,
+      background: DecoratedBox(
+        decoration: BoxDecoration(
+          color: pale
+              ? AppSettingsPalette.greenTint2
+              : AppSettingsPalette.green,
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          icon,
+          size: 20,
+          color: pale ? AppSettingsPalette.green : AppSettingsPalette.paper,
+        ),
+      ),
     ),
   );
 }
@@ -288,7 +302,8 @@ class _UpdateRow extends ConsumerWidget {
       return _Row(
         plate: const _Plate(Icons.cloud_off, pale: true),
         title: 'No server configured',
-        subtitle: 'Updates are published to Supabase, and this build has no '
+        subtitle:
+            'Updates are published to Supabase, and this build has no '
             'connection details for it.',
         subtitleIsMeta: false,
       );
@@ -301,13 +316,11 @@ class _UpdateRow extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _Row(
-          plate: _Plate(
-            switch (state) {
-              UpdateAvailable() => Icons.arrow_downward,
-              UpdateCheckFailed() || UpdateFailed() => Icons.error_outline,
-              _ => Icons.refresh,
-            },
-          ),
+          plate: _Plate(switch (state) {
+            UpdateAvailable() => Icons.arrow_downward,
+            UpdateCheckFailed() || UpdateFailed() => Icons.error_outline,
+            _ => Icons.refresh,
+          }),
           title: switch (state) {
             UpdateAvailable(:final release) =>
               'Version ${release.version.name}',
@@ -333,8 +346,9 @@ class _UpdateRow extends ConsumerWidget {
             onPressed: busy
                 ? null
                 : () => switch (state) {
-                    UpdateAvailable(:final release) =>
-                      controller.download(release),
+                    UpdateAvailable(:final release) => controller.download(
+                      release,
+                    ),
                     // Already current, or the last check failed: ask again.
                     _ => controller.check(),
                   },
@@ -377,12 +391,14 @@ class _Alert extends StatelessWidget {
         opacity: 0.30,
         blendMode: BlendMode.overlay,
         borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(16),
+        background: DecoratedBox(
           decoration: BoxDecoration(
             color: AppSettingsPalette.ink,
             borderRadius: BorderRadius.circular(8),
           ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
@@ -441,10 +457,12 @@ class _Footer extends StatelessWidget {
   const _Footer();
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: const BoxDecoration(
-      color: AppSettingsPalette.paperLo,
-      border: Border(top: BorderSide(color: AppSettingsPalette.rule)),
+  Widget build(BuildContext context) => GrainOverlay(
+    background: const DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppSettingsPalette.paperLo,
+        border: Border(top: BorderSide(color: AppSettingsPalette.rule)),
+      ),
     ),
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -498,39 +516,46 @@ class _FlatButtonState extends State<_FlatButton> {
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.linear,
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 19),
-          decoration: BoxDecoration(
-            color: !enabled
-                // Disabled reads as the tint rather than a faded fill: this
-                // design has no translucency anywhere.
-                ? AppSettingsPalette.greenTint2
-                : _hovered
-                ? widget.hoverBackground
-                : widget.background,
-            borderRadius: BorderRadius.circular(8),
+        child: GrainOverlay(
+          borderRadius: BorderRadius.circular(8),
+          background: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.linear,
+            decoration: BoxDecoration(
+              color: !enabled
+                  // Disabled reads as the tint rather than a faded fill: this
+                  // design has no translucency anywhere.
+                  ? AppSettingsPalette.greenTint2
+                  : _hovered
+                  ? widget.hoverBackground
+                  : widget.background,
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.icon case final icon?) ...[
-                Icon(icon, size: 16, color: widget.foreground),
-                const SizedBox(width: 9),
-              ],
-              Text(
-                widget.label,
-                style: appSettingsBody(
-                  weight: FontWeight.w500,
-                  color: enabled
-                      ? widget.foreground
-                      : AppSettingsPalette.green,
-                  letterSpacing: -0.06,
-                ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 19),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.icon case final icon?) ...[
+                    Icon(icon, size: 16, color: widget.foreground),
+                    const SizedBox(width: 9),
+                  ],
+                  Text(
+                    widget.label,
+                    style: appSettingsBody(
+                      weight: FontWeight.w500,
+                      color: enabled
+                          ? widget.foreground
+                          : AppSettingsPalette.green,
+                      letterSpacing: -0.06,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -572,15 +597,22 @@ class _IconButtonState extends State<_IconButton> {
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+        child: SizedBox(
           width: 44,
           height: 44,
-          decoration: BoxDecoration(
-            color: _hovered ? widget.hoverBackground : widget.background,
+          child: GrainOverlay(
             borderRadius: BorderRadius.circular(8),
+            background: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              decoration: BoxDecoration(
+                color: _hovered ? widget.hoverBackground : widget.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Center(
+              child: Icon(widget.icon, size: 19, color: widget.foreground),
+            ),
           ),
-          child: Icon(widget.icon, size: 19, color: widget.foreground),
         ),
       ),
     ),

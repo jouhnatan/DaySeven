@@ -4,11 +4,13 @@
 /// browser evaluates live. Flutter has no equivalent, so the noise is baked
 /// into two tiles by `scripts/generate_grain.dart` and repeated here.
 ///
-/// The blend has to happen against what is already on the canvas, which rules
-/// out `Image` and `DecorationImage` — both only composite with alpha, so a
-/// multiply tile drawn that way just fogs the surface grey. Painting into the
-/// same layer, on top of the child, is what lets `multiply` and `overlay` see
-/// the pixels beneath them.
+/// The blend has to happen against the surface colour, which rules out `Image`
+/// and `DecorationImage` — both only composite with alpha, so a multiply tile
+/// drawn that way just fogs the surface grey. [GrainOverlay] therefore paints
+/// its [GrainOverlay.background], blends the tile over that, and only then
+/// paints [GrainOverlay.child]. The last step matters: putting grain over the
+/// completed child also textures glyph edges and makes small type look dirty
+/// and heavier than its specified weight.
 library;
 
 import 'dart:ui' as ui;
@@ -31,6 +33,7 @@ enum GrainTile {
 class GrainOverlay extends StatefulWidget {
   const GrainOverlay({
     super.key,
+    required this.background,
     required this.child,
     this.tile = GrainTile.fine,
     this.opacity = 0.42,
@@ -38,6 +41,10 @@ class GrainOverlay extends StatefulWidget {
     this.borderRadius,
   });
 
+  /// The opaque surface the grain blends into.
+  final Widget background;
+
+  /// Content painted after the grain so text and icons remain crisp.
   final Widget child;
   final GrainTile tile;
   final double opacity;
@@ -99,27 +106,27 @@ class _GrainOverlayState extends State<GrainOverlay> {
   Widget build(BuildContext context) {
     final tile = _tile;
 
-    // Until the tile decodes there is simply no grain. One ungrained frame is
-    // better than holding the dialog back on an asset load.
-    if (tile == null) return widget.child;
-
     return Stack(
       children: [
-        widget.child,
-        Positioned.fill(
-          child: IgnorePointer(
-            child: ClipRRect(
-              borderRadius: widget.borderRadius ?? BorderRadius.zero,
-              child: CustomPaint(
-                painter: _GrainPainter(
-                  tile: tile,
-                  opacity: widget.opacity,
-                  blendMode: widget.blendMode,
+        Positioned.fill(child: widget.background),
+        // Until the tile decodes there is simply no grain. One ungrained frame
+        // is better than holding the dialog back on an asset load.
+        if (tile != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ClipRRect(
+                borderRadius: widget.borderRadius ?? BorderRadius.zero,
+                child: CustomPaint(
+                  painter: _GrainPainter(
+                    tile: tile,
+                    opacity: widget.opacity,
+                    blendMode: widget.blendMode,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+        widget.child,
       ],
     );
   }
@@ -169,17 +176,31 @@ class _GrainPainter extends CustomPainter {
           filterQuality: FilterQuality.none,
         )
         ..colorFilter = ColorFilter.matrix(<double>[
-          opacity, 0, 0, 0, offset,
-          0, opacity, 0, 0, offset,
-          0, 0, opacity, 0, offset,
-          0, 0, 0, 1, 0,
+          opacity,
+          0,
+          0,
+          0,
+          offset,
+          0,
+          opacity,
+          0,
+          0,
+          offset,
+          0,
+          0,
+          opacity,
+          0,
+          offset,
+          0,
+          0,
+          0,
+          1,
+          0,
         ]),
     );
   }
 
   @override
   bool shouldRepaint(_GrainPainter old) =>
-      old.tile != tile ||
-      old.opacity != opacity ||
-      old.blendMode != blendMode;
+      old.tile != tile || old.opacity != opacity || old.blendMode != blendMode;
 }
