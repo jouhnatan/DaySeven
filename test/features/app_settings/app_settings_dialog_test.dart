@@ -9,7 +9,8 @@ import 'package:dayseven/shared/ui/theme.dart';
 
 import '../../support/test_fonts.dart';
 
-const _sha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const _sha =
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 const newer = AppRelease(
@@ -68,7 +69,10 @@ class RecordingController extends AppUpdateController {
   void show(AppUpdateState next) => state = next;
 }
 
-Future<void> openDialog(WidgetTester tester, AppUpdateController controller) async {
+Future<void> openDialog(
+  WidgetTester tester,
+  AppUpdateController controller,
+) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [appUpdateProvider.overrideWith((ref) => controller)],
@@ -90,14 +94,14 @@ void main() {
     // whose channel does not exist under `flutter test`.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('dev.fluttercommunity.plus/package_info'),
-      (call) async => {
-        'appName': 'DaySeven',
-        'packageName': 'com.dayseven.dayseven',
-        'version': '1.3.2',
-        'buildNumber': '7',
-      },
-    );
+          const MethodChannel('dev.fluttercommunity.plus/package_info'),
+          (call) async => {
+            'appName': 'DaySeven',
+            'packageName': 'com.dayseven.dayseven',
+            'version': '1.3.2',
+            'buildNumber': '7',
+          },
+        );
   });
 
   testWidgets('shows the running version and build', (tester) async {
@@ -107,9 +111,8 @@ void main() {
     expect(find.text('Build 7'), findsOneWidget);
   });
 
-  // The design sets a row's title in the display face and the line beneath it
-  // in the body face. The class it uses for that second line is called "mono",
-  // but the rule under it selects the body family — the name is a leftover.
+  // The design sets a row's title in the display face and its second line in
+  // the lighter meta face.
   testWidgets('sets a row in the two faces the design asks for', (
     tester,
   ) async {
@@ -121,7 +124,14 @@ void main() {
     );
     expect(
       tester.widget<Text>(find.text('Build 7')).style?.fontFamily,
-      'Figtree',
+      'Raleway',
+    );
+    expect(
+      tester
+          .widget<Text>(find.text('Nothing newer published'))
+          .style
+          ?.fontFamily,
+      'Raleway',
     );
   });
 
@@ -191,7 +201,9 @@ void main() {
   ) async {
     await openDialog(
       tester,
-      RecordingController(releases: FakeReleases()..error = Exception('offline')),
+      RecordingController(
+        releases: FakeReleases()..error = Exception('offline'),
+      ),
     );
 
     expect(
@@ -262,7 +274,10 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await openDialog(tester, RecordingController(releases: FakeReleases(newer)));
+    await openDialog(
+      tester,
+      RecordingController(releases: FakeReleases(newer)),
+    );
 
     await expectLater(
       find.byKey(const Key('app-settings-dialog')),
@@ -282,7 +297,8 @@ void main() {
       expect(
         data,
         isNot(equals(data.toUpperCase())),
-        reason: 'only the first letter of the first word is capitalised: '
+        reason:
+            'only the first letter of the first word is capitalised: '
             '"\$data"',
       );
     }

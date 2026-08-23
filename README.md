@@ -334,7 +334,7 @@ for. An old build keeps working until somebody asks it not to.
 
 `lib/features/app_settings/` follows its own flat-and-grained design rather than
 the application theme — its own paper-and-green palette, Solway, Space Grotesk
-and Geist Mono, and a film grain baked into two noise tiles by
+and Raleway, and a film grain baked into two noise tiles by
 `scripts/generate_grain.dart` because Flutter has no live noise filter.
 
 That design is contained to `app_settings_design.dart`, which nothing outside

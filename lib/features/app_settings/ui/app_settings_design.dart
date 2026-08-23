@@ -69,7 +69,7 @@ abstract final class AppSettingsType {
 
 const _display = 'Solway';
 const _body = 'Space Grotesk';
-const _meta = 'Figtree';
+const _meta = 'Raleway';
 
 /// Scales a design size by whatever the person has set the UI text size to.
 ///
@@ -116,9 +116,9 @@ TextStyle appSettingsBody({
   letterSpacing: letterSpacing,
 );
 
-/// Figtree. The second line of a row — a version, a build, a short status.
+/// Raleway. The second line of a row — a version, a build, a short status.
 ///
-/// Figtree's default instance is Light, so the weight is always stated on the
+/// Raleway's default instance is Thin, so the weight is always stated on the
 /// axis rather than left to the file.
 TextStyle appSettingsMeta({
   double size = AppSettingsType.sub,

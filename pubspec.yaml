@@ -140,11 +140,9 @@ flutter:
     - family: Space Grotesk
       fonts:
         - asset: assets/fonts/space_grotesk/SpaceGrotesk-Variable.ttf
-    # Also variable on wght, and its default instance is Light (300) rather
-    # than Regular — so it must always be given an explicit weight, or it
-    # renders lighter than anything asked for it.
-    - family: Figtree
+    # Also variable on wght, and its default instance is Thin (100) rather than
+    # Regular — so it must always be given an explicit weight, or it renders
+    # lighter than anything asked for it.
+    - family: Raleway
       fonts:
-        - asset: assets/fonts/figtree/Figtree.ttf
-        - asset: assets/fonts/figtree/Figtree-Italic.ttf
-          style: italic
+        - asset: assets/fonts/raleway/Raleway-Variable.ttf

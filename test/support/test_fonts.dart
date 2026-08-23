@@ -71,14 +71,13 @@ Future<void> loadTestFonts() async {
     );
   await spaceGrotesk.load();
 
-  final figtree = FontLoader('Figtree');
-  for (final path in [
-    'assets/fonts/figtree/Figtree.ttf',
-    'assets/fonts/figtree/Figtree-Italic.ttf',
-  ]) {
-    figtree.addFont(File(path).readAsBytes().then((b) => b.buffer.asByteData()));
-  }
-  await figtree.load();
+  final raleway = FontLoader('Raleway')
+    ..addFont(
+      File('assets/fonts/raleway/Raleway-Variable.ttf')
+          .readAsBytes()
+          .then((b) => b.buffer.asByteData()),
+    );
+  await raleway.load();
 
   // Skipped when the SDK cannot be located; icons then render as boxes.
   final flutterRoot = Platform.environment['FLUTTER_ROOT'];
