@@ -277,7 +277,7 @@ Both platforms install by unpacking an archive, once:
   info**, then **Run anyway**.
 
 That is the only manual download. Everything after it goes through **Menu ->
-Run updates**.
+App settings -> Run updates**.
 
 ## Releasing
 
@@ -314,10 +314,11 @@ There is no installer and no code signing certificate on either platform.
 DaySeven is a folder of files — an `.app` bundle on macOS, a directory of
 executables on Windows — and updating is replacing that folder.
 
-Choosing **Menu -> Run updates** reads `app_releases`, compares the current
-row against the running build, and offers anything newer. Accepting it
-downloads the archive, checks it against the published SHA-256, unpacks it
-beside the install, and swaps it in.
+Opening **Menu -> App settings** reads `app_releases` and compares the current
+row against the running build, so the dialog opens already saying whether this
+copy is current. **Run updates** then acts on that answer: it downloads the
+archive, checks it against the published SHA-256, unpacks it beside the
+install, and swaps it in — or re-checks, if there was nothing to install.
 
 The swap cannot be done by the process being replaced, so
 `lib/shared/platform/app_update.dart` ends the same way on both platforms:
@@ -325,8 +326,21 @@ write a short script, start it detached, and quit. The script waits for the
 app to exit, replaces the files, and reopens it. On macOS the old bundle is
 moved aside first, so a failure leaves a working app rather than nothing.
 
-Nothing checks for updates on its own, and nothing updates in the background.
-An old build keeps working until somebody asks it not to.
+Nothing checks for updates on its own, and nothing updates in the background:
+the check runs when App settings is opened, and the install when it is asked
+for. An old build keeps working until somebody asks it not to.
+
+### App settings looks different on purpose
+
+`lib/features/app_settings/` follows its own flat-and-grained design rather than
+the application theme — its own paper-and-green palette, Solway, Space Grotesk
+and Geist Mono, and a film grain baked into two noise tiles by
+`scripts/generate_grain.dart` because Flutter has no live noise filter.
+
+That design is contained to `app_settings_design.dart`, which nothing outside
+that folder should import. It is fixed light, so the dialog does not follow dark
+mode. It is the one place in `lib/` outside `shared/ui/` allowed to write a
+literal `fontSize:`, and `scripts/check_layers.sh` names it as the exception.
 
 ### The release feed
 

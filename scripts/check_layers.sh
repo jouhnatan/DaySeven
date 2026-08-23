@@ -41,6 +41,11 @@ done < <(rg -n "^import 'package:dayseven/app/shell/" lib/features || true)
 # --- rendered font sizes must flow through the global settings --------------
 # global_settings computes the two base scales, theme applies the UI scale to
 # Material roles, and block_text_style derives footnotes from an editor style.
+#
+# app_settings_design is the one exception outside shared/ui: the App settings
+# dialog follows a fixed design with its own type scale, so it states its sizes
+# rather than deriving them. It still multiplies them by the configured UI text
+# size, so the preference is not ignored.
 while IFS= read -r hit; do
   echo "fontSize must come from uiTextStyle or editorTextStyle:"
   echo "  $hit"
@@ -49,7 +54,8 @@ done < <(
   rg -n "fontSize:" lib \
     --glob '!lib/shared/ui/global_settings.dart' \
     --glob '!lib/shared/ui/block_text_style.dart' \
-    --glob '!lib/shared/ui/theme.dart' || true
+    --glob '!lib/shared/ui/theme.dart' \
+    --glob '!lib/features/app_settings/ui/app_settings_design.dart' || true
 )
 
 if [ "$fail" -eq 0 ]; then

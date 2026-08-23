@@ -49,6 +49,37 @@ Future<void> loadTestFonts() async {
     );
   await geistPixel.load();
 
+  // The three families the App settings dialog uses. They belong to that one
+  // dialog rather than to the theme, but a golden of it renders in fallback
+  // fonts without them.
+  final solway = FontLoader('Solway');
+  for (final path in [
+    'assets/fonts/solway/Solway-Regular.ttf',
+    'assets/fonts/solway/Solway-Medium.ttf',
+    'assets/fonts/solway/Solway-Bold.ttf',
+    'assets/fonts/solway/Solway-ExtraBold.ttf',
+  ]) {
+    solway.addFont(File(path).readAsBytes().then((b) => b.buffer.asByteData()));
+  }
+  await solway.load();
+
+  final spaceGrotesk = FontLoader('Space Grotesk')
+    ..addFont(
+      File('assets/fonts/space_grotesk/SpaceGrotesk-Variable.ttf')
+          .readAsBytes()
+          .then((b) => b.buffer.asByteData()),
+    );
+  await spaceGrotesk.load();
+
+  final figtree = FontLoader('Figtree');
+  for (final path in [
+    'assets/fonts/figtree/Figtree.ttf',
+    'assets/fonts/figtree/Figtree-Italic.ttf',
+  ]) {
+    figtree.addFont(File(path).readAsBytes().then((b) => b.buffer.asByteData()));
+  }
+  await figtree.load();
+
   // Skipped when the SDK cannot be located; icons then render as boxes.
   final flutterRoot = Platform.environment['FLUTTER_ROOT'];
   if (flutterRoot == null) return;

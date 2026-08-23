@@ -15,6 +15,7 @@ import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/document_publish_controls.dart';
 import 'package:dayseven/app/shell/pane_visibility.dart';
 import 'package:dayseven/app/shell/pane_widths.dart';
+import 'package:dayseven/features/app_settings/ui/app_settings_dialog.dart';
 import 'package:dayseven/features/auth/ui/auth_button.dart';
 import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
 import 'package:dayseven/features/gradient_background/ui/gradient_background.dart';
@@ -23,7 +24,6 @@ import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
-import 'package:dayseven/shared/ui/update_dialog.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/features/differences/application/differences_navigation.dart';
 import 'package:dayseven/features/differences/ui/differences_workspace.dart';
@@ -152,19 +152,19 @@ class DsShell extends ConsumerWidget {
                                                   onSelected: DsGlobalSettings
                                                       .toggleGradientBackground,
                                                 ),
-                                                // Updates come from the same
-                                                // server collaboration does,
-                                                // so without one there is
-                                                // nothing to check against.
-                                                if (isSupabaseConfigured)
-                                                  HamburgerMenuEntry.action(
-                                                    label: 'Run updates',
-                                                    onSelected: () =>
-                                                        runUpdateCheck(
-                                                          context,
-                                                          ref,
-                                                        ),
-                                                  ),
+                                                // Shown with or without a
+                                                // server: the version is worth
+                                                // seeing either way, and the
+                                                // dialog says so itself when
+                                                // there is nothing to check
+                                                // against.
+                                                HamburgerMenuEntry.action(
+                                                  label: 'App settings',
+                                                  onSelected: () =>
+                                                      showAppSettingsDialog(
+                                                        context,
+                                                      ),
+                                                ),
                                               ],
                                             ),
                                           ],

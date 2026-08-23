@@ -217,6 +217,26 @@ void main() {
     expect(find.byTooltip('Menu'), findsOneWidget);
   });
 
+  // Updating moved behind App settings, where the version it is updating from
+  // is visible. Leaving both would offer the same action twice.
+  testWidgets('the hamburger offers App settings, not Run updates', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness());
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('hamburger-menu-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('App settings'), findsOneWidget);
+    expect(find.text('Run updates'), findsNothing);
+
+    // The two toggles are addressed by index elsewhere in this file, so the
+    // new entry has to have been appended rather than inserted.
+    expect(find.byKey(const Key('hamburger-menu-toggle-0')), findsOneWidget);
+    expect(find.byKey(const Key('hamburger-menu-toggle-1')), findsOneWidget);
+  });
+
   testWidgets('the hamburger slides the Knowledge Base out and back in', (
     tester,
   ) async {

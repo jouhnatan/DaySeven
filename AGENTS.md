@@ -49,8 +49,13 @@ so that every version anyone runs corresponds to a build that exists.
   a plain zip deliberately. MSIX required a signing certificate whose identity
   had to persist across every build forever, which is not worth it for two
   users. This was tried and removed.
-- **Do not add a launch-time update check.** Updating happens when somebody
-  chooses Menu → Run updates, and only then.
+- **Do not add a launch-time update check.** The check runs when somebody opens
+  Menu → App settings, and the install when they press Run updates. Nothing
+  updates on its own.
+- **App settings follows its own design, deliberately.** It is fixed light, uses
+  three typefaces nothing else uses, and is the one place outside `shared/ui/`
+  allowed a literal `fontSize:`. Do not "fix" it to match the app theme, and do
+  not import `app_settings_design.dart` from outside that feature.
 - **A failed check must not report "up to date."** `UpdateCheckFailed` exists
   to keep those distinct; the check runs because someone asked, and answering
   a question the app could not actually answer is a lie.

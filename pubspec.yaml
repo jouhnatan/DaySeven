@@ -72,6 +72,11 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  assets:
+    # Noise tiles for the App settings dialog's grain, baked by
+    # scripts/generate_grain.dart because Flutter has no live noise filter.
+    - assets/textures/
+
   fonts:
     # IBM Plex Sans is the default for application UI and document text.
     - family: IBM Plex Sans
@@ -112,3 +117,34 @@ flutter:
     - family: Geist Pixel Square
       fonts:
         - asset: assets/fonts/geist_pixel/GeistPixel-Square.ttf
+    # The three families below belong to the App settings dialog alone, which
+    # follows its own design rather than the application theme. Nothing else
+    # should reach for them — see lib/features/app_settings/ui/app_settings_design.dart.
+    - family: Solway
+      fonts:
+        - asset: assets/fonts/solway/Solway-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/solway/Solway-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/solway/Solway-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/solway/Solway-ExtraBold.ttf
+          weight: 800
+    # Variable on the wght axis, like Archivo above: one file, weight applied
+    # per span with FontVariation rather than by registering static faces.
+    #
+    # Renamed from the upstream SpaceGrotesk[wght].ttf. Flutter percent-encodes
+    # the brackets into the asset key but leaves the file named as it was, so
+    # the runtime lookup misses and the family silently falls back to the
+    # default sans. Tests never caught it because they load the file directly.
+    - family: Space Grotesk
+      fonts:
+        - asset: assets/fonts/space_grotesk/SpaceGrotesk-Variable.ttf
+    # Also variable on wght, and its default instance is Light (300) rather
+    # than Regular — so it must always be given an explicit weight, or it
+    # renders lighter than anything asked for it.
+    - family: Figtree
+      fonts:
+        - asset: assets/fonts/figtree/Figtree.ttf
+        - asset: assets/fonts/figtree/Figtree-Italic.ttf
+          style: italic
