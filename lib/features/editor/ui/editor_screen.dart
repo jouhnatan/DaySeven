@@ -23,6 +23,8 @@ import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/document_publish_controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/documents/documents.dart';
+import 'package:dayseven/shared/notifications/notification.dart';
+import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
@@ -339,14 +341,15 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
 
   Future<String?> _renameTitle(String title) async {
     if (widget.readOnly) return _document.title;
-    final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       final destination = await ref
           .read(kbControllerProvider.notifier)
           .renameDocument(widget.open.relativePath, title);
       return documentTitleFromPath(destination);
     } catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text('$error')));
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, '$error');
       return null;
     }
   }

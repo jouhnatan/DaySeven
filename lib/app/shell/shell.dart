@@ -21,6 +21,8 @@ import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
 import 'package:dayseven/features/gradient_background/ui/gradient_background.dart';
 import 'package:dayseven/features/hamburger_menu/ui/hamburger_menu_button.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/notifications/notification.dart';
+import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -31,6 +33,7 @@ import 'package:dayseven/features/differences/ui/sync_status_indicator.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/features/home/ui/home_screen.dart';
+import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
@@ -179,9 +182,30 @@ class DsShell extends ConsumerWidget {
                                         children: [
                                           SizedBox(
                                             width: widths.rail,
-                                            child: ViewsMenu(
-                                              pendingDifferencesCount:
-                                                  pendingDifferencesCount,
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                Expanded(
+                                                  child: ViewsMenu(
+                                                    pendingDifferencesCount:
+                                                        pendingDifferencesCount,
+                                                  ),
+                                                ),
+                                                const SizedBox(
+                                                  height: DsSpace.islandGap,
+                                                ),
+                                                const DsMenuHeader(
+                                                  'Notifications',
+                                                ),
+                                                const SizedBox(
+                                                  height: DsSpace.islandGap,
+                                                ),
+                                                const Expanded(
+                                                  child:
+                                                      NotificationsPanel(),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                           _ResizeHandle(
@@ -572,7 +596,7 @@ class EditorToolbarMenuButton extends ConsumerWidget {
         role != null && role != KbRole.local && role != KbRole.invited;
 
     Future<void> syncLatest() async {
-      final messenger = ScaffoldMessenger.maybeOf(context);
+      final notifications = ref.read(notificationStoreProvider.notifier);
       try {
         final result = await ref
             .read(sharingControllerProvider)
@@ -584,9 +608,9 @@ class EditorToolbarMenuButton extends ConsumerWidget {
         if (result.conflicts > 0) {
           parts.add('${result.conflicts} local conflict(s) left untouched');
         }
-        messenger?.showSnackBar(SnackBar(content: Text(parts.join(' · '))));
+        notifications.record(DsNotificationKind.sync, parts.join(' · '));
       } catch (error) {
-        messenger?.showSnackBar(SnackBar(content: Text('$error')));
+        notifications.record(DsNotificationKind.error, '$error');
       }
     }
 

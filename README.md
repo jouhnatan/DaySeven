@@ -194,6 +194,11 @@ the block is marked as conflicted in the diff before you approve.
   are rounded panes on the application background, each a subtle tone apart.
 - **Left** — a Geist Pixel heading, *Views*, above a rounded island containing
   Home, Editor and Differences. Differences carries the durable pending count.
+  Beneath it a second heading, *Notifications*, sits above an island listing
+  the latest five events — publishes, sync results, sharing, errors — newest
+  first. A new notification fades in while the rest slide down one notch; each
+  row shows its event's icon and how long ago it happened (0–60m, 1–24h,
+  1d+).
 - **Top** — a persistent search bar over the Knowledge Base's local FTS5 index,
   matching as you type.
 - **Right** — a Geist Pixel *Knowledge Base* heading, a rounded control naming

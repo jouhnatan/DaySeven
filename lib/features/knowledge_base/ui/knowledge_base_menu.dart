@@ -24,6 +24,8 @@ import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/notifications/notification.dart';
+import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/features/knowledge_base/ui/invite_dialog.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
 import 'package:dayseven/features/knowledge_base/ui/name_prompt.dart';
@@ -94,7 +96,6 @@ Future<bool> _createFileIn(
   WidgetRef ref,
   String parentFolder,
 ) async {
-  final messenger = ScaffoldMessenger.maybeOf(context);
   try {
     final path = await ref
         .read(kbControllerProvider.notifier)
@@ -105,7 +106,9 @@ Future<bool> _createFileIn(
     ref.read(viewProvider.notifier).state = DsView.editor;
     return true;
   } catch (error) {
-    messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+    ref
+        .read(notificationStoreProvider.notifier)
+        .record(DsNotificationKind.error, describeError(error));
     return false;
   }
 }
@@ -118,14 +121,15 @@ Future<bool> _createFolderIn(
   final name = await askForName(context, title: 'Folder name');
   if (name == null || name.trim().isEmpty || !context.mounted) return false;
 
-  final messenger = ScaffoldMessenger.maybeOf(context);
   try {
     await ref
         .read(kbControllerProvider.notifier)
         .createFolder(name: name, parent: parentFolder);
     return true;
   } catch (error) {
-    messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+    ref
+        .read(notificationStoreProvider.notifier)
+        .record(DsNotificationKind.error, describeError(error));
     return false;
   }
 }
@@ -238,11 +242,12 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
 
   /// Runs a Knowledge Base action, showing anything that stops it.
   Future<void> _guard(Future<void> Function() action) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await action();
     } catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, describeError(error));
     }
   }
 
@@ -534,13 +539,14 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
     );
     if (name == null || name.trim().isEmpty || !mounted) return;
 
-    final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await ref
           .read(kbControllerProvider.notifier)
           .renameDocument(file.relativePath, name);
     } catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, describeError(error));
     }
   }
 
@@ -581,7 +587,6 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
     );
     if (confirmed != true || !mounted) return;
 
-    final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       for (final file in walkKbTree([node]).whereType<KbFile>()) {
         await ref
@@ -592,7 +597,9 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
           .read(kbControllerProvider.notifier)
           .deleteNode(node.relativePath);
     } catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, describeError(error));
     }
   }
 
@@ -754,13 +761,14 @@ Future<void> moveNode(
   String relativePath,
   String targetFolder,
 ) async {
-  final messenger = ScaffoldMessenger.maybeOf(context);
   try {
     await ref
         .read(kbControllerProvider.notifier)
         .moveNode(relativePath, targetFolder);
   } catch (error) {
-    messenger?.showSnackBar(SnackBar(content: Text('$error')));
+    ref
+        .read(notificationStoreProvider.notifier)
+        .record(DsNotificationKind.error, '$error');
   }
 }
 

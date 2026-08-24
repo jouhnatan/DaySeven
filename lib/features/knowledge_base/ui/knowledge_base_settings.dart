@@ -9,6 +9,8 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/notifications/notification.dart';
+import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
@@ -95,7 +97,6 @@ class _KnowledgeBaseSettingsDialogState
   }
 
   Future<void> _share() async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() {
       _working = true;
       _error = null;
@@ -105,9 +106,9 @@ class _KnowledgeBaseSettingsDialogState
       await ref.read(sharingControllerProvider).shareOpenKb();
       if (!mounted) return;
       Navigator.of(context).pop();
-      messenger?.showSnackBar(
-        const SnackBar(content: Text('Knowledge Base is now shared.')),
-      );
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.share, 'Knowledge Base is now shared.');
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -151,7 +152,6 @@ class _KnowledgeBaseSettingsDialogState
     );
     if (confirmed != true || !mounted) return;
 
-    final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() {
       _working = true;
       _error = null;
@@ -161,13 +161,12 @@ class _KnowledgeBaseSettingsDialogState
       await ref.read(sharingControllerProvider).deleteSharedKb();
       if (!mounted) return;
       Navigator.of(context).pop();
-      messenger?.showSnackBar(
-        const SnackBar(
-          content: Text(
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(
+            DsNotificationKind.share,
             'Supabase connection removed. Local files were not changed.',
-          ),
-        ),
-      );
+          );
     } catch (error) {
       if (!mounted) return;
       setState(() {

@@ -3,6 +3,7 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/features/gradient_background/ui/gradient_background.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
+import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
 import 'package:dayseven/app/shell/shell.dart';
@@ -389,22 +390,34 @@ void main() {
     ) async {
       await pumpWide(tester);
 
-      final views = tester.getRect(find.byType(DsIsland).at(0));
-      final workspace = tester.getRect(find.byKey(const Key('home-gradient')));
+      final views = tester.getRect(
+        find
+            .descendant(
+              of: find.byType(ViewsMenu),
+              matching: find.byType(DsIsland),
+            )
+            .first,
+      );
       final homeViewsMenu = tester.getRect(find.byType(ViewsMenu));
       final homeKnowledgeBaseMenu = tester.getRect(
         find.byType(KnowledgeBaseMenu),
       );
+      final workspace = tester.getRect(find.byKey(const Key('home-gradient')));
+      final notifications = tester.getRect(find.byType(NotificationsPanel));
 
       expect(workspace.top, views.top);
-      expect(workspace.bottom, views.bottom);
+      expect(workspace.bottom, notifications.bottom);
 
       await tester.tap(find.text('Editor'));
       await tester.pumpAndSettle();
 
-      final editor = tester.getRect(find.byType(DsIsland).at(1));
-      expect(editor.top, views.top);
-      expect(editor.bottom, views.bottom);
+      final editor = tester.getRect(
+        find
+            .ancestor(of: find.byType(EditorScreen), matching: find.byType(DsIsland))
+            .first,
+      );
+      expect(editor.top, workspace.top, reason: 'the editor spans the pane');
+      expect(editor.bottom, workspace.bottom);
       expect(tester.getRect(find.byType(ViewsMenu)), homeViewsMenu);
       expect(
         tester.getRect(find.byType(KnowledgeBaseMenu)),
@@ -420,7 +433,11 @@ void main() {
       await tester.tap(find.text('Editor'));
       await tester.pumpAndSettle();
 
-      final editor = tester.getRect(find.byType(DsIsland).at(1));
+      final editor = tester.getRect(
+        find
+            .ancestor(of: find.byType(EditorScreen), matching: find.byType(DsIsland))
+            .first,
+      );
       final bar = tester.getRect(
         find.byKey(const Key('editor-toolbar-menu-footprint')),
       );
@@ -437,14 +454,24 @@ void main() {
     ) async {
       await pumpWide(tester);
 
-      final rail = tester.getRect(find.byType(DsIsland).at(0));
+      final views = tester.getRect(
+        find
+            .descendant(
+              of: find.byType(ViewsMenu),
+              matching: find.byType(DsIsland),
+            )
+            .first,
+      );
+      final notifications = tester.getRect(find.byType(NotificationsPanel));
       final hiddenButton = tester.getRect(
         find.byKey(const Key('bottom-bar-footprint')),
       );
       final window = tester.getRect(find.byType(DsShell));
 
-      expect(rail.left - window.left, DsSpace.pane);
-      expect(hiddenButton.top - rail.bottom, DsSpace.islandGap);
+      expect(views.left - window.left, DsSpace.pane);
+      expect(notifications.left - window.left, DsSpace.pane);
+      expect(notifications.bottom, greaterThan(views.bottom));
+      expect(hiddenButton.top - notifications.bottom, DsSpace.islandGap);
       expect(window.bottom - hiddenButton.bottom, DsSpace.pane);
     });
 
@@ -456,7 +483,14 @@ void main() {
       await tester.tap(find.text('Editor'));
       await tester.pumpAndSettle();
 
-      final editor = tester.getRect(find.byType(DsIsland).at(1));
+      final editor = tester.getRect(
+        find
+            .ancestor(
+              of: find.byKey(const Key('editor-search-card')),
+              matching: find.byType(DsIsland),
+            )
+            .first,
+      );
       final search = tester.getRect(find.byType(DsSearchBar));
       final card = tester.getRect(find.byKey(const Key('editor-search-card')));
       final cardWidget = tester.widget<DsCard>(
@@ -490,7 +524,14 @@ void main() {
       await tester.pumpAndSettle();
 
       final before = tester.getRect(find.byType(DsSearchBar)).center.dx;
-      final editorBefore = tester.getRect(find.byType(DsIsland).at(1));
+      final editorBefore = tester.getRect(
+        find
+            .ancestor(
+              of: find.byKey(const Key('editor-search-card')),
+              matching: find.byType(DsIsland),
+            )
+            .first,
+      );
 
       // Widen the Knowledge Base panel by dragging the gap beside it.
       await tester.dragFrom(
@@ -502,7 +543,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final editor = tester.getRect(find.byType(DsIsland).at(1));
+      final editor = tester.getRect(
+        find
+            .ancestor(
+              of: find.byKey(const Key('editor-search-card')),
+              matching: find.byType(DsIsland),
+            )
+            .first,
+      );
       final search = tester.getRect(find.byType(DsSearchBar));
 
       expect(search.center.dx, closeTo(editor.center.dx, 0.5));

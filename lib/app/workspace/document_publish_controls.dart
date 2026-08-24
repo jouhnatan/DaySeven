@@ -13,6 +13,8 @@ import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/notifications/notification.dart';
+import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
@@ -22,21 +24,11 @@ Future<void> publishOpenDocumentWithFeedback(
   BuildContext context,
   WidgetRef ref,
 ) async {
-  final messenger = ScaffoldMessenger.maybeOf(context);
   try {
     final result = await ref
         .read(sharingControllerProvider)
         .publishOpenDocument();
-    if (!context.mounted) return;
-    messenger?.showSnackBar(
-      SnackBar(
-        content: Text(switch (result) {
-          SyncOutcome.committed => 'Published to collaborators.',
-          SyncOutcome.proposed => 'Sent to Differences for review.',
-          SyncOutcome.unchanged => 'Already up to date.',
-        }),
-      ),
-    );
+    if (result == SyncOutcome.committed) _recordPublished(ref);
   } on PublishConflict catch (conflict) {
     if (!context.mounted) return;
     await showDialog<void>(
@@ -44,8 +36,18 @@ Future<void> publishOpenDocumentWithFeedback(
       builder: (_) => _PublishConflictDialog(conflict: conflict),
     );
   } on Object catch (error) {
-    messenger?.showSnackBar(SnackBar(content: Text(describeError(error))));
+    ref
+        .read(notificationStoreProvider.notifier)
+        .record(DsNotificationKind.error, describeError(error));
   }
+}
+
+void _recordPublished(WidgetRef ref) {
+  final open = ref.read(documentControllerProvider);
+  if (open == null) return;
+  ref
+      .read(notificationStoreProvider.notifier)
+      .record(DsNotificationKind.publish, 'Published "${open.document.title}"');
 }
 
 class DocumentPublishButton extends ConsumerWidget {
@@ -312,17 +314,7 @@ class _PublishConflictDialogState
           .resolvePublishConflict(widget.conflict, publishLocal: publishLocal);
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(
-          content: Text(
-            result == SyncOutcome.proposed
-                ? 'Sent to Differences for review.'
-                : publishLocal
-                ? 'Published your local version.'
-                : 'Updated to the collaborator version.',
-          ),
-        ),
-      );
+      if (result == SyncOutcome.committed) _recordPublished(ref);
     } on Object catch (error) {
       if (mounted) {
         setState(() {
