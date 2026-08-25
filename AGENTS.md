@@ -11,7 +11,12 @@ and neither reinstalls by hand, so a change is not delivered when it is
 merged — it is delivered when a release is published and their copies can see
 it.
 
-After a change is merged to `main` and is worth shipping:
+Every completed application change is worth shipping by default. Unless the
+user explicitly says not to release it, do not stop after committing or
+pushing `main`: publish a build that the running app can discover in App
+settings.
+
+After a change is merged to `main`:
 
 1. **Bump `version:` in `pubspec.yaml`.** Always raise the build number, not
    just the patch — `1.3.2+7` to `1.3.3+8`. Two releases of the same version
@@ -36,7 +41,8 @@ If only one workflow succeeds, the platforms are on different versions. Fix
 the failure and release a **new** version rather than moving the tag: the tag
 records what actually happened.
 
-Do not bump the version on every commit. Bump it when you intend a release,
+Do not bump the version on intermediate commits. Bump it once for the completed
+change, then finish the tag, workflows, and feed verification in the same task
 so that every version anyone runs corresponds to a build that exists.
 
 ## Things that break updating
