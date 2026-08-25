@@ -136,4 +136,86 @@ void main() {
       expect(find.text('event $i'), findsOneWidget);
     }
   });
+
+  testWidgets('shows a generic heading and the specifics as subtext', (
+    tester,
+  ) async {
+    final container = await pumpPanel(tester);
+    final store = container.read(notificationStoreProvider.notifier);
+
+    store.record(
+      DsNotificationKind.publish,
+      'Published "The Sunken Sea"',
+      heading: 'Document Published',
+      detail:
+          'A document titled "The Sunken Sea" was published by '
+          'Johnathan in the "Awayside" folder.',
+    );
+    store.record(DsNotificationKind.error, 'the file went away');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Document Published'), findsOneWidget);
+    expect(
+      find.text(
+        'A document titled "The Sunken Sea" was published by '
+        'Johnathan in the "Awayside" folder.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Something Went Wrong'), findsOneWidget);
+    expect(find.text('the file went away'), findsOneWidget);
+  });
+
+  testWidgets('tapping a row lerps its subtext open and closed', (tester) async {
+    final container = await pumpPanel(tester);
+    final store = container.read(notificationStoreProvider.notifier);
+
+    const detail =
+        'A document titled "The Sunken Sea" was published by Johnathan '
+        'in a folder whose name is long enough to wrap onto several '
+        'lines inside this narrow island.';
+    store.record(
+      DsNotificationKind.publish,
+      'Published "The Sunken Sea"',
+      heading: 'Document Published',
+      detail: detail,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final collapsed = tester.getSize(find.text(detail)).height;
+    expect(tester.widget<Text>(find.text(detail)).maxLines, 1);
+
+    await tester.tap(find.text('Document Published'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Text>(find.text(detail)).maxLines, isNull);
+    expect(tester.getSize(find.text(detail)).height, greaterThan(collapsed));
+
+    await tester.tap(find.text('Document Published'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Text>(find.text(detail)).maxLines, 1);
+    expect(tester.getSize(find.text(detail)).height, collapsed);
+  });
+
+  testWidgets('separates rows with lines but leaves the last clean', (
+    tester,
+  ) async {
+    final container = await pumpPanel(tester);
+    final store = container.read(notificationStoreProvider.notifier);
+
+    store.record(DsNotificationKind.sync, 'only child');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const Key('notification-divider')), findsNothing);
+
+    store.record(DsNotificationKind.sync, 'second');
+    store.record(DsNotificationKind.sync, 'third');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.byKey(const Key('notification-divider')), findsNWidgets(2));
+  });
 }

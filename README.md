@@ -198,7 +198,9 @@ the block is marked as conflicted in the diff before you approve.
   the latest five events — publishes, sync results, sharing, errors — newest
   first. A new notification fades in while the rest slide down one notch; each
   row shows its event's icon and how long ago it happened (0–60m, 1–24h,
-  1d+).
+  1d+). Every row leads with the generic action ("Document Published") and a
+  hairline separates neighbouring rows; tapping a row lerps the more specific
+  subtext open beneath the header.
 - **Top** — a persistent search bar over the Knowledge Base's local FTS5 index,
   matching as you type.
 - **Right** — a Geist Pixel *Knowledge Base* heading, a rounded control naming

@@ -7,10 +7,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
+import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/notifications/notification.dart';
@@ -45,9 +47,22 @@ Future<void> publishOpenDocumentWithFeedback(
 void _recordPublished(WidgetRef ref) {
   final open = ref.read(documentControllerProvider);
   if (open == null) return;
+  final author = ref.read(accountDisplayNameProvider) ?? 'someone';
+  final folderPath = p.posix.dirname(open.relativePath);
+  final detail =
+      folderPath == '.' || folderPath.isEmpty
+      ? 'A document titled "${open.document.title}" was published by '
+          '$author at the top level.'
+      : 'A document titled "${open.document.title}" was published by '
+          '$author in the "${p.posix.basename(folderPath)}" folder.';
   ref
       .read(notificationStoreProvider.notifier)
-      .record(DsNotificationKind.publish, 'Published "${open.document.title}"');
+      .record(
+        DsNotificationKind.publish,
+        'Published "${open.document.title}"',
+        heading: 'Document Published',
+        detail: detail,
+      );
 }
 
 class DocumentPublishButton extends ConsumerWidget {

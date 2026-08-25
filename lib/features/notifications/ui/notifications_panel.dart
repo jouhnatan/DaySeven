@@ -1,7 +1,9 @@
 /// The Notifications island: the latest five events, newest at the top.
 ///
 /// A new notification fades in while the rows beneath it slide down one
-/// notch; the row that falls past five slides out.
+/// notch; the row that falls past five slides out. Each row names the
+/// generic action in its header; tapping it lerps the more specific subtext
+/// open beneath.
 library;
 
 import 'dart:async';
@@ -62,7 +64,7 @@ class _NotificationsPanelState extends ConsumerState<NotificationsPanel> {
         final removed = old[i];
         list.removeItem(
           i,
-          (context, animation) => _row(removed, animation),
+          (context, animation) => _row(removed, animation, divider: false),
           duration: DsMotion.pane,
         );
       }
@@ -80,7 +82,7 @@ class _NotificationsPanelState extends ConsumerState<NotificationsPanel> {
   Widget build(BuildContext context) {
     return DsIsland(
       child: Padding(
-        padding: const EdgeInsets.all(6),
+        padding: const EdgeInsets.all(DsSpace.pane),
         child:
             _items.isEmpty ? const _EmptyNotifications() : _buildAnimatedList(),
       ),
@@ -93,19 +95,34 @@ class _NotificationsPanelState extends ConsumerState<NotificationsPanel> {
       initialItemCount: _items.length,
       itemBuilder: (context, index, animation) {
         if (index >= _items.length) return const SizedBox.shrink();
-        return _row(_items[index], animation);
+        return _row(
+          _items[index],
+          animation,
+          divider: index < _items.length - 1,
+        );
       },
     );
   }
 
-  Widget _row(DsNotification notification, Animation<double> animation) {
+  Widget _row(
+    DsNotification notification,
+    Animation<double> animation, {
+    required bool divider,
+  }) {
     return SizeTransition(
       sizeFactor: animation,
       child: FadeTransition(
         opacity: animation,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: _NotificationRow(notification: notification),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: _NotificationRow(notification: notification),
+            ),
+            if (divider)
+              Container(key: const Key('notification-divider'), height: 1, color: context.ds.border),
+          ],
         ),
       ),
     );
@@ -134,32 +151,76 @@ IconData _kindIcon(DsNotificationKind kind) => switch (kind) {
   DsNotificationKind.error => Icons.error_outline,
 };
 
-class _NotificationRow extends StatelessWidget {
+class _NotificationRow extends StatefulWidget {
   const _NotificationRow({required this.notification});
 
   final DsNotification notification;
 
   @override
+  State<_NotificationRow> createState() => _NotificationRowState();
+}
+
+class _NotificationRowState extends State<_NotificationRow> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    return Row(
-      children: [
-        Icon(_kindIcon(notification.kind), size: 13, color: colors.muted),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(
-            notification.message,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: uiTextStyle(size: 11, color: colors.text),
-          ),
+    final notification = widget.notification;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _expanded = !_expanded),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(_kindIcon(notification.kind), size: 13, color: colors.muted),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    notification.heading ?? _kindHeading(notification.kind),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: uiTextStyle(size: 11, weight: 600, color: colors.text),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  formatNotificationAge(notification.createdAt),
+                  style: uiTextStyle(size: 10, color: colors.muted),
+                ),
+              ],
+            ),
+            AnimatedSize(
+              duration: DsMotion.pane,
+              curve: Curves.easeInOutCubic,
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 20, top: 2),
+                child: Text(
+                  notification.detail ?? notification.message,
+                  maxLines: _expanded ? null : 1,
+                  overflow: _expanded
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
+                  softWrap: true,
+                  style: uiTextStyle(size: 10, color: colors.muted),
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 6),
-        Text(
-          formatNotificationAge(notification.createdAt),
-          style: uiTextStyle(size: 10, color: colors.muted),
-        ),
-      ],
+      ),
     );
   }
 }
+
+String _kindHeading(DsNotificationKind kind) => switch (kind) {
+  DsNotificationKind.publish => 'Document Published',
+  DsNotificationKind.sync => 'Sync Complete',
+  DsNotificationKind.share => 'Knowledge Base Shared',
+  DsNotificationKind.error => 'Something Went Wrong',
+};

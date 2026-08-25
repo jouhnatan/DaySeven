@@ -19,12 +19,16 @@ class NotificationStore extends Notifier<List<DsNotification>> {
     DsNotificationKind kind,
     String message, {
     DateTime? at,
+    String? heading,
+    String? detail,
   }) {
     final notification = DsNotification(
       id: _uuid.v7(),
       kind: kind,
       message: message,
       createdAt: at ?? DateTime.now(),
+      heading: heading,
+      detail: detail,
     );
     state = [
       notification,
