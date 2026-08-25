@@ -31,9 +31,10 @@ extension KbRolePublishing on KbRole {
 }
 
 final kbRoleProvider = FutureProvider<KbRole>((ref) async {
+  if (!isSupabaseConfigured) return KbRole.local;
   final session = ref.watch(kbSessionProvider);
   final user = ref.watch(currentUserProvider);
-  if (session == null || user == null || !isSupabaseConfigured) {
+  if (session == null || user == null) {
     return KbRole.local;
   }
 

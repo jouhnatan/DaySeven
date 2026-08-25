@@ -6,6 +6,9 @@
 /// that own them.
 library;
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Supplied at build time with `--dart-define-from-file=env/supabase.json`.
@@ -13,6 +16,7 @@ const String kSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const String kSupabasePublishableKey = String.fromEnvironment(
   'SUPABASE_PUBLISHABLE_KEY',
 );
+const Duration kSupabaseRequestTimeout = Duration(seconds: 15);
 
 /// True when the app was built with Supabase credentials. Without them the
 /// application still runs entirely locally — a Knowledge Base is a folder, and
@@ -25,6 +29,10 @@ Future<void> initSupabase() async {
   await Supabase.initialize(
     url: kSupabaseUrl,
     publishableKey: kSupabasePublishableKey,
+    postgrestOptions: const PostgrestClientOptions(
+      retryCount: 1,
+      requestTimeout: kSupabaseRequestTimeout,
+    ),
   );
 }
 
@@ -68,6 +76,15 @@ String describeError(Object error) {
   if (error is StorageException) {
     return 'Storage: ${error.message}'
         '${error.statusCode == null ? '' : ' · status ${error.statusCode}'}';
+  }
+
+  if (error is TimeoutException) {
+    return 'The server did not respond in time. Try again.';
+  }
+
+  if (error is SocketException) {
+    return 'The server could not be reached. Check the connection and try '
+        'again.';
   }
 
   if (error is SyncException) return error.message;

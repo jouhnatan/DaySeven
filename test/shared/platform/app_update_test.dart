@@ -24,7 +24,8 @@ class FakeReleases implements ReleaseDataSource {
   }
 }
 
-const validSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const validSha =
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 Map<String, dynamic> row({
@@ -65,18 +66,36 @@ TestController controllerFor(
 void main() {
   group('AppVersion', () {
     test('orders by name before build number', () {
-      expect(const AppVersion('1.4.0', 1) > const AppVersion('1.3.0', 99), isTrue);
-      expect(const AppVersion('1.3.10', 1) > const AppVersion('1.3.9', 1), isTrue);
-      expect(const AppVersion('2.0.0', 0) > const AppVersion('1.99.99', 99), isTrue);
+      expect(
+        const AppVersion('1.4.0', 1) > const AppVersion('1.3.0', 99),
+        isTrue,
+      );
+      expect(
+        const AppVersion('1.3.10', 1) > const AppVersion('1.3.9', 1),
+        isTrue,
+      );
+      expect(
+        const AppVersion('2.0.0', 0) > const AppVersion('1.99.99', 99),
+        isTrue,
+      );
     });
 
     // The whole reason the build number is carried around: without it these
     // two are the same release, and neither Windows nor the app would see an
     // update between them.
     test('distinguishes builds of the same version', () {
-      expect(const AppVersion('1.3.0', 6) > const AppVersion('1.3.0', 5), isTrue);
-      expect(const AppVersion('1.3.0', 5) > const AppVersion('1.3.0', 6), isFalse);
-      expect(const AppVersion('1.3.0', 5) == const AppVersion('1.3.0', 5), isTrue);
+      expect(
+        const AppVersion('1.3.0', 6) > const AppVersion('1.3.0', 5),
+        isTrue,
+      );
+      expect(
+        const AppVersion('1.3.0', 5) > const AppVersion('1.3.0', 6),
+        isFalse,
+      );
+      expect(
+        const AppVersion('1.3.0', 5) == const AppVersion('1.3.0', 5),
+        isTrue,
+      );
     });
 
     test('rejects anything that is not three numbers', () {
@@ -138,8 +157,10 @@ void main() {
 
       final state = controller.current;
       expect(state, isA<UpdateAvailable>());
-      expect((state as UpdateAvailable).release.version,
-          const AppVersion('1.4.0', 6));
+      expect(
+        (state as UpdateAvailable).release.version,
+        const AppVersion('1.4.0', 6),
+      );
       expect(state.mandatory, isFalse);
     });
 
@@ -235,7 +256,9 @@ void main() {
     }
 
     test('hands the verified archive to the installer', () async {
-      final release = await serve(utf8.encode('an archive, for these purposes'));
+      final release = await serve(
+        utf8.encode('an archive, for these purposes'),
+      );
       final controller = controllerFor(FakeReleases(release));
 
       String? handed;
@@ -253,7 +276,9 @@ void main() {
       // report in, and raises this instead. Nothing else is left to tell the
       // person anything, so it has to arrive as a failure carrying the release
       // — that is what puts the manual Download button on screen.
-      final release = await serve(utf8.encode('an archive, for these purposes'));
+      final release = await serve(
+        utf8.encode('an archive, for these purposes'),
+      );
       final controller = controllerFor(FakeReleases(release));
 
       controller.installer = (_, _) async {
@@ -270,32 +295,35 @@ void main() {
       );
     });
 
-    test('rejects an archive that does not match the published checksum', () async {
-      final honest = await serve(utf8.encode('the bytes actually served'));
-      final lying = AppRelease.fromRow(
-        row(
-          platform: 'windows',
-          sha: validSha,
-          size: honest.sizeBytes,
-          downloadUrl: honest.downloadUrl,
-        ),
-      )!;
+    test(
+      'rejects an archive that does not match the published checksum',
+      () async {
+        final honest = await serve(utf8.encode('the bytes actually served'));
+        final lying = AppRelease.fromRow(
+          row(
+            platform: 'windows',
+            sha: validSha,
+            size: honest.sizeBytes,
+            downloadUrl: honest.downloadUrl,
+          ),
+        )!;
 
-      final controller = controllerFor(FakeReleases(lying));
-      var installed = false;
-      controller.installer = (_, _) async => installed = true;
+        final controller = controllerFor(FakeReleases(lying));
+        var installed = false;
+        controller.installer = (_, _) async => installed = true;
 
-      await controller.download(lying);
+        await controller.download(lying);
 
-      expect(installed, isFalse);
-      expect(
-        controller.current,
-        isA<UpdateFailed>().having(
-          (s) => s.message,
-          'message',
-          contains('checksum'),
-        ),
-      );
-    });
+        expect(installed, isFalse);
+        expect(
+          controller.current,
+          isA<UpdateFailed>().having(
+            (s) => s.message,
+            'message',
+            contains('checksum'),
+          ),
+        );
+      },
+    );
   });
 }

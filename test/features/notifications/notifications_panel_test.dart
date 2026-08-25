@@ -31,8 +31,8 @@ void main() {
     return container;
   }
 
-  FadeTransition fadeOfRow(WidgetTester tester, String message) => tester
-      .widget<FadeTransition>(
+  FadeTransition fadeOfRow(WidgetTester tester, String message) =>
+      tester.widget<FadeTransition>(
         find
             .ancestor(
               of: find.text(message),
@@ -167,7 +167,9 @@ void main() {
     expect(find.text('the file went away'), findsOneWidget);
   });
 
-  testWidgets('tapping a row lerps its subtext open and closed', (tester) async {
+  testWidgets('tapping a row lerps its subtext open and closed', (
+    tester,
+  ) async {
     final container = await pumpPanel(tester);
     final store = container.read(notificationStoreProvider.notifier);
 

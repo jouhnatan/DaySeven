@@ -39,8 +39,13 @@ void main() {
         expected,
         reason: '${entry.key} should be #${expected.toRadixString(16)}',
       );
-      expect(colour.a, 1.0, reason: '${entry.key}: the design is flat, and '
-          'every fill in it is opaque');
+      expect(
+        colour.a,
+        1.0,
+        reason:
+            '${entry.key}: the design is flat, and '
+            'every fill in it is opaque',
+      );
     }
   });
 
@@ -53,7 +58,8 @@ void main() {
     expect(
       appSettingsBody().fontSize,
       closeTo(atDefault * 2, 0.01),
-      reason: 'the design states fixed sizes, but one dialog that ignores a '
+      reason:
+          'the design states fixed sizes, but one dialog that ignores a '
           'preference every other surface honours would be worse than exact',
     );
   });

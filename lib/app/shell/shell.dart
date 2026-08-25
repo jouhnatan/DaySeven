@@ -4,7 +4,6 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,20 +59,13 @@ class DsShell extends ConsumerWidget {
         final showGradient =
             view == DsView.home || settings.gradientBackgroundEnabled;
 
-        final isMac = defaultTargetPlatform == TargetPlatform.macOS;
         return CallbackShortcuts(
           bindings: {
-            SingleActivator(
-              LogicalKeyboardKey.keyS,
-              meta: isMac,
-              control: !isMac,
-            ): () {
-              final openId = ref.read(documentControllerProvider)?.document.id;
-              final action = ref.read(openDocumentPublishActionProvider);
-              if (!action.isLoading &&
-                  action.valueOrNull?.documentId == openId) {
-                unawaited(publishOpenDocumentWithFeedback(context, ref));
-              }
+            const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+              unawaited(publishOpenDocumentFromShortcut(context, ref));
+            },
+            const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () {
+              unawaited(publishOpenDocumentFromShortcut(context, ref));
             },
           },
           child: Scaffold(
@@ -205,8 +197,7 @@ class DsShell extends ConsumerWidget {
                                                   height: DsSpace.islandGap,
                                                 ),
                                                 const Expanded(
-                                                  child:
-                                                      NotificationsPanel(),
+                                                  child: NotificationsPanel(),
                                                 ),
                                               ],
                                             ),

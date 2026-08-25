@@ -598,15 +598,7 @@ class KnowledgeBase {
     if (length == 0) {
       throw const KbException('That image file is empty.');
     }
-    final allowed = {
-      '.png',
-      '.jpg',
-      '.jpeg',
-      '.gif',
-      '.webp',
-      '.tiff',
-      '.tif',
-    };
+    final allowed = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tiff', '.tif'};
     final ext = p.extension(source.path).toLowerCase();
     if (ext.isNotEmpty && !allowed.contains(ext)) {
       throw KbException('Unsupported image type "$ext".');

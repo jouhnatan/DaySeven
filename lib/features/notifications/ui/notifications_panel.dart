@@ -83,8 +83,9 @@ class _NotificationsPanelState extends ConsumerState<NotificationsPanel> {
     return DsIsland(
       child: Padding(
         padding: const EdgeInsets.all(DsSpace.pane),
-        child:
-            _items.isEmpty ? const _EmptyNotifications() : _buildAnimatedList(),
+        child: _items.isEmpty
+            ? const _EmptyNotifications()
+            : _buildAnimatedList(),
       ),
     );
   }
@@ -121,7 +122,11 @@ class _NotificationsPanelState extends ConsumerState<NotificationsPanel> {
               child: _NotificationRow(notification: notification),
             ),
             if (divider)
-              Container(key: const Key('notification-divider'), height: 1, color: context.ds.border),
+              Container(
+                key: const Key('notification-divider'),
+                height: 1,
+                color: context.ds.border,
+              ),
           ],
         ),
       ),
@@ -177,14 +182,22 @@ class _NotificationRowState extends State<_NotificationRow> {
           children: [
             Row(
               children: [
-                Icon(_kindIcon(notification.kind), size: 13, color: colors.muted),
+                Icon(
+                  _kindIcon(notification.kind),
+                  size: 13,
+                  color: colors.muted,
+                ),
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
                     notification.heading ?? _kindHeading(notification.kind),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: uiTextStyle(size: 11, weight: 600, color: colors.text),
+                    style: uiTextStyle(
+                      size: 11,
+                      weight: 600,
+                      color: colors.text,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),

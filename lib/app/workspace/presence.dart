@@ -43,10 +43,8 @@ class PresenceState {
   PresenceState copyWith({
     Map<String, PeerPresence>? peers,
     PresenceHealth? health,
-  }) => PresenceState(
-    peers: peers ?? this.peers,
-    health: health ?? this.health,
-  );
+  }) =>
+      PresenceState(peers: peers ?? this.peers, health: health ?? this.health);
 }
 
 /// Presence needs the network, so it is off entirely without Supabase — the
@@ -60,24 +58,18 @@ class PresenceController extends StateNotifier<PresenceState> {
     _ref.listen(currentUserProvider, (_, _) => unawaited(_bind()));
     _ref.listen(kbRoleProvider, (_, _) => unawaited(_bind()));
     _ref.listen(myProfileProvider, (_, _) => _schedulePush());
-    _ref.listen<OpenDocument?>(
-      documentControllerProvider,
-      (previous, next) {
-        // Only a change of document moves you; a keystroke does not.
-        if (previous?.relativePath == next?.relativePath &&
-            previous?.document.id == next?.document.id) {
-          return;
-        }
-        _schedulePush();
-      },
-    );
-    _ref.listen<EditingFocus?>(
-      editingFocusProvider,
-      (previous, next) {
-        if (previous?.blockId == next?.blockId) return;
-        _schedulePush();
-      },
-    );
+    _ref.listen<OpenDocument?>(documentControllerProvider, (previous, next) {
+      // Only a change of document moves you; a keystroke does not.
+      if (previous?.relativePath == next?.relativePath &&
+          previous?.document.id == next?.document.id) {
+        return;
+      }
+      _schedulePush();
+    });
+    _ref.listen<EditingFocus?>(editingFocusProvider, (previous, next) {
+      if (previous?.blockId == next?.blockId) return;
+      _schedulePush();
+    });
     unawaited(_bind());
   }
 
@@ -113,11 +105,17 @@ class PresenceController extends StateNotifier<PresenceState> {
     // A Knowledge Base nobody shares has no channel to join. `local` is also
     // what the role resolves to while signed out or offline, so this covers
     // those without asking about them separately.
-    final wanted = enabled && kbId != null && userId != null && role != null &&
+    final wanted =
+        enabled &&
+        kbId != null &&
+        userId != null &&
+        role != null &&
         role != KbRole.local &&
         role != KbRole.invited;
 
-    if (wanted && _boundKbId == kbId && _boundUserId == userId &&
+    if (wanted &&
+        _boundKbId == kbId &&
+        _boundUserId == userId &&
         _channel != null) {
       return;
     }
@@ -132,10 +130,7 @@ class PresenceController extends StateNotifier<PresenceState> {
 
     _boundKbId = kbId;
     _boundUserId = userId;
-    state = state.copyWith(
-      peers: const {},
-      health: PresenceHealth.connecting,
-    );
+    state = state.copyWith(peers: const {}, health: PresenceHealth.connecting);
 
     // A separate topic from `kb:<kbId>`, and separate on purpose: presence is
     // client-sent, so its topic is the one granted insert on
@@ -200,8 +195,9 @@ class PresenceController extends StateNotifier<PresenceState> {
     if (selfUserId == null) return;
     try {
       final peers = peersFromPresencePayloads(
-        channel.presenceState().map((entry) =>
-            entry.presences.map((presence) => presence.payload)),
+        channel.presenceState().map(
+          (entry) => entry.presences.map((presence) => presence.payload),
+        ),
         selfUserId: selfUserId,
       );
       state = state.copyWith(peers: peers);
@@ -221,9 +217,9 @@ class PresenceController extends StateNotifier<PresenceState> {
 
     return PeerPresence(
       userId: user.id,
-      username:
-          profile?.username ?? (metadata['username'] as String?) ?? '',
-      displayName: profile?.displayName ??
+      username: profile?.username ?? (metadata['username'] as String?) ?? '',
+      displayName:
+          profile?.displayName ??
           (metadata['display_name'] as String?) ??
           (metadata['username'] as String?) ??
           '',

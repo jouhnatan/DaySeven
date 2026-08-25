@@ -17,8 +17,9 @@ final authStateProvider = StreamProvider<AuthState?>((ref) {
 
 /// The signed-in user, or null when working offline.
 final currentUserProvider = Provider<User?>((ref) {
+  if (!isSupabaseConfigured) return null;
   ref.watch(authStateProvider);
-  return isSupabaseConfigured ? supabase.auth.currentUser : null;
+  return supabase.auth.currentUser;
 });
 
 class Profile {

@@ -481,11 +481,9 @@ rm -rf $quotedWorkspace
   await _run('/bin/chmod', ['+x', script.path]);
 
   // Detached, so it outlives the process that started it.
-  await Process.start(
-    '/bin/sh',
-    [script.path],
-    mode: ProcessStartMode.detached,
-  );
+  await Process.start('/bin/sh', [
+    script.path,
+  ], mode: ProcessStartMode.detached);
 
   exit(0);
 }
@@ -585,11 +583,10 @@ exit /b 1
   //
   // Detached, so it outlives the process that started it. Detached also means
   // no console is allocated, so nothing flashes on screen.
-  await Process.start(
-    'cmd.exe',
-    ['/c', script.path],
-    mode: ProcessStartMode.detached,
-  );
+  await Process.start('cmd.exe', [
+    '/c',
+    script.path,
+  ], mode: ProcessStartMode.detached);
 
   // Only now is it safe to go. Quitting on the strength of Process.start alone
   // is what turned a blocked helper into a silent shutdown: this process is the

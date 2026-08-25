@@ -185,9 +185,12 @@ final incomingCanonicalSyncProvider = Provider<void>((ref) {
 });
 
 class SharingController {
-  const SharingController(this._ref);
+  SharingController(this._ref);
 
   final Ref _ref;
+  Future<SyncOutcome>? _activeOpenDocumentPublish;
+  Future<SyncPullResult>? _activeHierarchyPull;
+  Future<ReconcileResult>? _activeHierarchyReconcile;
 
   /// Shares the open Knowledge Base: registers it and publishes every document
   /// in it, so a collaborator has a full history to start from.
@@ -314,7 +317,23 @@ class SharingController {
   /// The server decides atomically whether this is a canonical publish or a
   /// reviewed proposal. If canonical state moved, non-overlapping changes are
   /// three-way merged and retried once. Overlapping changes stay local.
-  Future<SyncOutcome> publishOpenDocument({bool retryOnMove = true}) async {
+  Future<SyncOutcome> publishOpenDocument({bool retryOnMove = true}) {
+    if (!retryOnMove) return _publishOpenDocument(retryOnMove: false);
+
+    final active = _activeOpenDocumentPublish;
+    if (active != null) return active;
+
+    late final Future<SyncOutcome> operation;
+    operation = _publishOpenDocument(retryOnMove: true).whenComplete(() {
+      if (identical(_activeOpenDocumentPublish, operation)) {
+        _activeOpenDocumentPublish = null;
+      }
+    });
+    _activeOpenDocumentPublish = operation;
+    return operation;
+  }
+
+  Future<SyncOutcome> _publishOpenDocument({required bool retryOnMove}) async {
     final session = _ref.read(kbSessionProvider);
     final open = _ref.read(documentControllerProvider);
     if (session == null || open == null) {
@@ -466,7 +485,7 @@ class SharingController {
       rethrow;
     } on Object catch (error) {
       if (retryOnMove && _isOptimisticMove(error)) {
-        return publishOpenDocument(retryOnMove: false);
+        return _publishOpenDocument(retryOnMove: false);
       }
       differences.markPublishError(document.id, error);
       rethrow;
@@ -711,7 +730,24 @@ class SharingController {
   /// Delegates to [KbHierarchyReplicator.ensureLocalMatchesRemote] – the
   /// single place that replicates missing hierarchy (e.g. `Awayside/` for
   /// `Awayside/Untitled.md`) and file data when the peer has no copy.
-  Future<SyncPullResult> pullRemoteChanges() async {
+  Future<SyncPullResult> pullRemoteChanges() {
+    final reconcile = _activeHierarchyReconcile;
+    if (reconcile != null) return reconcile.then((result) => result.pull);
+
+    final active = _activeHierarchyPull;
+    if (active != null) return active;
+
+    late final Future<SyncPullResult> operation;
+    operation = _pullRemoteChanges().whenComplete(() {
+      if (identical(_activeHierarchyPull, operation)) {
+        _activeHierarchyPull = null;
+      }
+    });
+    _activeHierarchyPull = operation;
+    return operation;
+  }
+
+  Future<SyncPullResult> _pullRemoteChanges() async {
     final result = await _ref
         .read(kbHierarchyReplicatorProvider)
         .ensureLocalMatchesRemote();
@@ -724,7 +760,26 @@ class SharingController {
   /// Bidirectional reconcile: first pulls missing hierarchy/data, then pushes
   /// local changes. Used by manual Sync when a
   /// full hierarchy sync is desired rather than a single-direction pull.
-  Future<ReconcileResult> reconcileHierarchy() async {
+  Future<ReconcileResult> reconcileHierarchy() {
+    final active = _activeHierarchyReconcile;
+    if (active != null) return active;
+
+    final pullAlreadyRunning = _activeHierarchyPull;
+    late final Future<ReconcileResult> operation;
+    operation =
+        (() async {
+          if (pullAlreadyRunning != null) await pullAlreadyRunning;
+          return _reconcileHierarchy();
+        })().whenComplete(() {
+          if (identical(_activeHierarchyReconcile, operation)) {
+            _activeHierarchyReconcile = null;
+          }
+        });
+    _activeHierarchyReconcile = operation;
+    return operation;
+  }
+
+  Future<ReconcileResult> _reconcileHierarchy() async {
     final session = _ref.read(kbSessionProvider);
     if (session == null) {
       throw const SyncException('Open a Knowledge Base first.');
@@ -770,7 +825,5 @@ class PublishConflict implements Exception {
   String toString() =>
       'Canonical and local edits overlap. Your local copy was kept.';
 }
-
-
 
 final sharingControllerProvider = Provider((ref) => SharingController(ref));

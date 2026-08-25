@@ -106,7 +106,9 @@ void main() {
 
     test('an unreadable payload does not take the readable ones with it', () {
       final peers = peersFromPresencePayloads([
-        [const {'nonsense': true}],
+        [
+          const {'nonsense': true},
+        ],
         [_peer('alice', path: 'a.md').toJson()],
       ], selfUserId: 'me');
       expect(peers.keys, ['alice']);
@@ -136,23 +138,16 @@ void main() {
       expect(byBlock['p1']!.map((p) => p.userId), ['alice']);
     });
 
-    test(
-      'a peer on a block this copy does not have gets no marker, but is '
-      'still in the document',
-      () {
-        // The two copies legitimately differ while a proposal is pending.
-        final peers = [_peer('alice', path: 'a.md', blockId: 'theirs')];
-        expect(
-          peersByBlock(
-            peers,
-            relativePath: 'a.md',
-            knownBlockIds: {'mine'},
-          ),
-          isEmpty,
-        );
-        expect(peersByPath(peers)['a.md'], hasLength(1));
-      },
-    );
+    test('a peer on a block this copy does not have gets no marker, but is '
+        'still in the document', () {
+      // The two copies legitimately differ while a proposal is pending.
+      final peers = [_peer('alice', path: 'a.md', blockId: 'theirs')];
+      expect(
+        peersByBlock(peers, relativePath: 'a.md', knownBlockIds: {'mine'}),
+        isEmpty,
+      );
+      expect(peersByPath(peers)['a.md'], hasLength(1));
+    });
 
     test('order is stable across rebuilds', () {
       final peers = [_peer('zed', path: 'a.md'), _peer('alice', path: 'a.md')];

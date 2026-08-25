@@ -20,7 +20,8 @@ void main() {
 
     for (final line in pubspec) {
       final trimmed = line.trim();
-      final match = RegExp(r'^-\s+(?:asset:\s*)?(assets/\S+)$').firstMatch(trimmed);
+      final match = RegExp(r'^-\s+(?:asset:\s*)?(assets/\S+)$')
+          .firstMatch(trimmed);
       if (match != null) declared.add(match.group(1)!);
     }
 
@@ -30,7 +31,8 @@ void main() {
       expect(
         Uri.encodeFull(path),
         path,
-        reason: '"$path" changes when it becomes an asset key, so the key will '
+        reason:
+            '"$path" changes when it becomes an asset key, so the key will '
             'not resolve to the file. Rename it to something URL-safe.',
       );
       expect(

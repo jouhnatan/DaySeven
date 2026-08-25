@@ -413,7 +413,10 @@ void main() {
 
       final editor = tester.getRect(
         find
-            .ancestor(of: find.byType(EditorScreen), matching: find.byType(DsIsland))
+            .ancestor(
+              of: find.byType(EditorScreen),
+              matching: find.byType(DsIsland),
+            )
             .first,
       );
       expect(editor.top, workspace.top, reason: 'the editor spans the pane');
@@ -435,7 +438,10 @@ void main() {
 
       final editor = tester.getRect(
         find
-            .ancestor(of: find.byType(EditorScreen), matching: find.byType(DsIsland))
+            .ancestor(
+              of: find.byType(EditorScreen),
+              matching: find.byType(DsIsland),
+            )
             .first,
       );
       final bar = tester.getRect(

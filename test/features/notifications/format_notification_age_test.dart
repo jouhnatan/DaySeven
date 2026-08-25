@@ -26,6 +26,9 @@ void main() {
   });
 
   test('clock skew reads as just now', () {
-    expect(formatNotificationAge(now.add(const Duration(minutes: 5)), now: now), '0m');
+    expect(
+      formatNotificationAge(now.add(const Duration(minutes: 5)), now: now),
+      '0m',
+    );
   });
 }

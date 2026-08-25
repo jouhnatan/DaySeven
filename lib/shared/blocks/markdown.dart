@@ -391,7 +391,9 @@ double? _decodeWidthFraction(Map<String, String> attributes) {
     return v.clamp(kImageMinFraction, kImageMaxFraction).toDouble();
   }
   // Normalize to two decimals for byte-stable round-trip.
-  return double.parse(v.clamp(kImageMinFraction, kImageMaxFraction).toStringAsFixed(2));
+  return double.parse(
+    v.clamp(kImageMinFraction, kImageMaxFraction).toStringAsFixed(2),
+  );
 }
 
 Block _decodeBlock(Map<String, String> attributes, List<String> body) {

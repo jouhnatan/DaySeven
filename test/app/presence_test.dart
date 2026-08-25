@@ -42,14 +42,23 @@ final _seed = BlockDocument(
   id: 'doc-1',
   title: 'Aldenmoor',
   blocks: const [
-    ParagraphBlock(id: 'p1', spans: [TextSpanNode(text: 'The moor is wide.')]),
-    ParagraphBlock(id: 'p2', spans: [TextSpanNode(text: 'And it is cold.')]),
+    ParagraphBlock(
+      id: 'p1',
+      spans: [TextSpanNode(text: 'The moor is wide.')],
+    ),
+    ParagraphBlock(
+      id: 'p2',
+      spans: [TextSpanNode(text: 'And it is cold.')],
+    ),
   ],
 );
 
 Future<Widget> _wrap(Widget child, {Brightness brightness = Brightness.dark}) =>
     Future.value(
-      MaterialApp(theme: dsTheme(brightness), home: Scaffold(body: child)),
+      MaterialApp(
+        theme: dsTheme(brightness),
+        home: Scaffold(body: child),
+      ),
     );
 
 void main() {
@@ -57,9 +66,7 @@ void main() {
 
   group('PresenceDots', () {
     testWidgets('renders nothing when nobody is there', (tester) async {
-      await tester.pumpWidget(
-        await _wrap(const PresenceDots(peers: [])),
-      );
+      await tester.pumpWidget(await _wrap(const PresenceDots(peers: [])));
       expect(find.byType(Text), findsNothing);
     });
 
@@ -96,10 +103,7 @@ void main() {
 
     testWidgets('gives a peer the same colour every time', (tester) async {
       final first = presenceColorFor('466839ae-d51e-4e44-a8cb-a4d966f14918');
-      expect(
-        presenceColorFor('466839ae-d51e-4e44-a8cb-a4d966f14918'),
-        first,
-      );
+      expect(presenceColorFor('466839ae-d51e-4e44-a8cb-a4d966f14918'), first);
       expect(DsPresence.palette, contains(first));
     });
   });
@@ -193,7 +197,10 @@ void main() {
 
     testWidgets('marks the block a collaborator is in', (tester) async {
       await openWith(tester, [_peer('alice', blockId: 'p2')]);
-      expect(find.byKey(const ValueKey('presence-in-block-p2')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('presence-in-block-p2')),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('presence-in-block-p1')), findsNothing);
     });
 
@@ -211,8 +218,10 @@ void main() {
         // exist in this copy of the document. Drawing a marker against some
         // other block would be a guess; saying nothing at all would lose them.
         await openWith(tester, [_peer('alice', blockId: 'theirs')]);
-        expect(find.byKey(const ValueKey('presence-in-block-theirs')),
-            findsNothing);
+        expect(
+          find.byKey(const ValueKey('presence-in-block-theirs')),
+          findsNothing,
+        );
         expect(find.byKey(const Key('document-presence')), findsOneWidget);
         expect(find.text('A'), findsOneWidget);
       },

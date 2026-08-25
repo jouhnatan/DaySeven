@@ -44,17 +44,34 @@ Future<void> publishOpenDocumentWithFeedback(
   }
 }
 
+/// Handles keyboard shortcut saves (Ctrl+S / ⌘S). Waits for the publish action
+/// to refresh against the current open document (e.g. after a rename) before
+/// triggering publish.
+Future<void> publishOpenDocumentFromShortcut(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  if (!isSupabaseConfigured) return;
+  final open = ref.read(documentControllerProvider);
+  if (open == null) return;
+  final role = await ref.read(kbRoleProvider.future);
+  if (role.publishingRank == null) return;
+  final action = await ref.read(openDocumentPublishActionProvider.future);
+  if (action == null || action.documentId != open.document.id) return;
+  if (!context.mounted) return;
+  await publishOpenDocumentWithFeedback(context, ref);
+}
+
 void _recordPublished(WidgetRef ref) {
   final open = ref.read(documentControllerProvider);
   if (open == null) return;
   final author = ref.read(accountDisplayNameProvider) ?? 'someone';
   final folderPath = p.posix.dirname(open.relativePath);
-  final detail =
-      folderPath == '.' || folderPath.isEmpty
+  final detail = folderPath == '.' || folderPath.isEmpty
       ? 'A document titled "${open.document.title}" was published by '
-          '$author at the top level.'
+            '$author at the top level.'
       : 'A document titled "${open.document.title}" was published by '
-          '$author in the "${p.posix.basename(folderPath)}" folder.';
+            '$author in the "${p.posix.basename(folderPath)}" folder.';
   ref
       .read(notificationStoreProvider.notifier)
       .record(

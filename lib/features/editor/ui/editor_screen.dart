@@ -215,7 +215,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     if (event.logicalKey != LogicalKeyboardKey.keyS || !modifier) {
       return KeyEventResult.ignored;
     }
-    unawaited(publishOpenDocumentWithFeedback(context, ref));
+    unawaited(publishOpenDocumentFromShortcut(context, ref));
     return KeyEventResult.handled;
   }
 
@@ -866,89 +866,90 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
                   peers: peersByBlockId[block.id] ?? const [],
                   onMenu: (position) => _showBlockMenu(position, block),
                   child: switch (block) {
-                  // Headings differ from paragraphs only in the style the text
-                  // sits on, so both use the same view and the same controller.
-                  final TextBlock t => _TextBlockView(
-                    block: t,
-                    controller: _controllerFor(t),
-                    focusNode: _focusFor(t.id),
-                    style: t is HeadingBlock
-                        ? headingStyle(t.level, colors.text)
-                        : editorTextStyle(
-                            size: 15,
-                            height: 1.6,
-                            color: colors.text,
-                          ),
-                    ordinal: t is ListItemBlock && t.style == ListStyle.ordered
-                        ? _ordinalOf(t)
-                        : null,
-                    onToggleChecked: t is ListItemBlock && t.checked != null
-                        ? () => _updateBlock(
-                            t.id,
-                            (b) => (b as ListItemBlock).copyWith(
-                              checked: !(b.checked ?? false),
+                    // Headings differ from paragraphs only in the style the text
+                    // sits on, so both use the same view and the same controller.
+                    final TextBlock t => _TextBlockView(
+                      block: t,
+                      controller: _controllerFor(t),
+                      focusNode: _focusFor(t.id),
+                      style: t is HeadingBlock
+                          ? headingStyle(t.level, colors.text)
+                          : editorTextStyle(
+                              size: 15,
+                              height: 1.6,
+                              color: colors.text,
                             ),
-                          )
-                        : null,
-                    onSplit: () => _splitBlock(t.id),
-                    onMergeBack: () => _mergeIntoPrevious(t.id),
-                    onMenu: (position) => _showBlockMenu(position, t),
-                    onPublish: () => unawaited(
-                      publishOpenDocumentWithFeedback(context, ref),
-                    ),
-                  ),
-                  CodeBlock() => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: _CodeView(
-                      block: block,
-                      onChanged: (text) => _updateBlock(
-                        block.id,
-                        (b) => (b as CodeBlock).copyWith(text: text),
-                      ),
-                      onMenu: (position) => _showBlockMenu(position, block),
-                    ),
-                  ),
-                  DividerBlock() => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: GestureDetector(
-                      onSecondaryTapUp: (d) =>
-                          _showBlockMenu(d.globalPosition, block),
-                      child: Divider(color: colors.border, height: 24),
-                    ),
-                  ),
-                  TableBlock() => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: _TableView(
-                      block: block,
-                      controllerFor: _cellControllerFor,
-                      onMenu: (position) => _showBlockMenu(position, block),
-                    ),
-                  ),
-                  ImageBlock() => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: _ImageView(
-                      block: block,
-                      onCaptionChanged: (caption) => _updateBlock(
-                        block.id,
-                        (b) => (b as ImageBlock).copyWith(caption: caption),
-                      ),
-                      onWidthChanged: widget.readOnly
-                          ? null
-                          : (fraction) => _updateBlock(
-                              block.id,
-                              (b) => (b as ImageBlock).copyWith(
-                                widthFraction: fraction,
-                                clearWidthFraction: fraction == null,
+                      ordinal:
+                          t is ListItemBlock && t.style == ListStyle.ordered
+                          ? _ordinalOf(t)
+                          : null,
+                      onToggleChecked: t is ListItemBlock && t.checked != null
+                          ? () => _updateBlock(
+                              t.id,
+                              (b) => (b as ListItemBlock).copyWith(
+                                checked: !(b.checked ?? false),
                               ),
-                            ),
-                      onMenu: (position) => _showBlockMenu(position, block),
+                            )
+                          : null,
+                      onSplit: () => _splitBlock(t.id),
+                      onMergeBack: () => _mergeIntoPrevious(t.id),
+                      onMenu: (position) => _showBlockMenu(position, t),
+                      onPublish: () => unawaited(
+                        publishOpenDocumentFromShortcut(context, ref),
+                      ),
                     ),
-                  ),
-                },
+                    CodeBlock() => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: _CodeView(
+                        block: block,
+                        onChanged: (text) => _updateBlock(
+                          block.id,
+                          (b) => (b as CodeBlock).copyWith(text: text),
+                        ),
+                        onMenu: (position) => _showBlockMenu(position, block),
+                      ),
+                    ),
+                    DividerBlock() => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: GestureDetector(
+                        onSecondaryTapUp: (d) =>
+                            _showBlockMenu(d.globalPosition, block),
+                        child: Divider(color: colors.border, height: 24),
+                      ),
+                    ),
+                    TableBlock() => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: _TableView(
+                        block: block,
+                        controllerFor: _cellControllerFor,
+                        onMenu: (position) => _showBlockMenu(position, block),
+                      ),
+                    ),
+                    ImageBlock() => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: _ImageView(
+                        block: block,
+                        onCaptionChanged: (caption) => _updateBlock(
+                          block.id,
+                          (b) => (b as ImageBlock).copyWith(caption: caption),
+                        ),
+                        onWidthChanged: widget.readOnly
+                            ? null
+                            : (fraction) => _updateBlock(
+                                block.id,
+                                (b) => (b as ImageBlock).copyWith(
+                                  widthFraction: fraction,
+                                  clearWidthFraction: fraction == null,
+                                ),
+                              ),
+                        onMenu: (position) => _showBlockMenu(position, block),
+                      ),
+                    ),
+                  },
+                ),
               ),
             ),
-          ),
-        const SizedBox(height: 24),
+          const SizedBox(height: 24),
           AbsorbPointer(
             absorbing: widget.readOnly,
             child: Padding(
@@ -1264,7 +1265,9 @@ class _BlockHoverGripState extends State<_BlockHoverGrip> {
                   Align(
                     alignment: Alignment.topLeft,
                     child: PresenceDots(
-                      key: ValueKey('presence-in-block-${widget.peers.first.blockId}'),
+                      key: ValueKey(
+                        'presence-in-block-${widget.peers.first.blockId}',
+                      ),
                       peers: widget.peers,
                       maxVisible: 2,
                     ),
@@ -1780,9 +1783,7 @@ class _ImageViewState extends ConsumerState<_ImageView> {
                           final next = (_dragStartFraction + delta / maxWidth)
                               .clamp(kImageMinFraction, kImageMaxFraction)
                               .toDouble();
-                          final rounded = double.parse(
-                            next.toStringAsFixed(2),
-                          );
+                          final rounded = double.parse(next.toStringAsFixed(2));
                           final normalized = rounded >= 0.99 ? null : rounded;
                           // Avoid noisy commits when the value hasn't changed.
                           final current = block.widthFraction;
@@ -1888,7 +1889,7 @@ class _ImageViewState extends ConsumerState<_ImageView> {
   }
 }
 
-class DocumentTitleField extends StatefulWidget {
+class DocumentTitleField extends ConsumerStatefulWidget {
   const DocumentTitleField({
     super.key,
     required this.title,
@@ -1899,16 +1900,18 @@ class DocumentTitleField extends StatefulWidget {
   final Future<String?> Function(String title) onRename;
 
   @override
-  State<DocumentTitleField> createState() => _DocumentTitleFieldState();
+  ConsumerState<DocumentTitleField> createState() => _DocumentTitleFieldState();
 }
 
-class _DocumentTitleFieldState extends State<DocumentTitleField> {
+class _DocumentTitleFieldState extends ConsumerState<DocumentTitleField> {
   late final TextEditingController _controller = TextEditingController(
     text: widget.title,
   );
   late final FocusNode _focus = FocusNode()..addListener(_onFocusChanged);
   late String _committedTitle = widget.title;
   bool _renaming = false;
+  Future<bool>? _activeRename;
+  Future<void>? _activeSave;
 
   @override
   void didUpdateWidget(DocumentTitleField oldWidget) {
@@ -1930,26 +1933,68 @@ class _DocumentTitleFieldState extends State<DocumentTitleField> {
     );
   }
 
-  Future<void> _commitRename() async {
-    if (_renaming) return;
+  Future<void> saveAndPublish() => _saveAndPublish();
+
+  Future<void> _saveAndPublish() async {
+    final active = _activeSave;
+    if (active != null) return active;
+
+    final future = _performSaveAndPublish();
+    _activeSave = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_activeSave, future)) {
+        _activeSave = null;
+      }
+    }
+  }
+
+  Future<void> _performSaveAndPublish() async {
+    final renameSuccess = await _commitRename();
+    if (!renameSuccess || !mounted) return;
+    await publishOpenDocumentFromShortcut(context, ref);
+  }
+
+  Future<bool> _commitRename() async {
+    final active = _activeRename;
+    if (active != null) return active;
+
+    final future = _performCommitRename();
+    _activeRename = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_activeRename, future)) {
+        _activeRename = null;
+      }
+    }
+  }
+
+  Future<bool> _performCommitRename() async {
     final requested = _controller.text.trim();
     if (requested.isEmpty) {
       _setText(_committedTitle);
-      return;
+      return true;
     }
-    if (requested == _committedTitle) return;
+    if (requested == _committedTitle) return true;
 
     setState(() => _renaming = true);
-    final canonical = await widget.onRename(requested);
-    if (!mounted) return;
+    try {
+      final canonical = await widget.onRename(requested);
+      if (!mounted) return canonical != null;
 
-    if (canonical == null) {
-      _setText(_committedTitle);
-    } else {
-      _committedTitle = canonical;
-      _setText(canonical);
+      if (canonical == null) {
+        _setText(_committedTitle);
+        return false;
+      } else {
+        _committedTitle = canonical;
+        _setText(canonical);
+        return true;
+      }
+    } finally {
+      if (mounted) setState(() => _renaming = false);
     }
-    setState(() => _renaming = false);
   }
 
   @override
@@ -1962,25 +2007,37 @@ class _DocumentTitleFieldState extends State<DocumentTitleField> {
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    return TextField(
-      controller: _controller,
-      focusNode: _focus,
-      readOnly: _renaming,
-      textInputAction: TextInputAction.done,
-      onSubmitted: (_) async {
-        await _commitRename();
-        _focus.unfocus();
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
+            unawaited(_saveAndPublish()),
+        const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () =>
+            unawaited(_saveAndPublish()),
       },
-      onTapOutside: (_) => _focus.unfocus(),
-      maxLines: 1,
-      style: editorTextStyle(size: 24, weight: 600, color: colors.text),
-      cursorColor: colors.text,
-      cursorWidth: 1.5,
-      decoration: InputDecoration(
-        isCollapsed: true,
-        border: InputBorder.none,
-        hintText: 'Untitled',
-        hintStyle: editorTextStyle(size: 24, weight: 600, color: colors.muted),
+      child: TextField(
+        controller: _controller,
+        focusNode: _focus,
+        readOnly: _renaming,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) async {
+          await _commitRename();
+          _focus.unfocus();
+        },
+        onTapOutside: (_) => _focus.unfocus(),
+        maxLines: 1,
+        style: editorTextStyle(size: 24, weight: 600, color: colors.text),
+        cursorColor: colors.text,
+        cursorWidth: 1.5,
+        decoration: InputDecoration(
+          isCollapsed: true,
+          border: InputBorder.none,
+          hintText: 'Untitled',
+          hintStyle: editorTextStyle(
+            size: 24,
+            weight: 600,
+            color: colors.muted,
+          ),
+        ),
       ),
     );
   }
@@ -2225,12 +2282,7 @@ class _ImageWidthPresets extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
-    const presets = [
-      (0.25, 'S'),
-      (0.5, 'M'),
-      (0.75, 'L'),
-      (null, 'Full'),
-    ];
+    const presets = [(0.25, 'S'), (0.5, 'M'), (0.75, 'L'), (null, 'Full')];
     bool isSelected(double? preset) {
       if (preset == null) return current == null;
       if (current == null) return false;

@@ -47,12 +47,7 @@ class PresenceDots extends StatelessWidget {
           idle: peer.idle,
         ),
       if (overflow > 0)
-        _Dot(
-          label: '+$overflow',
-          color: colors.muted,
-          size: size,
-          idle: false,
-        ),
+        _Dot(label: '+$overflow', color: colors.muted, size: size, idle: false),
     ];
 
     return Tooltip(
@@ -79,10 +74,12 @@ class PresenceDots extends StatelessWidget {
 /// Written out rather than listing bare names so the tooltip reads as a
 /// sentence at any count.
 String _describe(List<PeerPresence> peers) {
-  final names = peers.map((peer) {
-    final suffix = peer.idle ? ' (idle)' : '';
-    return '${peer.label}$suffix';
-  }).toList(growable: false);
+  final names = peers
+      .map((peer) {
+        final suffix = peer.idle ? ' (idle)' : '';
+        return '${peer.label}$suffix';
+      })
+      .toList(growable: false);
   final joined = switch (names.length) {
     0 => '',
     1 => names.first,

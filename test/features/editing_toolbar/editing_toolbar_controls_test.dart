@@ -130,7 +130,9 @@ void main() {
     tester,
   ) async {
     var pressed = false;
-    await tester.pumpWidget(app(DividerControl(onPressed: () => pressed = true)));
+    await tester.pumpWidget(
+      app(DividerControl(onPressed: () => pressed = true)),
+    );
 
     expect(find.byIcon(Icons.horizontal_rule), findsOneWidget);
     expect(

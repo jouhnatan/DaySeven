@@ -710,7 +710,8 @@ void main() {
     expect(
       identical(before, after),
       isTrue,
-      reason: 'a field rebuilt per keystroke resets its caret to the start, '
+      reason:
+          'a field rebuilt per keystroke resets its caret to the start, '
           'so typed characters prepend themselves ("gnitseT")',
     );
     expect(after!.selection.baseOffset, 'Testing'.length);
@@ -765,7 +766,10 @@ void main() {
         id: 'doc-1',
         title: 'Aldenmoor',
         blocks: [
-          ParagraphBlock(id: 'b1', spans: [const TextSpanNode(text: 'First.')]),
+          ParagraphBlock(
+            id: 'b1',
+            spans: [const TextSpanNode(text: 'First.')],
+          ),
           // An image keeps the menu short enough that every entry is on
           // screen without scrolling, and exercises Delete image itself.
           ImageBlock(id: 'img-1', assetId: 'gate.png'),
@@ -793,4 +797,54 @@ void main() {
       () => container.read(documentControllerProvider.notifier).flush(),
     );
   });
+
+  testWidgets(
+    'Ctrl+S while focused in the title leaves one file, at the renamed path, with the original document ID',
+    (tester) async {
+      final (container, kb, path) = await openEditor(tester, temp);
+      final initialDoc = (await tester.runAsync(() => kb.readDocument(path)))!;
+      expect(path, 'Aldenmoor.md');
+      expect(File(kb.absolutePathFor('Aldenmoor.md')).existsSync(), isTrue);
+
+      final titleField = find.byType(TextField).first;
+      await tester.enterText(titleField, 'Ammur-ili');
+      await tester.pump();
+
+      final callbackShortcuts = tester.widget<CallbackShortcuts>(
+        find
+            .ancestor(of: titleField, matching: find.byType(CallbackShortcuts))
+            .first,
+      );
+      final onSave = callbackShortcuts.bindings.entries
+          .firstWhere(
+            (e) =>
+                e.key is SingleActivator &&
+                (e.key as SingleActivator).trigger == LogicalKeyboardKey.keyS,
+          )
+          .value;
+
+      await tester.runAsync(() async {
+        onSave();
+        final renamed = File(kb.absolutePathFor('Ammur-ili.md'));
+        final deadline = DateTime.now().add(const Duration(seconds: 5));
+        while (!renamed.existsSync() && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        await container.read(documentControllerProvider.notifier).flush();
+      });
+      await tester.pump();
+
+      final tree = await tester.runAsync(kb.readTree);
+      final paths = documentPathsIn(tree!).toList();
+      expect(paths, ['Ammur-ili.md']);
+      expect(File(kb.absolutePathFor('Aldenmoor.md')).existsSync(), isFalse);
+      expect(File(kb.absolutePathFor('Ammur-ili.md')).existsSync(), isTrue);
+
+      final renamedDoc = await tester.runAsync(
+        () => kb.readDocument('Ammur-ili.md'),
+      );
+      expect(renamedDoc!.id, initialDoc.id);
+      expect(renamedDoc.title, 'Ammur-ili');
+    },
+  );
 }

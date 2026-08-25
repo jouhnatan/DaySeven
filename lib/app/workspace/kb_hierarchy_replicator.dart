@@ -28,7 +28,46 @@ import 'package:dayseven/features/differences/application/differences_controller
 import 'package:dayseven/shared/backend/asset_repository.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
+
+class _LocalDocument {
+  const _LocalDocument({required this.path, required this.document});
+
+  final String path;
+  final BlockDocument document;
+}
+
+class _LocalDocumentInventory {
+  const _LocalDocumentInventory({
+    required this.documents,
+    required this.byId,
+    required this.duplicateIds,
+  });
+
+  final List<_LocalDocument> documents;
+  final Map<String, _LocalDocument> byId;
+  final Set<String> duplicateIds;
+}
+
+Future<_LocalDocumentInventory> _readLocalDocuments(KnowledgeBase kb) async {
+  final documents = <_LocalDocument>[];
+  final byId = <String, _LocalDocument>{};
+  final duplicateIds = <String>{};
+  final tree = await kb.readTree();
+  for (final path in documentPathsIn(tree)) {
+    final document = await kb.readDocument(path);
+    final local = _LocalDocument(path: path, document: document);
+    documents.add(local);
+    if (byId.containsKey(document.id)) duplicateIds.add(document.id);
+    byId.putIfAbsent(document.id, () => local);
+  }
+  return _LocalDocumentInventory(
+    documents: documents,
+    byId: byId,
+    duplicateIds: duplicateIds,
+  );
+}
 
 /// Keeps a local folder hierarchy and its document contents in sync with the
 /// canonical store. Single-document `publishOpenDocument` stays the explicit
@@ -85,6 +124,7 @@ class KbHierarchyReplicator {
         documentsOverride ?? _ref.read(documentRepositoryProvider);
     final AssetRepository assets =
         assetsOverride ?? _ref.read(assetRepositoryProvider);
+    final localInventory = await _readLocalDocuments(kb);
     final snapshots = await documents.snapshot(kb.manifest.kbId);
     final remoteIds = snapshots.map((item) => item.document.id).toSet();
     var updated = 0;
@@ -93,54 +133,111 @@ class KbHierarchyReplicator {
     final conflictIds = <String>{};
 
     for (final snapshot in snapshots) {
-      final previous = ledger.document(snapshot.document.id);
+      final documentId = snapshot.document.id;
+
+      if (localInventory.duplicateIds.contains(documentId)) {
+        conflicts++;
+        conflictIds.add(documentId);
+        continue;
+      }
+
+      final previous = ledger.document(documentId);
+      final local = localInventory.byId[documentId];
       final target = File(kb.absolutePathFor(snapshot.path));
-      if (previous?.revisionId == snapshot.revisionId &&
-          previous?.path == snapshot.path &&
-          await target.exists()) {
-        if (previous?.protection != snapshot.protection) {
-          final local = await kb.readDocument(snapshot.path);
-          await ledger.record(
-            document: local,
-            revisionId: snapshot.revisionId,
-            path: snapshot.path,
-            protection: snapshot.protection,
-          );
+
+      if (local != null) {
+        final remoteUnchanged =
+            previous != null &&
+            previous.revisionId == snapshot.revisionId &&
+            previous.path == snapshot.path;
+
+        if (remoteUnchanged) {
+          if (local.path == snapshot.path &&
+              local.document.contentHash == previous.contentHash) {
+            if (previous.protection != snapshot.protection) {
+              await ledger.record(
+                document: local.document,
+                revisionId: snapshot.revisionId,
+                path: snapshot.path,
+                protection: snapshot.protection,
+              );
+            }
+          } else if (previous.protection != snapshot.protection) {
+            await ledger.record(
+              document: local.document,
+              revisionId: snapshot.revisionId,
+              path: local.path,
+              protection: snapshot.protection,
+            );
+          }
+          continue;
         }
+
+        if (previous == null) {
+          if (local.document.contentHash == snapshot.document.contentHash &&
+              local.path == snapshot.path) {
+            await ledger.record(
+              document: local.document,
+              revisionId: snapshot.revisionId,
+              path: snapshot.path,
+              protection: snapshot.protection,
+            );
+          } else {
+            conflicts++;
+            conflictIds.add(documentId);
+          }
+          continue;
+        }
+
+        final localMoved = local.path != previous.path;
+        final localModified =
+            local.document.contentHash != previous.contentHash;
+        final remoteMoved = snapshot.path != previous.path;
+        final remoteModified = snapshot.revisionId != previous.revisionId;
+
+        if (localModified ||
+            (localMoved && remoteMoved) ||
+            (localMoved && remoteModified) ||
+            (local.path != snapshot.path && await target.exists())) {
+          conflicts++;
+          conflictIds.add(documentId);
+          continue;
+        }
+
+        await Directory(p.dirname(target.path)).create(recursive: true);
+        await assets.downloadMissing(kb: kb, document: snapshot.document);
+        await kb.writeDocument(snapshot.path, snapshot.document);
+        if (local.path != snapshot.path) {
+          final oldFile = File(kb.absolutePathFor(local.path));
+          if (await oldFile.exists()) {
+            await oldFile.delete();
+          }
+        }
+        await ledger.record(
+          document: snapshot.document,
+          revisionId: snapshot.revisionId,
+          path: snapshot.path,
+          protection: snapshot.protection,
+        );
+        final open = _ref.read(documentControllerProvider);
+        if (open?.document.id == snapshot.document.id) {
+          await _ref
+              .read(documentControllerProvider.notifier)
+              .open(snapshot.path);
+        }
+        updated++;
+        continue;
+      }
+
+      if (await target.exists()) {
+        conflicts++;
+        conflictIds.add(documentId);
         continue;
       }
 
       final oldPath = previous?.path ?? snapshot.path;
       final oldFile = File(kb.absolutePathFor(oldPath));
-      if (previous == null) {
-        if (await target.exists()) {
-          conflicts++;
-          conflictIds.add(snapshot.document.id);
-          continue;
-        }
-      } else if (await oldFile.exists()) {
-        try {
-          final local = await kb.readDocument(oldPath);
-          if (local.contentHash != previous.contentHash) {
-            conflicts++;
-            conflictIds.add(snapshot.document.id);
-            continue;
-          }
-        } on Object {
-          conflicts++;
-          conflictIds.add(snapshot.document.id);
-          continue;
-        }
-        if (oldPath != snapshot.path && await target.exists()) {
-          conflicts++;
-          conflictIds.add(snapshot.document.id);
-          continue;
-        }
-      }
 
-      // Ensure hierarchy exists before writing the document. kb.writeDocument
-      // also creates parents, but creating explicitly makes the intent clear
-      // and supports future empty-folder inference.
       await Directory(p.dirname(target.path)).create(recursive: true);
       await assets.downloadMissing(kb: kb, document: snapshot.document);
       await kb.writeDocument(snapshot.path, snapshot.document);
@@ -155,7 +252,9 @@ class KbHierarchyReplicator {
       );
       final open = _ref.read(documentControllerProvider);
       if (open?.document.id == snapshot.document.id) {
-        await _ref.read(documentControllerProvider.notifier).open(snapshot.path);
+        await _ref
+            .read(documentControllerProvider.notifier)
+            .open(snapshot.path);
       }
       updated++;
     }
@@ -164,13 +263,23 @@ class KbHierarchyReplicator {
     // destroyed. Locally modified files stay in place and count as conflicts.
     for (final entry in ledger.documents.toList()) {
       if (remoteIds.contains(entry.key)) continue;
-      final localFile = File(kb.absolutePathFor(entry.value.path));
+
+      if (localInventory.duplicateIds.contains(entry.key)) {
+        conflicts++;
+        conflictIds.add(entry.key);
+        continue;
+      }
+
+      final localDoc = localInventory.byId[entry.key];
+      final actualPath = localDoc?.path ?? entry.value.path;
+      final localFile = File(kb.absolutePathFor(actualPath));
+
       if (!await localFile.exists()) {
         await ledger.remove(entry.key);
         continue;
       }
       try {
-        final local = await kb.readDocument(entry.value.path);
+        final local = localDoc?.document ?? await kb.readDocument(actualPath);
         if (local.contentHash != entry.value.contentHash) {
           conflicts++;
           conflictIds.add(entry.key);
@@ -204,11 +313,13 @@ class KbHierarchyReplicator {
     }
     final open = _ref.read(documentControllerProvider);
     if (open != null && conflictIds.contains(open.document.id)) {
-      _ref.read(differencesControllerProvider.notifier).markConflict(
-        open.document.id,
-        'A collaborator published a revision while this local copy had '
-        'unpublished edits. Your local copy was kept.',
-      );
+      _ref
+          .read(differencesControllerProvider.notifier)
+          .markConflict(
+            open.document.id,
+            'A collaborator published a revision while this local copy had '
+            'unpublished edits. Your local copy was kept.',
+          );
     }
     return SyncPullResult(
       updated: updated,
@@ -253,14 +364,24 @@ class KbHierarchyReplicator {
     final remoteById = {
       for (final snapshot in remote) snapshot.document.id: snapshot,
     };
-    final tree = await kb.readTree();
+    final localInventory = await _readLocalDocuments(kb);
+    final seenIds = <String>{};
     var published = 0;
     var proposed = 0;
     var unchanged = 0;
     var conflicts = 0;
 
-    for (final path in documentPathsIn(tree)) {
-      final document = await kb.readDocument(path);
+    for (final local in localInventory.documents) {
+      final document = local.document;
+      final path = local.path;
+
+      if (!seenIds.add(document.id)) continue;
+
+      if (localInventory.duplicateIds.contains(document.id)) {
+        conflicts++;
+        continue;
+      }
+
       final snapshot = remoteById[document.id];
       final previous = ledger.document(document.id);
 
@@ -290,6 +411,11 @@ class KbHierarchyReplicator {
           conflicts++;
           continue;
         }
+      }
+
+      if (remote.any((s) => s.path == path && s.document.id != document.id)) {
+        conflicts++;
+        continue;
       }
 
       await assets.uploadReferenced(kb: kb, document: document);
