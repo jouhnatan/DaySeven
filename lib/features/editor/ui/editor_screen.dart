@@ -316,6 +316,23 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     _publishFocus(focus.blockId);
   }
 
+  @override
+  void insertImage() {
+    if (widget.readOnly) return;
+    final focus = ref.read(editingFocusProvider);
+    final afterId = focus?.blockId;
+    if (afterId != null &&
+        _document.blocks.any((block) => block.id == afterId)) {
+      unawaited(_insertImage(afterId));
+      return;
+    }
+    if (_document.blocks.isNotEmpty) {
+      unawaited(_insertImage(_document.blocks.last.id));
+      return;
+    }
+    unawaited(_insertImageAtEnd());
+  }
+
   /// An ordered item's number, counted from the start of the run it belongs
   /// to, so inserting a line renumbers the ones below it.
   int _ordinalOf(ListItemBlock item) {
@@ -678,11 +695,43 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     final file = await openFile(acceptedTypeGroups: const [typeGroup]);
     if (file == null) return;
 
-    final assetId = await session.kb.importAsset(File(file.path));
-    final index = _document.blocks.indexWhere((b) => b.id == afterBlockId);
-    final blocks = [..._document.blocks]
-      ..insert(index + 1, ImageBlock(id: newId(), assetId: assetId));
-    _commit(_document.copyWith(blocks: blocks));
+    try {
+      final assetId = await session.kb.importAsset(File(file.path));
+      final index = _document.blocks.indexWhere((b) => b.id == afterBlockId);
+      final insertAt = index < 0 ? _document.blocks.length : index + 1;
+      final blocks = [..._document.blocks]
+        ..insert(insertAt, ImageBlock(id: newId(), assetId: assetId));
+      _commit(_document.copyWith(blocks: blocks));
+    } on Object catch (error) {
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, '$error');
+    }
+  }
+
+  Future<void> _insertImageAtEnd() async {
+    final session = ref.read(kbSessionProvider);
+    if (session == null) return;
+
+    const typeGroup = XTypeGroup(
+      label: 'Images',
+      extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'tiff'],
+    );
+    final file = await openFile(acceptedTypeGroups: const [typeGroup]);
+    if (file == null) return;
+
+    try {
+      final assetId = await session.kb.importAsset(File(file.path));
+      final blocks = [
+        ..._document.blocks,
+        ImageBlock(id: newId(), assetId: assetId),
+      ];
+      _commit(_document.copyWith(blocks: blocks));
+    } on Object catch (error) {
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, '$error');
+    }
   }
 
   Future<void> _export(DocumentFormat format) async {
@@ -1382,33 +1431,48 @@ class _ImageView extends ConsumerWidget {
           children: [
             ClipRRect(
               borderRadius: const BorderRadius.all(DsRadius.control),
-              child: block.isExternal
-                  ? Image.network(
-                      block.url!,
-                      fit: BoxFit.contain,
-                      // A URL can fail for reasons the document knows nothing
-                      // about, so it must not take the editor down with it.
-                      errorBuilder: (context, _, _) => Container(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 420),
+                child: block.isExternal
+                    ? Image.network(
+                        block.url!,
+                        fit: BoxFit.contain,
+                        // A URL can fail for reasons the document knows nothing
+                        // about, so it must not take the editor down with it.
+                        errorBuilder: (context, _, _) => Container(
+                          height: 80,
+                          alignment: Alignment.center,
+                          color: colors.selection,
+                          child: Text(
+                            'Image unavailable',
+                            style: uiTextStyle(size: 13, color: colors.muted),
+                          ),
+                        ),
+                      )
+                    : file!.existsSync()
+                    ? Image.file(
+                        file,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, _, _) => Container(
+                          height: 80,
+                          alignment: Alignment.center,
+                          color: colors.selection,
+                          child: Text(
+                            'Image missing',
+                            style: uiTextStyle(size: 12, color: colors.muted),
+                          ),
+                        ),
+                      )
+                    : Container(
                         height: 80,
                         alignment: Alignment.center,
                         color: colors.selection,
                         child: Text(
-                          'Image unavailable',
-                          style: uiTextStyle(size: 13, color: colors.muted),
+                          'Image missing',
+                          style: uiTextStyle(size: 12, color: colors.muted),
                         ),
                       ),
-                    )
-                  : file!.existsSync()
-                  ? Image.file(file, fit: BoxFit.contain)
-                  : Container(
-                      height: 80,
-                      alignment: Alignment.center,
-                      color: colors.selection,
-                      child: Text(
-                        'Image missing',
-                        style: uiTextStyle(size: 12, color: colors.muted),
-                      ),
-                    ),
+              ),
             ),
             const SizedBox(height: 6),
             TextField(

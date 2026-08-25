@@ -71,6 +71,8 @@ abstract class EditingSurface {
 
   /// null turns the focused block back into body text.
   void setHeadingLevel(int? level);
+
+  void insertImage();
 }
 
 class EditingFocusController extends StateNotifier<EditingFocus?> {
@@ -103,6 +105,7 @@ class EditingFocusController extends StateNotifier<EditingFocus?> {
   void toggleFormat(EditingFormat format) => _surface?.toggleFormat(format);
   void setAlign(BlockAlign align) => _surface?.setAlign(align);
   void setHeadingLevel(int? level) => _surface?.setHeadingLevel(level);
+  void insertImage() => _surface?.insertImage();
 }
 
 final editingFocusProvider =
