@@ -432,6 +432,12 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
     ref.read(viewProvider.notifier).state = DsView.editor;
   }
 
+  Future<void> _createFileInFolder(KbFolder folder) async {
+    if (await _createFileIn(context, ref, folder.relativePath) && mounted) {
+      setState(() => _expanded = true);
+    }
+  }
+
   /// Right-clicking a folder creates inside it, so a Knowledge Base can be
   /// organised without moving files around in Finder or Explorer.
   Future<void> _showFolderMenu(Offset position, KbFolder folder) async {
@@ -476,9 +482,7 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
 
     switch (choice) {
       case _FolderAction.newFile:
-        if (await _createFileIn(context, ref, folder.relativePath) && mounted) {
-          setState(() => _expanded = true);
-        }
+        await _createFileInFolder(folder);
 
       case _FolderAction.newFolder:
         if (await _createFolderIn(context, ref, folder.relativePath) &&
@@ -651,6 +655,7 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
     final node = widget.node;
     final open = ref.watch(documentControllerProvider);
     final isFolder = node is KbFolder;
+    final readOnly = ref.watch(kbRoleProvider).valueOrNull == KbRole.reviewer;
     final selected = node is KbFile && open?.relativePath == node.relativePath;
     final protection = isFolder
         ? null
@@ -737,7 +742,23 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
                   ),
                 ),
               ],
-              const SizedBox(width: 8),
+              if (node case final KbFolder folder when !readOnly)
+                IconButton(
+                  key: ValueKey('new-file-in-${folder.relativePath}'),
+                  tooltip: 'New file in ${folder.name}',
+                  onPressed: () => _createFileInFolder(folder),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: _TreeGuides.rowHeight,
+                    height: _TreeGuides.rowHeight,
+                  ),
+                  iconSize: 16,
+                  color: colors.muted,
+                  hoverColor: colors.buttonHighlight,
+                  icon: const Icon(Icons.add),
+                )
+              else
+                const SizedBox(width: 8),
             ],
           ),
         ),

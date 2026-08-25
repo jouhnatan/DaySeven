@@ -206,12 +206,14 @@ the block is marked as conflicted in the diff before you approve.
 - **Right** — a Geist Pixel *Knowledge Base* heading, a rounded control naming
   the open folder, and a separate hierarchy island beneath it. The tree shows
   folder and document icons, and a line running down from each folder that
-  turns in to meet its children. Drag a document or folder onto another folder
-  to move it, or onto the panel background to bring it back out to the top
-  level; the file is renamed on disk, not copied. Right-click a document to
-  rename it, or edit its title in the editor and press Enter or click away; the
-  Markdown filename is the canonical title everywhere. Right-click any item to
-  delete it after a permanent-deletion confirmation.
+  turns in to meet its children. A plus button at the right of every editable
+  folder creates and opens an Untitled document inside it. Drag a document or
+  folder onto another folder to move it, or onto the panel background to bring
+  it back out to the top level; the file is renamed on disk, not copied.
+  Right-click a document to rename it, or edit its title in the editor and
+  press Enter or click away; the Markdown filename is the canonical title
+  everywhere. Right-click any item to delete it after a permanent-deletion
+  confirmation.
 - **Resizing** — drag the gap between the three panes. The editor keeps a
   minimum width however far you drag, and the widths are remembered between
   sessions.

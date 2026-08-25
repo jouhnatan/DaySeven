@@ -412,6 +412,70 @@ void main() {
     },
   );
 
+  testWidgets('folder plus creates and opens an Untitled file inside it', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => container
+          .read(kbControllerProvider.notifier)
+          .createFolder(name: 'Characters'),
+    );
+
+    tester.view.physicalSize = const Size(500, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(Brightness.dark),
+          home: const Scaffold(body: KnowledgeBaseMenu()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final add = find.byKey(const ValueKey('new-file-in-Characters'));
+    expect(add, findsOneWidget);
+    expect(find.byTooltip('New file in Characters'), findsOneWidget);
+    expect(find.byIcon(Icons.add), findsOneWidget);
+    expect(find.byKey(ValueKey('new-file-in-$originalPath')), findsNothing);
+
+    final button = tester.widget<IconButton>(add);
+    expect(button.onPressed, isNotNull);
+    await tester.runAsync(() async {
+      // Run the button's real callback in the real-async zone. Widget tests
+      // cannot resume file-I/O futures launched by an unawaited synthetic tap
+      // once that tap has returned to the fake clock.
+      button.onPressed!();
+      final created = File(kb.absolutePathFor('Characters/Untitled.md'));
+      for (var attempt = 0; attempt < 400 && !created.existsSync(); attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      for (
+        var attempt = 0;
+        attempt < 400 &&
+            container.read(documentControllerProvider)?.relativePath !=
+                'Characters/Untitled.md';
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    });
+    await tester.pumpAndSettle();
+
+    expect(
+      File(kb.absolutePathFor('Characters/Untitled.md')).existsSync(),
+      isTrue,
+    );
+    expect(find.text('Untitled'), findsOneWidget);
+    expect(
+      container.read(documentControllerProvider)?.relativePath,
+      'Characters/Untitled.md',
+    );
+  });
+
   testWidgets('right-click exposes rename and the workspace renames the file', (
     tester,
   ) async {
