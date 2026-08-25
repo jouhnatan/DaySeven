@@ -1684,6 +1684,7 @@ class _ImageViewState extends ConsumerState<_ImageView> {
                     child: Align(
                       alignment: Alignment.center,
                       widthFactor: 1,
+                      heightFactor: 1,
                       child: imageChild,
                     ),
                   ),
