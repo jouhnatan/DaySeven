@@ -322,6 +322,12 @@ class AppUpdateController extends StateNotifier<AppUpdateState> {
       workspace = await Directory.systemTemp.createTemp('dayseven-update-');
       final archive = File(p.join(workspace.path, 'DaySeven-macos.zip'));
 
+      // A successful install ends with this process gone and the swap script
+      // still reading from its workspace, so nothing can clean that one up at
+      // the time. Any *other* workspace is therefore finished with, and this is
+      // the one moment there is a running app to notice.
+      _sweepOldWorkspaces(keep: workspace.path);
+
       await _fetch(
         release.downloadUrl,
         archive,
@@ -490,6 +496,11 @@ rm -rf $quotedWorkspace
 /// swap is a mirror of one directory onto another. Windows will not let a
 /// running executable be replaced at all, so as on macOS this hands off to a
 /// script and quits.
+///
+/// Unlike macOS, it does not quit on trust. Starting the helper is the step
+/// most likely to be refused by something outside the app's control, and this
+/// process is the last one able to say so, so it waits for the helper to
+/// report in and reports a failure instead of exiting into silence.
 Future<void> installWindowsUpdate(
   AppRelease release,
   String archivePath,
@@ -512,61 +523,145 @@ Future<void> installWindowsUpdate(
   final target = p.dirname(Platform.resolvedExecutable);
   await _requireWritable(target);
 
-  final quotedTarget = _powerShellQuote(target);
-  final quotedStaged = _powerShellQuote(staged);
-  final quotedWorkspace = _powerShellQuote(workspace);
-  final quotedExe = _powerShellQuote(p.join(target, 'dayseven.exe'));
+  final handoff = File(p.join(workspace, 'handoff-started'));
+  final log = p.join(workspace, 'swap.log');
 
-  final script = File(p.join(workspace, 'swap.ps1'));
+  final quotedTarget = _batchQuote(target);
+  final quotedStaged = _batchQuote(staged);
+  final quotedLog = _batchQuote(log);
+  final quotedHandoff = _batchQuote(handoff.path);
+  final quotedExe = _batchQuote(p.join(target, 'dayseven.exe'));
+
+  final script = File(p.join(workspace, 'swap.cmd'));
   await script.writeAsString('''
-# Replaces the running DaySeven with the freshly downloaded one, then reopens
-# it. Written and started by the app itself.
+@echo off
+rem Replaces the running DaySeven with the freshly downloaded one, then reopens
+rem it. Written and started by the app itself.
 
-# Wait for the old process to exit. Windows will not let a running executable
-# be replaced, and that process is quitting as this script starts.
-Wait-Process -Id $pid -Timeout 120 -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 500
+rem Written before anything that can fail. The app waits for this file and
+rem refuses to quit without it, so a helper that never runs is reported rather
+rem than leaving somebody with a closed app and no update.
+> $quotedHandoff echo started
 
-# /MIR so files dropped between versions do not linger. Nothing of the user's
-# lives here — documents are wherever they chose, and app state is in AppData —
-# so mirroring is safe.
-robocopy $quotedStaged $quotedTarget /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+rem Wait for the old process to exit. Windows will not let a running executable
+rem be replaced, and that process is quitting as this script starts. The floor
+rem is unconditional so that the swap still waits if tasklist is unavailable
+rem and the loop below falls through immediately.
+ping -n 3 127.0.0.1 > nul
 
-# robocopy uses exit codes 0-7 for success; 8 and above are real failures.
-if (\$LASTEXITCODE -ge 8) {
-  Start-Process $quotedExe
-  exit 1
-}
+set _waited=0
+:wait
+tasklist /fi "PID eq $pid" /nh 2> nul | find "$pid" > nul || goto swap
+set /a _waited+=1
+if %_waited% GEQ 120 goto swap
+ping -n 2 127.0.0.1 > nul
+goto wait
 
-Start-Process $quotedExe
-Remove-Item $quotedWorkspace -Recurse -Force -ErrorAction SilentlyContinue
-''');
+:swap
+rem /MIR so files dropped between versions do not linger. Nothing of the user's
+rem lives here - documents are wherever they chose, and app state is in AppData -
+rem so mirroring is safe.
+robocopy $quotedStaged $quotedTarget /MIR /NFL /NDL /NJH /NJS /NP >> $quotedLog 2>&1
 
-  // Detached and hidden, so it outlives the process that started it without
-  // flashing a console window.
+rem robocopy uses exit codes 0-7 for success; 8 and above are real failures.
+if errorlevel 8 goto failed
+
+start "" /d $quotedTarget $quotedExe
+exit /b 0
+
+:failed
+>> $quotedLog echo swap failed - the install was left as it was.
+start "" /d $quotedTarget $quotedExe
+exit /b 1
+''', flush: true);
+
+  // cmd.exe rather than PowerShell. An unsigned executable spawning
+  // `powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File %TEMP%\\...`
+  // and immediately exiting is indistinguishable from malware: anti-virus
+  // blocks the process outright, and a machine-level execution policy beats
+  // the `-ExecutionPolicy Bypass` switch anyway. Either way the app quit and
+  // nothing replaced it. cmd.exe has no execution policy and no language mode
+  // to fall foul of, and robocopy was doing the actual work regardless.
+  //
+  // Detached, so it outlives the process that started it. Detached also means
+  // no console is allocated, so nothing flashes on screen.
   await Process.start(
-    'powershell',
-    [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-WindowStyle',
-      'Hidden',
-      '-File',
-      script.path,
-    ],
+    'cmd.exe',
+    ['/c', script.path],
     mode: ProcessStartMode.detached,
   );
 
+  // Only now is it safe to go. Quitting on the strength of Process.start alone
+  // is what turned a blocked helper into a silent shutdown: this process is the
+  // last thing able to report the failure, so it does not exit until the helper
+  // has proven it is running.
+  if (!await _handoffStarted(handoff)) {
+    throw const UpdateException(
+      'DaySeven could not start the helper that installs the update, most '
+      'likely because anti-virus or a script policy blocked it. Nothing has '
+      'been changed — download the new version by hand instead.',
+    );
+  }
+
   exit(0);
+}
+
+/// Waits for the swap script to report that it is running.
+///
+/// The script writes the file as its first action, so this resolves in
+/// milliseconds when the hand-off worked at all. Returning false means the
+/// helper never started, not that it started slowly.
+Future<bool> _handoffStarted(File sentinel) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 10));
+  while (DateTime.now().isBefore(deadline)) {
+    if (sentinel.existsSync()) return true;
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+  return false;
 }
 
 /// Single-quotes a path for /bin/sh, the way any path interpolated into a
 /// generated script has to be.
 String _shellQuote(String value) => "'${value.replaceAll("'", r"'\''")}'";
 
-/// The PowerShell equivalent: single quotes, with internal ones doubled.
-String _powerShellQuote(String value) => "'${value.replaceAll("'", "''")}'";
+/// Double-quotes a path for cmd.exe.
+///
+/// Batch has no escape character inside a quoted string, so the characters it
+/// cannot survive are rejected rather than mangled: `%` would expand as a
+/// variable, and `"` would end the quoting. Neither can occur in a Windows path
+/// that Windows itself produced, so this is a guard against generating a
+/// broken script rather than a case anyone is expected to hit. `&`, `^` and `!`
+/// are all literal inside quotes and need no handling.
+String _batchQuote(String value) {
+  if (value.contains('%') || value.contains('"')) {
+    throw UpdateException(
+      'DaySeven cannot update itself from a path containing " or %: $value',
+    );
+  }
+  return '"$value"';
+}
+
+/// Removes update workspaces left behind by earlier runs.
+///
+/// The swap script cannot delete the directory it is being read from, so a
+/// successful update always leaves one behind. Best effort in every direction:
+/// a workspace still in use just fails to delete and is left where it is.
+void _sweepOldWorkspaces({required String keep}) {
+  try {
+    for (final entry in Directory.systemTemp.listSync()) {
+      if (entry is! Directory) continue;
+      if (p.equals(entry.path, keep)) continue;
+      if (!p.basename(entry.path).startsWith('dayseven-update-')) continue;
+      try {
+        entry.deleteSync(recursive: true);
+      } on FileSystemException {
+        // In use, or not this user's to delete.
+      }
+    }
+  } on FileSystemException {
+    // Not being able to sweep is never a reason to fail an update.
+  }
+}
 
 /// Fails with something worth reading when the install cannot be written to —
 /// most often DaySeven unpacked into Program Files on Windows, or installed by

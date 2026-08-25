@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dayseven/shared/platform/app_update.dart';
@@ -203,6 +208,94 @@ void main() {
       final release = AppRelease.fromRow(row(size: 200))!;
       expect(DownloadingUpdate(release, 50).fraction, 0.25);
       expect(DownloadingUpdate(release, 200).fraction, 1.0);
+    });
+  });
+
+  group('download', () {
+    /// Serves one payload over loopback, so the download path can be exercised
+    /// end to end — including the checksum check — without a network.
+    Future<AppRelease> serve(List<int> payload) async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      unawaited(
+        server.forEach((request) async {
+          request.response.add(payload);
+          await request.response.close();
+        }),
+      );
+
+      return AppRelease.fromRow(
+        row(
+          platform: 'windows',
+          sha: sha256.convert(payload).toString(),
+          size: payload.length,
+          downloadUrl: 'http://${server.address.address}:${server.port}/a.zip',
+        ),
+      )!;
+    }
+
+    test('hands the verified archive to the installer', () async {
+      final release = await serve(utf8.encode('an archive, for these purposes'));
+      final controller = controllerFor(FakeReleases(release));
+
+      String? handed;
+      controller.installer = (_, path) async => handed = path;
+
+      await controller.download(release);
+
+      expect(handed, isNotNull);
+      expect(File(handed!).existsSync(), isTrue);
+      expect(controller.current, isA<InstallingUpdate>());
+    });
+
+    test('reports a blocked hand-off rather than failing silently', () async {
+      // The Windows installer refuses to exit when the swap script does not
+      // report in, and raises this instead. Nothing else is left to tell the
+      // person anything, so it has to arrive as a failure carrying the release
+      // — that is what puts the manual Download button on screen.
+      final release = await serve(utf8.encode('an archive, for these purposes'));
+      final controller = controllerFor(FakeReleases(release));
+
+      controller.installer = (_, _) async {
+        throw const UpdateException('anti-virus blocked the helper.');
+      };
+
+      await controller.download(release);
+
+      expect(
+        controller.current,
+        isA<UpdateFailed>()
+            .having((s) => s.message, 'message', contains('anti-virus'))
+            .having((s) => s.release, 'release', same(release)),
+      );
+    });
+
+    test('rejects an archive that does not match the published checksum', () async {
+      final honest = await serve(utf8.encode('the bytes actually served'));
+      final lying = AppRelease.fromRow(
+        row(
+          platform: 'windows',
+          sha: validSha,
+          size: honest.sizeBytes,
+          downloadUrl: honest.downloadUrl,
+        ),
+      )!;
+
+      final controller = controllerFor(FakeReleases(lying));
+      var installed = false;
+      controller.installer = (_, _) async => installed = true;
+
+      await controller.download(lying);
+
+      expect(installed, isFalse);
+      expect(
+        controller.current,
+        isA<UpdateFailed>().having(
+          (s) => s.message,
+          'message',
+          contains('checksum'),
+        ),
+      );
     });
   });
 }

@@ -1533,6 +1533,10 @@ class _FormatIntent extends Intent {
   final EditingFormat format;
 }
 
+/// Image decode widths are rounded up to this many logical pixels so that
+/// resizing an image, or nudging the window, reuses the cached decode.
+const double _kDecodeQuantum = 64;
+
 class _ImageView extends ConsumerStatefulWidget {
   const _ImageView({
     required this.block,
@@ -1620,7 +1624,18 @@ class _ImageViewState extends ConsumerState<_ImageView> {
               maxWidth,
             );
             final pixelRatio = MediaQuery.of(context).devicePixelRatio;
-            final cacheWidth = (targetWidth * pixelRatio).round();
+            // Decode once at the widest size this image could ever be shown
+            // at, quantized so ordinary layout jitter doesn't change it
+            // either. Deriving it from targetWidth instead would hand the
+            // image a new provider on every drag frame: each one misses the
+            // image cache and decodes asynchronously, so the image blanks and
+            // flickers while resizing and only settles once a width has been
+            // visited before.
+            final decodeWidth =
+                (((maxWidth * kImageMaxFraction) / _kDecodeQuantum).ceil() *
+                        _kDecodeQuantum)
+                    .toDouble();
+            final cacheWidth = (decodeWidth * pixelRatio).round();
 
             Widget imageChild;
             if (block.isExternal) {
@@ -1628,6 +1643,7 @@ class _ImageViewState extends ConsumerState<_ImageView> {
                 block.url!,
                 fit: BoxFit.contain,
                 width: targetWidth,
+                gaplessPlayback: true,
                 // A URL can fail for reasons the document knows nothing
                 // about, so it must not take the editor down with it.
                 errorBuilder: (context, _, _) => Container(
@@ -1648,6 +1664,9 @@ class _ImageViewState extends ConsumerState<_ImageView> {
                 width: targetWidth,
                 cacheWidth: cacheWidth,
                 filterQuality: FilterQuality.medium,
+                // Hold the last decoded frame if the provider ever does
+                // change, rather than flashing empty space.
+                gaplessPlayback: true,
                 errorBuilder: (context, _, _) => Container(
                   height: 80,
                   width: targetWidth,
