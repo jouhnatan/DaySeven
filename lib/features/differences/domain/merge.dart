@@ -299,6 +299,11 @@ _MergedBlock _mergeBlock({
         id: local.id,
         assetId: _pick(base.assetId, local.assetId, proposed.assetId),
         caption: _pick(base.caption, local.caption, proposed.caption),
+        widthFraction: _pick(
+          base.widthFraction,
+          local.widthFraction,
+          proposed.widthFraction,
+        ),
         align: align,
         spaceBefore: spaceBefore,
       ),

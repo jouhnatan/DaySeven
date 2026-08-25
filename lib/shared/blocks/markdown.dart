@@ -63,11 +63,15 @@ String encodeMarkdown(BlockDocument document) {
   return '${out.toString().trimRight()}\n';
 }
 
-/// `<!-- d7 <id> align=center space=16 -->`, carrying what the body cannot.
+/// `<!-- d7 <id> align=center space=16 width=0.5 -->`, carrying what the body
+/// cannot. `width` is the image's fraction of the editor content width.
 String _encodeComment(Block block) {
   final out = StringBuffer('<!-- d7 ${block.id}');
   if (block.align != BlockAlign.left) out.write(' align=${block.align.name}');
   if (block.spaceBefore != 0) out.write(' space=${_number(block.spaceBefore)}');
+  if (block is ImageBlock && block.widthFraction != null) {
+    out.write(' width=${_number(block.widthFraction!)}');
+  }
   return (out..write(' -->')).toString();
 }
 
@@ -378,6 +382,18 @@ Map<String, String> _parseAttributes(String raw) {
   return out;
 }
 
+double? _decodeWidthFraction(Map<String, String> attributes) {
+  final raw = attributes['width'];
+  if (raw == null) return null;
+  final v = double.tryParse(raw);
+  if (v == null || !v.isFinite) return null;
+  if (v < kImageMinFraction || v > kImageMaxFraction) {
+    return v.clamp(kImageMinFraction, kImageMaxFraction).toDouble();
+  }
+  // Normalize to two decimals for byte-stable round-trip.
+  return double.parse(v.clamp(kImageMinFraction, kImageMaxFraction).toStringAsFixed(2));
+}
+
 Block _decodeBlock(Map<String, String> attributes, List<String> body) {
   final id = attributes['id'] ?? _uuid.v7();
   final align = switch (attributes['align']) {
@@ -386,6 +402,7 @@ Block _decodeBlock(Map<String, String> attributes, List<String> body) {
     _ => BlockAlign.left,
   };
   final space = double.tryParse(attributes['space'] ?? '') ?? 0;
+  final widthFraction = _decodeWidthFraction(attributes);
   final text = _joinBody(body);
 
   // Fenced code first: its contents must not be read as anything else.
@@ -460,6 +477,7 @@ Block _decodeBlock(Map<String, String> attributes, List<String> body) {
       assetId: external ? '' : _basename(url),
       url: external ? url : null,
       caption: _unescapeCaption(image.group(1)!),
+      widthFraction: widthFraction,
       align: align,
       spaceBefore: space,
     );

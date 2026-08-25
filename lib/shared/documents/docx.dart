@@ -573,10 +573,14 @@ void _buildImageParagraph(
   ImageBlock block,
   _EmbeddedImage image,
 ) {
-  // A fixed display box: the block model does not record image dimensions, and
-  // Word requires an extent.
-  const widthEmu = 4572000; // 12cm
-  const heightEmu = 3429000; // 9cm
+  // Scaled by the editor's widthFraction, preserving aspect ratio. The block
+  // model does not record pixel dimensions, and Word requires an extent.
+  final fraction = (block.widthFraction ?? 1.0).clamp(
+    kImageMinFraction,
+    kImageMaxFraction,
+  );
+  final widthEmu = (4572000 * fraction).round(); // 12cm * fraction
+  final heightEmu = (3429000 * fraction).round(); // 9cm * fraction
 
   builder.element(
     'w:p',

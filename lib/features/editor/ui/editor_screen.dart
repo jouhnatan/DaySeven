@@ -925,6 +925,15 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
                         block.id,
                         (b) => (b as ImageBlock).copyWith(caption: caption),
                       ),
+                      onWidthChanged: widget.readOnly
+                          ? null
+                          : (fraction) => _updateBlock(
+                              block.id,
+                              (b) => (b as ImageBlock).copyWith(
+                                widthFraction: fraction,
+                                clearWidthFraction: fraction == null,
+                              ),
+                            ),
                       onMenu: (position) => _showBlockMenu(position, block),
                     ),
                   ),
@@ -1047,6 +1056,23 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
             ),
           ),
         ),
+        if (block is ImageBlock) ...[
+          const DsMenuDivider(),
+          PopupMenuItem<VoidCallback>(
+            height: kDsMenuItemHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: _ImageWidthPresets(
+              current: block.widthFraction,
+              onPick: (fraction) => _updateBlock(
+                block.id,
+                (b) => (b as ImageBlock).copyWith(
+                  widthFraction: fraction,
+                  clearWidthFraction: fraction == null,
+                ),
+              ),
+            ),
+          ),
+        ],
         if (block is TextBlock) ...[
           const DsMenuDivider(),
           item(
@@ -1512,10 +1538,12 @@ class _ImageView extends ConsumerStatefulWidget {
     required this.block,
     required this.onCaptionChanged,
     required this.onMenu,
+    this.onWidthChanged,
   });
 
   final ImageBlock block;
   final ValueChanged<String> onCaptionChanged;
+  final ValueChanged<double?>? onWidthChanged;
   final void Function(Offset position) onMenu;
 
   @override
@@ -1530,6 +1558,9 @@ class _ImageViewState extends ConsumerState<_ImageView> {
     text: widget.block.caption,
   );
   final FocusNode _captionFocus = FocusNode();
+  bool _hovered = false;
+  double _dragStartFraction = 1.0;
+  double _dragStartX = 0;
 
   @override
   void didUpdateWidget(_ImageView oldWidget) {
@@ -1566,88 +1597,218 @@ class _ImageViewState extends ConsumerState<_ImageView> {
       BlockAlign.center => CrossAxisAlignment.center,
       BlockAlign.right => CrossAxisAlignment.end,
     };
+    final align = switch (block.align) {
+      BlockAlign.left => Alignment.centerLeft,
+      BlockAlign.center => Alignment.center,
+      BlockAlign.right => Alignment.centerRight,
+    };
+    final canResize = widget.onWidthChanged != null;
 
     return GestureDetector(
       onSecondaryTapUp: (details) => widget.onMenu(details.globalPosition),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          crossAxisAlignment: alignment,
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.all(DsRadius.control),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 420),
-                child: block.isExternal
-                    ? Image.network(
-                        block.url!,
-                        fit: BoxFit.contain,
-                        // A URL can fail for reasons the document knows nothing
-                        // about, so it must not take the editor down with it.
-                        errorBuilder: (context, _, _) => Container(
-                          height: 80,
-                          alignment: Alignment.center,
-                          color: colors.selection,
-                          child: Text(
-                            'Image unavailable',
-                            style: uiTextStyle(size: 13, color: colors.muted),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxWidth = constraints.maxWidth;
+            final fraction = block.effectiveFraction.clamp(
+              kImageMinFraction,
+              kImageMaxFraction,
+            );
+            final targetWidth = (maxWidth * fraction).clamp(
+              kImageMinWidth,
+              maxWidth,
+            );
+            final pixelRatio = MediaQuery.of(context).devicePixelRatio;
+            final cacheWidth = (targetWidth * pixelRatio).round();
+
+            Widget imageChild;
+            if (block.isExternal) {
+              imageChild = Image.network(
+                block.url!,
+                fit: BoxFit.contain,
+                width: targetWidth,
+                // A URL can fail for reasons the document knows nothing
+                // about, so it must not take the editor down with it.
+                errorBuilder: (context, _, _) => Container(
+                  height: 80,
+                  width: targetWidth,
+                  alignment: Alignment.center,
+                  color: colors.selection,
+                  child: Text(
+                    'Image unavailable',
+                    style: uiTextStyle(size: 13, color: colors.muted),
+                  ),
+                ),
+              );
+            } else if (file!.existsSync()) {
+              imageChild = Image.file(
+                file,
+                fit: BoxFit.contain,
+                width: targetWidth,
+                cacheWidth: cacheWidth,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (context, _, _) => Container(
+                  height: 80,
+                  width: targetWidth,
+                  alignment: Alignment.center,
+                  color: colors.selection,
+                  child: Text(
+                    'Image missing',
+                    style: uiTextStyle(size: 12, color: colors.muted),
+                  ),
+                ),
+              );
+            } else {
+              imageChild = Container(
+                height: 80,
+                width: targetWidth,
+                alignment: Alignment.center,
+                color: colors.selection,
+                child: Text(
+                  'Image missing',
+                  style: uiTextStyle(size: 12, color: colors.muted),
+                ),
+              );
+            }
+
+            final imageStack = Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.all(DsRadius.control),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: kImageMaxHeight,
+                      maxWidth: targetWidth,
+                    ),
+                    child: Align(
+                      alignment: Alignment.center,
+                      widthFactor: 1,
+                      child: imageChild,
+                    ),
+                  ),
+                ),
+                if (canResize)
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.resizeLeftRight,
+                      onEnter: (_) => setState(() => _hovered = true),
+                      onExit: (_) => setState(() => _hovered = false),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: (details) {
+                          _dragStartFraction = block.effectiveFraction;
+                          _dragStartX = details.globalPosition.dx;
+                        },
+                        onPanUpdate: (details) {
+                          final delta = details.globalPosition.dx - _dragStartX;
+                          final next = (_dragStartFraction + delta / maxWidth)
+                              .clamp(kImageMinFraction, kImageMaxFraction)
+                              .toDouble();
+                          final rounded = double.parse(
+                            next.toStringAsFixed(2),
+                          );
+                          final normalized = rounded >= 0.99 ? null : rounded;
+                          // Avoid noisy commits when the value hasn't changed.
+                          final current = block.widthFraction;
+                          final curRounded = current == null
+                              ? null
+                              : double.parse(current.toStringAsFixed(2));
+                          final normRounded = normalized == null
+                              ? null
+                              : double.parse(normalized.toStringAsFixed(2));
+                          if (curRounded != normRounded) {
+                            widget.onWidthChanged!(normalized);
+                          }
+                        },
+                        child: AnimatedOpacity(
+                          opacity: _hovered ? 1 : 0.7,
+                          duration: const Duration(milliseconds: 120),
+                          child: Container(
+                            width: 28,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: colors.island.withAlpha(230),
+                              border: Border.all(color: colors.border),
+                              borderRadius: const BorderRadius.all(
+                                DsRadius.control,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.open_in_full,
+                              size: 12,
+                              color: colors.muted,
+                            ),
                           ),
-                        ),
-                      )
-                    : file!.existsSync()
-                    ? Image.file(
-                        file,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, _, _) => Container(
-                          height: 80,
-                          alignment: Alignment.center,
-                          color: colors.selection,
-                          child: Text(
-                            'Image missing',
-                            style: uiTextStyle(size: 12, color: colors.muted),
-                          ),
-                        ),
-                      )
-                    : Container(
-                        height: 80,
-                        alignment: Alignment.center,
-                        color: colors.selection,
-                        child: Text(
-                          'Image missing',
-                          style: uiTextStyle(size: 12, color: colors.muted),
                         ),
                       ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _caption,
-              focusNode: _captionFocus,
-              onChanged: widget.onCaptionChanged,
-              textAlign: switch (block.align) {
-                BlockAlign.left => TextAlign.left,
-                BlockAlign.center => TextAlign.center,
-                BlockAlign.right => TextAlign.right,
-              },
-              style: editorTextStyle(
-                size: 12,
-                italic: true,
-                color: colors.muted,
-              ),
-              cursorColor: colors.text,
-              cursorWidth: 1.5,
-              decoration: InputDecoration(
-                isCollapsed: true,
-                border: InputBorder.none,
-                hintText: 'Caption',
-                hintStyle: editorTextStyle(
-                  size: 12,
-                  italic: true,
-                  color: colors.muted,
+                    ),
+                  ),
+              ],
+            );
+
+            return Column(
+              crossAxisAlignment: alignment,
+              children: [
+                Align(alignment: align, child: imageStack),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: align,
+                  child: SizedBox(
+                    width: targetWidth,
+                    child: TextField(
+                      controller: _caption,
+                      focusNode: _captionFocus,
+                      onChanged: widget.onCaptionChanged,
+                      textAlign: switch (block.align) {
+                        BlockAlign.left => TextAlign.left,
+                        BlockAlign.center => TextAlign.center,
+                        BlockAlign.right => TextAlign.right,
+                      },
+                      style: editorTextStyle(
+                        size: 12,
+                        italic: true,
+                        color: colors.muted,
+                      ),
+                      cursorColor: colors.text,
+                      cursorWidth: 1.5,
+                      decoration: InputDecoration(
+                        isCollapsed: true,
+                        border: InputBorder.none,
+                        hintText: 'Caption',
+                        hintStyle: editorTextStyle(
+                          size: 12,
+                          italic: true,
+                          color: colors.muted,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
+                if (canResize)
+                  Align(
+                    alignment: align,
+                    child: SizedBox(
+                      width: targetWidth,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '${(fraction * 100).round()}% · drag handle to resize',
+                          style: uiTextStyle(size: 10, color: colors.muted),
+                          textAlign: switch (block.align) {
+                            BlockAlign.left => TextAlign.left,
+                            BlockAlign.center => TextAlign.center,
+                            BlockAlign.right => TextAlign.right,
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1977,6 +2138,66 @@ class _Swatches extends StatelessWidget {
           },
           child: Text('none', style: uiTextStyle(size: 11, color: ds.muted)),
         ),
+      ],
+    );
+  }
+}
+
+class _ImageWidthPresets extends StatelessWidget {
+  const _ImageWidthPresets({required this.current, required this.onPick});
+
+  final double? current;
+  final void Function(double? fraction) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final ds = context.ds;
+    const presets = [
+      (0.25, 'S'),
+      (0.5, 'M'),
+      (0.75, 'L'),
+      (null, 'Full'),
+    ];
+    bool isSelected(double? preset) {
+      if (preset == null) return current == null;
+      if (current == null) return false;
+      return (current! - preset).abs() < 0.01;
+    }
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 68,
+          child: Text('Width', style: uiTextStyle(size: 13, color: ds.text)),
+        ),
+        for (final (value, label) in presets)
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).pop();
+              onPick(value);
+            },
+            child: Container(
+              width: 32,
+              height: 22,
+              margin: const EdgeInsets.only(right: 6),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isSelected(value) ? ds.selection : Colors.transparent,
+                border: Border.all(
+                  color: isSelected(value) ? ds.text : ds.border,
+                ),
+                borderRadius: const BorderRadius.all(DsRadius.control),
+              ),
+              child: Text(
+                label,
+                style: uiTextStyle(
+                  size: 11,
+                  weight: isSelected(value) ? 600 : 400,
+                  color: ds.text,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

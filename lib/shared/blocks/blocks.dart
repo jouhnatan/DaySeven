@@ -725,12 +725,33 @@ class FootnoteBlock extends TextBlock {
   );
 }
 
+/// Realistic limits for scalable images.
+const double kImageMinFraction = 0.15;
+const double kImageMaxFraction = 1.0;
+const double kImageMinWidth = 120;
+const double kImageMaxHeight = 520;
+
+/// Maximum file size for an imported image asset (10 MB).
+const int kMaxImageBytes = 10 * 1024 * 1024;
+
+/// Maximum image dimension (width or height) in pixels.
+const int kMaxImageDimension = 6000;
+
+double? _normalizeFraction(double? v) {
+  if (v == null) return null;
+  if (!v.isFinite) return null;
+  final c = v.clamp(kImageMinFraction, kImageMaxFraction).toDouble();
+  // Two decimals keep JSON/Markdown byte-stable and hash-stable.
+  return double.parse(c.toStringAsFixed(2));
+}
+
 class ImageBlock extends Block {
   const ImageBlock({
     required super.id,
     this.assetId = '',
     this.url,
     this.caption = '',
+    this.widthFraction,
     super.align,
     super.spaceBefore,
   });
@@ -745,8 +766,15 @@ class ImageBlock extends Block {
 
   final String caption;
 
+  /// Fraction of the editor content width (0.15–1.0). Null means natural/full
+  /// width — the historical default, so old documents keep rendering.
+  final double? widthFraction;
+
   /// True when the image is not stored in the Knowledge Base.
   bool get isExternal => url != null;
+
+  /// Effective fraction used for layout. Null maps to 1.0.
+  double get effectiveFraction => widthFraction ?? 1.0;
 
   @override
   String get plainText => caption;
@@ -759,6 +787,8 @@ class ImageBlock extends Block {
     String? assetId,
     String? url,
     String? caption,
+    double? widthFraction,
+    bool clearWidthFraction = false,
     BlockAlign? align,
     double? spaceBefore,
   }) => ImageBlock(
@@ -766,6 +796,9 @@ class ImageBlock extends Block {
     assetId: assetId ?? this.assetId,
     url: url ?? this.url,
     caption: caption ?? this.caption,
+    widthFraction: clearWidthFraction
+        ? null
+        : (widthFraction ?? this.widthFraction),
     align: align ?? this.align,
     spaceBefore: spaceBefore ?? this.spaceBefore,
   );
@@ -777,6 +810,7 @@ class ImageBlock extends Block {
     'assetId': assetId,
     if (url != null) 'url': url,
     if (caption.isNotEmpty) 'caption': caption,
+    if (widthFraction != null) 'widthFraction': widthFraction,
   };
 
   static ImageBlock fromJson(Map<String, Object?> json) => ImageBlock(
@@ -784,6 +818,9 @@ class ImageBlock extends Block {
     assetId: json['assetId'] as String? ?? '',
     url: json['url'] as String?,
     caption: json['caption'] as String? ?? '',
+    widthFraction: _normalizeFraction(
+      (json['widthFraction'] as num?)?.toDouble(),
+    ),
     align: _alignFrom(json['align']),
     spaceBefore: (json['spaceBefore'] as num?)?.toDouble() ?? 0,
   );

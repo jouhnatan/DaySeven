@@ -589,6 +589,28 @@ class KnowledgeBase {
   String assetPathFor(String assetId) => p.join(assetsPath, assetId);
 
   Future<String> importAsset(File source) async {
+    final length = await source.length();
+    if (length > kMaxImageBytes) {
+      throw const KbException(
+        'That image is too large (max 10 MB). Choose a smaller file.',
+      );
+    }
+    if (length == 0) {
+      throw const KbException('That image file is empty.');
+    }
+    final allowed = {
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.webp',
+      '.tiff',
+      '.tif',
+    };
+    final ext = p.extension(source.path).toLowerCase();
+    if (ext.isNotEmpty && !allowed.contains(ext)) {
+      throw KbException('Unsupported image type "$ext".');
+    }
     final assetId = '${newId()}${p.extension(source.path)}';
     await Directory(assetsPath).create(recursive: true);
     await source.copy(p.join(assetsPath, assetId));

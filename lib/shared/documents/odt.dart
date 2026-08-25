@@ -555,6 +555,12 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
                   case final ImageBlock block:
                     final href = images[block.assetId];
                     if (href != null) {
+                      final fraction = (block.widthFraction ?? 1.0).clamp(
+                        kImageMinFraction,
+                        kImageMaxFraction,
+                      );
+                      final widthCm = (12 * fraction).toStringAsFixed(2);
+                      final heightCm = (9 * fraction).toStringAsFixed(2);
                       builder.element(
                         'text:p',
                         nest: () {
@@ -566,8 +572,8 @@ String _contentXml(BlockDocument document, Map<String, String> images) {
                             'draw:frame',
                             nest: () {
                               builder.attribute('draw:name', p.basename(href));
-                              builder.attribute('svg:width', '12cm');
-                              builder.attribute('svg:height', '9cm');
+                              builder.attribute('svg:width', '${widthCm}cm');
+                              builder.attribute('svg:height', '${heightCm}cm');
                               builder.element(
                                 'draw:image',
                                 nest: () {
