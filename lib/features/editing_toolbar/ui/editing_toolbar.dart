@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/alignment_controls.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/bold_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/controls/divider_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/heading_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/image_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/italic_control.dart';
@@ -57,6 +58,8 @@ class EditingToolbar extends ConsumerWidget {
           ),
           const SizedBox(width: DsSpace.controlGap),
           AlignmentControls(align: focus.align, onPick: notifier.setAlign),
+          const SizedBox(width: DsSpace.controlGap),
+          DividerControl(onPressed: notifier.insertDivider),
           const SizedBox(width: DsSpace.controlGap),
           ImageControl(onPressed: notifier.insertImage),
         ],

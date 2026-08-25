@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dayseven/app/app_store.dart';
+import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -10,6 +11,7 @@ import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -680,5 +682,115 @@ void main() {
       expect(block, isA<ParagraphBlock>());
       expect(block.plainText, 'a # b');
     });
+  });
+
+  testWidgets('an image caption keeps typed order and its caret', (
+    tester,
+  ) async {
+    final (container, kb, path) = await openEditor(
+      tester,
+      temp,
+      seed: BlockDocument(
+        id: 'doc-1',
+        title: 'Aldenmoor',
+        blocks: [ImageBlock(id: 'img-1', assetId: 'gate.png')],
+      ),
+    );
+
+    Finder captionField() => find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.hintText == 'Caption',
+    );
+
+    final before = tester.widget<TextField>(captionField()).controller;
+    await tester.enterText(captionField(), 'Testing');
+    await tester.pump();
+
+    final after = tester.widget<TextField>(captionField()).controller;
+    expect(
+      identical(before, after),
+      isTrue,
+      reason: 'a field rebuilt per keystroke resets its caret to the start, '
+          'so typed characters prepend themselves ("gnitseT")',
+    );
+    expect(after!.selection.baseOffset, 'Testing'.length);
+    expect(
+      container
+          .read(documentControllerProvider)!
+          .document
+          .blocks
+          .single
+          .plainText,
+      'Testing',
+    );
+
+    late BlockDocument onDisk;
+    await tester.runAsync(() async {
+      await container.read(documentControllerProvider.notifier).flush();
+      onDisk = await kb.readDocument(path);
+    });
+    expect(onDisk.blocks.single.plainText, 'Testing');
+  });
+
+  testWidgets('insertDivider drops a horizontal rule after the focused block', (
+    tester,
+  ) async {
+    final (container, _, _) = await openEditor(
+      tester,
+      temp,
+      seed: seedWith('Fog sits low.'),
+    );
+
+    await tester.tap(find.text('Fog sits low.'));
+    await tester.pump();
+    container.read(editingFocusProvider.notifier).insertDivider();
+    await tester.pumpAndSettle();
+
+    final blocks = container.read(documentControllerProvider)!.document.blocks;
+    expect(blocks[0].plainText, 'Fog sits low.');
+    expect(blocks[1], isA<DividerBlock>());
+
+    await tester.runAsync(
+      () => container.read(documentControllerProvider.notifier).flush(),
+    );
+  });
+
+  testWidgets('hovering a block reveals an ellipsis whose menu deletes it', (
+    tester,
+  ) async {
+    final (container, _, _) = await openEditor(
+      tester,
+      temp,
+      seed: BlockDocument(
+        id: 'doc-1',
+        title: 'Aldenmoor',
+        blocks: [
+          ParagraphBlock(id: 'b1', spans: [const TextSpanNode(text: 'First.')]),
+          // An image keeps the menu short enough that every entry is on
+          // screen without scrolling, and exercises Delete image itself.
+          ImageBlock(id: 'img-1', assetId: 'gate.png'),
+        ],
+      ),
+    );
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+    await gesture.moveTo(tester.getCenter(find.text('Image missing')));
+    await tester.pump();
+
+    expect(find.byKey(const Key('block-hover-grip')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('block-hover-grip')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete image'));
+    await tester.pumpAndSettle();
+
+    final blocks = container.read(documentControllerProvider)!.document.blocks;
+    expect(blocks, hasLength(1));
+    expect(blocks.single.id, 'b1');
+
+    await tester.runAsync(
+      () => container.read(documentControllerProvider.notifier).flush(),
+    );
   });
 }

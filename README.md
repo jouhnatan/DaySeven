@@ -229,9 +229,16 @@ Knowledge Base and inviting someone to it sit in the Knowledge Base dropdown,
 since they belong to the Knowledge Base rather than to the account.
 
 Formatting comes from the toolbar in the bottom bar — headings, bold, italic,
-strikethrough, underline and the three alignments — from keyboard shortcuts
-(⌘/Ctrl+B, I, U, ⇧⌘X), and from a context menu on a block for the rest: colour,
-highlight, font, spacing, block kind, images, tables, footnotes and export.
+strikethrough, underline, the three alignments, a horizontal-rule button and
+image insertion — from keyboard shortcuts (⌘/Ctrl+B, I, U, ⇧⌘X), and from a
+context menu on a block for the rest: colour, highlight, font, spacing, block
+kind, images, tables, footnotes and export.
+
+Hovering a block in the editor reveals a small ellipsis at its right edge; it
+opens the same context menu, whose delete entry removes that block and
+everything in it — including images, caption and all. Image captions are an
+ordinary field under the picture: type and it saves with the caret where you
+left it.
 
 Typing `## `, `- `, `1. ` or `> ` at the head of a paragraph turns it into that
 kind of block. It fires only as the space is typed, so a pasted line stays

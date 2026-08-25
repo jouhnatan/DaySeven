@@ -333,6 +333,24 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     unawaited(_insertImageAtEnd());
   }
 
+  @override
+  void insertDivider() {
+    if (widget.readOnly) return;
+    final divider = DividerBlock(id: newId());
+    final focus = ref.read(editingFocusProvider);
+    final afterId = focus?.blockId;
+    if (afterId != null &&
+        _document.blocks.any((block) => block.id == afterId)) {
+      _insertAfter(afterId, divider);
+      return;
+    }
+    if (_document.blocks.isNotEmpty) {
+      _insertAfter(_document.blocks.last.id, divider);
+      return;
+    }
+    _commit(_document.copyWith(blocks: [divider]));
+  }
+
   /// An ordered item's number, counted from the start of the run it belongs
   /// to, so inserting a line renumbers the ones below it.
   int _ordinalOf(ListItemBlock item) {
@@ -684,6 +702,17 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     _commit(_document.copyWith(blocks: blocks));
   }
 
+  /// Removes one block and everything in it. Asset files stay on disk; only
+  /// the document's reference to them goes.
+  void _deleteBlock(String blockId) {
+    final index = _document.blocks.indexWhere((b) => b.id == blockId);
+    if (index < 0) return;
+    final blocks = [..._document.blocks]..removeAt(index);
+    _controllers.remove(blockId)?.dispose();
+    _focusNodes.remove(blockId)?.dispose();
+    _commit(_document.copyWith(blocks: blocks));
+  }
+
   Future<void> _insertImage(String afterBlockId) async {
     final session = ref.read(kbSessionProvider);
     if (session == null) return;
@@ -826,7 +855,10 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
               absorbing: widget.readOnly,
               child: Padding(
                 padding: EdgeInsets.only(top: block.spaceBefore),
-                child: switch (block) {
+                child: _BlockHoverGrip(
+                  enabled: !widget.readOnly,
+                  onMenu: (position) => _showBlockMenu(position, block),
+                  child: switch (block) {
                   // Headings differ from paragraphs only in the style the text
                   // sits on, so both use the same view and the same controller.
                   final TextBlock t => _TextBlockView(
@@ -899,7 +931,8 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
                 },
               ),
             ),
-          const SizedBox(height: 24),
+          ),
+        const SizedBox(height: 24),
           AbsorbPointer(
             absorbing: widget.readOnly,
             child: Padding(
@@ -1125,10 +1158,88 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
         const DsMenuDivider(),
         item('Export as .docx…', () => _export(DocumentFormat.docx)),
         item('Export as .odt…', () => _export(DocumentFormat.odt)),
+        const DsMenuDivider(),
+        item(
+          block is ImageBlock ? 'Delete image' : 'Delete block',
+          () => _deleteBlock(block.id),
+        ),
       ],
     );
 
     action?.call();
+  }
+}
+
+/// Reveals an ellipsis at a block's right edge while the pointer is over it.
+/// The button opens the block menu without touching the text selection — it
+/// is a GestureDetector, never a Material button, for the same reason
+/// [DsButton] is one.
+class _BlockHoverGrip extends StatefulWidget {
+  const _BlockHoverGrip({
+    required this.child,
+    required this.onMenu,
+    required this.enabled,
+  });
+
+  final Widget child;
+  final void Function(Offset position) onMenu;
+  final bool enabled;
+
+  @override
+  State<_BlockHoverGrip> createState() => _BlockHoverGripState();
+}
+
+class _BlockHoverGripState extends State<_BlockHoverGrip> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    return MouseRegion(
+      onEnter: (_) {
+        if (widget.enabled && !_hovered) setState(() => _hovered = true);
+      },
+      onExit: (_) {
+        if (_hovered) setState(() => _hovered = false);
+      },
+      child: Stack(
+        children: [
+          widget.child,
+          if (widget.enabled && _hovered)
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (details) => widget.onMenu(details.globalPosition),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Container(
+                      key: const Key('block-hover-grip'),
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: colors.island,
+                        border: Border.fromBorderSide(
+                          BorderSide(color: colors.surfaceOutline),
+                        ),
+                        borderRadius: const BorderRadius.all(DsRadius.row),
+                      ),
+                      child: Icon(
+                        Icons.more_horiz,
+                        size: 14,
+                        color: colors.muted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1396,7 +1507,7 @@ class _FormatIntent extends Intent {
   final EditingFormat format;
 }
 
-class _ImageView extends ConsumerWidget {
+class _ImageView extends ConsumerStatefulWidget {
   const _ImageView({
     required this.block,
     required this.onCaptionChanged,
@@ -1408,8 +1519,42 @@ class _ImageView extends ConsumerWidget {
   final void Function(Offset position) onMenu;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ImageView> createState() => _ImageViewState();
+}
+
+class _ImageViewState extends ConsumerState<_ImageView> {
+  // One controller for the life of this view. A fresh controller per build
+  // would reset the caret to the start on every keystroke (the editor rebuilds
+  // as the caption commits), so typed characters would prepend themselves.
+  late final TextEditingController _caption = TextEditingController(
+    text: widget.block.caption,
+  );
+  final FocusNode _captionFocus = FocusNode();
+
+  @override
+  void didUpdateWidget(_ImageView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Outside changes — undo, a merge — reach the field only while it is not
+    // being edited; otherwise the caret would jump mid-keystroke.
+    if (!_captionFocus.hasFocus && _caption.text != widget.block.caption) {
+      _caption.value = TextEditingValue(
+        text: widget.block.caption,
+        selection: TextSelection.collapsed(offset: widget.block.caption.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _caption.dispose();
+    _captionFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final colors = context.ds;
+    final block = widget.block;
     final session = ref.watch(kbSessionProvider);
     if (session == null) return const SizedBox.shrink();
 
@@ -1423,7 +1568,7 @@ class _ImageView extends ConsumerWidget {
     };
 
     return GestureDetector(
-      onSecondaryTapUp: (details) => onMenu(details.globalPosition),
+      onSecondaryTapUp: (details) => widget.onMenu(details.globalPosition),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
@@ -1476,8 +1621,9 @@ class _ImageView extends ConsumerWidget {
             ),
             const SizedBox(height: 6),
             TextField(
-              controller: TextEditingController(text: block.caption),
-              onChanged: onCaptionChanged,
+              controller: _caption,
+              focusNode: _captionFocus,
+              onChanged: widget.onCaptionChanged,
               textAlign: switch (block.align) {
                 BlockAlign.left => TextAlign.left,
                 BlockAlign.center => TextAlign.center,

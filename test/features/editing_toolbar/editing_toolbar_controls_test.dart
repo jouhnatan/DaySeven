@@ -1,5 +1,6 @@
 import 'package:dayseven/features/editing_toolbar/ui/controls/alignment_controls.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/bold_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/controls/divider_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/heading_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/italic_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/strikethrough_control.dart';
@@ -123,5 +124,27 @@ void main() {
     await tester.tap(find.text('Body text'));
     await tester.pumpAndSettle();
     expect(sentinel, 0);
+  });
+
+  testWidgets('divider module owns its icon, label, and callback', (
+    tester,
+  ) async {
+    var pressed = false;
+    await tester.pumpWidget(app(DividerControl(onPressed: () => pressed = true)));
+
+    expect(find.byIcon(Icons.horizontal_rule), findsOneWidget);
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.ancestor(
+              of: find.byIcon(Icons.horizontal_rule),
+              matching: find.byType(Tooltip),
+            ),
+          )
+          .message,
+      'Insert divider',
+    );
+    await tester.tap(find.byIcon(Icons.horizontal_rule));
+    expect(pressed, isTrue);
   });
 }

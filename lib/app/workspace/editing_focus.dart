@@ -73,6 +73,7 @@ abstract class EditingSurface {
   void setHeadingLevel(int? level);
 
   void insertImage();
+  void insertDivider();
 }
 
 class EditingFocusController extends StateNotifier<EditingFocus?> {
@@ -106,6 +107,7 @@ class EditingFocusController extends StateNotifier<EditingFocus?> {
   void setAlign(BlockAlign align) => _surface?.setAlign(align);
   void setHeadingLevel(int? level) => _surface?.setHeadingLevel(level);
   void insertImage() => _surface?.insertImage();
+  void insertDivider() => _surface?.insertDivider();
 }
 
 final editingFocusProvider =
