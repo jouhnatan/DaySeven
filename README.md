@@ -252,12 +252,14 @@ server-authored.
 - **Top** — a persistent search bar over the Knowledge Base's local FTS5 index,
   matching as you type.
 - **Right** — a Geist Pixel *Knowledge Base* heading, a rounded control naming
-  the open folder, and a separate hierarchy island beneath it. The tree shows
-  folder and document icons, and a line running down from each folder that
-  turns in to meet its children. A plus button at the right of every editable
-  folder creates and opens an Untitled document inside it. Drag a document or
-  folder onto another folder to move it, or onto the panel background to bring
-  it back out to the top level; the file is renamed on disk, not copied.
+  the open folder, a manual Sync button that pulls before publishing or
+  proposing local changes, and a separate hierarchy island beneath it. The
+  tree shows folder and document icons, and a line running down from each
+  folder that turns in to meet its children. A plus button at the right of
+  every editable folder creates and opens an Untitled document inside it. Drag
+  a document or folder onto another folder to move it, or onto the panel
+  background to bring it back out to the top level; the file is renamed on
+  disk, not copied.
   Right-click a document to rename it, or edit its title in the editor and
   press Enter or click away; the Markdown filename is the canonical title
   everywhere. Right-click any item to delete it after a permanent-deletion
@@ -268,8 +270,8 @@ server-authored.
   sessions.
 - **Bottom** — an editor-width toolbar island with extra vertical breathing
   room. Formatting controls stay as individual buttons; an ellipsis menu holds
-  the open-document *Differences* shortcut and *Publish directly* for Owners
-  and Co-Owners. The reviewed-edit save state remains visible beside it, and
+  the open-document *Differences* shortcut. The reviewed-edit save state and
+  explicit publish and protection controls remain visible beside it, and
   beside that, anyone else in the open document.
 - **Top right** — one rounded button: "Sign in" when signed out, your display
   name when signed in, opening a short menu to change that name or sign out.

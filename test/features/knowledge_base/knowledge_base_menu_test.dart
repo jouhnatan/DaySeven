@@ -7,9 +7,14 @@ import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
+import 'package:dayseven/shared/backend/asset_repository.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
+import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/shared/notifications/notification.dart';
+import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:flutter/gestures.dart';
@@ -34,6 +39,66 @@ class _DocumentRepositoryStub extends DocumentRepository {
 
   @override
   Future<List<Map<String, Object?>>> documentsIn(String kbId) async => rows;
+}
+
+class _SyncAssetRepository extends AssetRepository {
+  @override
+  Future<void> uploadReferenced({
+    required KnowledgeBase kb,
+    required BlockDocument document,
+  }) async {}
+
+  @override
+  Future<void> downloadMissing({
+    required KnowledgeBase kb,
+    required BlockDocument document,
+  }) async {}
+}
+
+class _SyncDocumentRepository extends DocumentRepository {
+  _SyncDocumentRepository({
+    this.snapshots = const [],
+    this.snapshotError,
+    this.proposeChanges = false,
+  });
+
+  List<RemoteDocumentSnapshot> snapshots;
+  final Object? snapshotError;
+  final bool proposeChanges;
+  int publishCalls = 0;
+
+  @override
+  Future<List<RemoteDocumentSnapshot>> snapshot(String kbId) async {
+    final error = snapshotError;
+    if (error != null) throw error;
+    return snapshots;
+  }
+
+  @override
+  Future<DocumentPublishReceipt> publishChange({
+    required String kbId,
+    required String relativePath,
+    required BlockDocument document,
+    required String? expectedCurrentRevisionId,
+  }) async {
+    publishCalls++;
+    if (proposeChanges) {
+      return DocumentPublishReceipt.proposed('proposal-$publishCalls');
+    }
+    final published = RemoteDocumentSnapshot(
+      path: relativePath,
+      revisionId: 'published-$publishCalls',
+      document: document,
+    );
+    snapshots = [
+      ...snapshots.where((item) => item.document.id != document.id),
+      published,
+    ];
+    return DocumentPublishReceipt.published(published.revisionId);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> documentsIn(String kbId) async => const [];
 }
 
 void main() {
@@ -81,6 +146,59 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
     if (await support.exists()) await support.delete(recursive: true);
   });
+
+  Future<_SyncDocumentRepository> useSharedRole(
+    KbRole role, {
+    List<RemoteDocumentSnapshot> snapshots = const [],
+    Object? snapshotError,
+    bool proposeChanges = false,
+  }) async {
+    container.dispose();
+    final documents = _SyncDocumentRepository(
+      snapshots: snapshots,
+      snapshotError: snapshotError,
+      proposeChanges: proposeChanges,
+    );
+    container = ProviderContainer(
+      overrides: [
+        currentUserProvider.overrideWithValue(_signedInUser()),
+        kbRoleProvider.overrideWith((ref) async => role),
+        recentKbPathsProvider.overrideWith((ref) async => const []),
+        documentRepositoryProvider.overrideWithValue(documents),
+        assetRepositoryProvider.overrideWithValue(_SyncAssetRepository()),
+      ],
+    );
+    await container.read(kbControllerProvider.notifier).openFolder(temp.path);
+    return documents;
+  }
+
+  Future<void> pumpMenu(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(500, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(Brightness.dark),
+          home: const Scaffold(body: KnowledgeBaseMenu()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> runSync(WidgetTester tester) async {
+    final button = tester.widget<DsButton>(
+      find.byKey(const Key('knowledge-base-sync-button')),
+    );
+    expect(button.onPressed, isNotNull);
+    await tester.runAsync(() async {
+      final dynamic invoke = button.onPressed!;
+      await invoke();
+    });
+    await tester.pumpAndSettle();
+  }
 
   testWidgets('shows a transparent header above folder and hierarchy islands', (
     tester,
@@ -133,11 +251,120 @@ void main() {
     final settings = tester.getRect(
       find.byKey(const Key('knowledge-base-settings-button')),
     );
+    final sync = tester.getRect(
+      find.byKey(const Key('knowledge-base-sync-button')),
+    );
     expect(access.left, hierarchy.left);
     expect(access.right, hierarchy.right);
     expect(active.width, lessThan(hierarchy.width));
-    expect(active.right, lessThan(settings.left));
+    expect(active.right, lessThan(sync.left));
+    expect(sync.right, lessThan(settings.left));
     expect(active.height, settings.height);
+    expect(sync.height, settings.height);
+    expect(find.byTooltip('Sync Knowledge Base'), findsOneWidget);
+    expect(find.byIcon(Icons.sync), findsOneWidget);
+    expect(
+      tester
+          .widget<DsButton>(find.byKey(const Key('knowledge-base-sync-button')))
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('Sync pulls first and publishes local changes for an owner', (
+    tester,
+  ) async {
+    final documents = (await tester.runAsync(
+      () => useSharedRole(KbRole.owner),
+    ))!;
+    await pumpMenu(tester);
+
+    await runSync(tester);
+
+    expect(documents.publishCalls, 1);
+    final notification = container.read(notificationStoreProvider).single;
+    expect(notification.kind, DsNotificationKind.sync);
+    expect(notification.message, '0 pulled · 1 published');
+    expect(
+      tester
+          .widget<DsButton>(find.byKey(const Key('knowledge-base-sync-button')))
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('Sync only pulls canonical changes for a reviewer', (
+    tester,
+  ) async {
+    final remote = BlockDocument(
+      id: 'remote-lore',
+      title: 'Lore',
+      blocks: const [
+        ParagraphBlock(
+          id: 'lore-body',
+          spans: [TextSpanNode(text: 'Canonical lore.')],
+        ),
+      ],
+    );
+    final documents = (await tester.runAsync(
+      () => useSharedRole(
+        KbRole.reviewer,
+        snapshots: [
+          RemoteDocumentSnapshot(
+            path: 'Lore.md',
+            revisionId: 'remote-1',
+            document: remote,
+          ),
+        ],
+      ),
+    ))!;
+    await pumpMenu(tester);
+
+    await runSync(tester);
+
+    expect(documents.publishCalls, 0);
+    expect(File(kb.absolutePathFor('Lore.md')).existsSync(), isTrue);
+    final notification = container.read(notificationStoreProvider).single;
+    expect(notification.kind, DsNotificationKind.sync);
+    expect(notification.message, '1 pulled');
+  });
+
+  testWidgets('Sync submits an editor local change for review', (tester) async {
+    final documents = (await tester.runAsync(
+      () => useSharedRole(KbRole.editor, proposeChanges: true),
+    ))!;
+    await pumpMenu(tester);
+
+    await runSync(tester);
+
+    expect(documents.publishCalls, 1);
+    final notification = container.read(notificationStoreProvider).single;
+    expect(notification.kind, DsNotificationKind.sync);
+    expect(notification.message, '0 pulled · 0 published · 1 proposed');
+  });
+
+  testWidgets('a failed Sync reports the error and re-enables the button', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => useSharedRole(
+        KbRole.owner,
+        snapshotError: const SyncException('Network unavailable.'),
+      ),
+    );
+    await pumpMenu(tester);
+
+    await runSync(tester);
+
+    final notification = container.read(notificationStoreProvider).single;
+    expect(notification.kind, DsNotificationKind.error);
+    expect(notification.message, 'Network unavailable.');
+    expect(
+      tester
+          .widget<DsButton>(find.byKey(const Key('knowledge-base-sync-button')))
+          .onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('marks protected documents with a shield in the hierarchy', (
@@ -265,6 +492,7 @@ void main() {
 
     expect(find.text('Knowledge Base'), findsOneWidget);
     expect(find.text('Open a folder…'), findsOneWidget);
+    expect(find.byTooltip('Sync Knowledge Base'), findsNothing);
     expect(find.byTooltip('Knowledge Base settings'), findsNothing);
     expect(find.byType(DsIsland), findsNothing);
   });

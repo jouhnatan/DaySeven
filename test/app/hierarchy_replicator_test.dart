@@ -129,7 +129,7 @@ void main() {
       final containerB = await makeContainer(kbB, indexB, fakeDocs);
       addTearDown(containerB.dispose);
 
-      // Pull via replicator – this is what Share->Sync latest does
+      // Pull via replicator – this is what the Knowledge Base Sync button does.
       final replicator = containerB.read(kbHierarchyReplicatorProvider);
       final pull = await replicator.ensureLocalMatchesRemote();
 

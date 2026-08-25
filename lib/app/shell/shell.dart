@@ -23,8 +23,6 @@ import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
 import 'package:dayseven/features/gradient_background/ui/gradient_background.dart';
 import 'package:dayseven/features/hamburger_menu/ui/hamburger_menu_button.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
-import 'package:dayseven/shared/notifications/notification.dart';
-import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -506,7 +504,7 @@ class _BottomBarFootprint extends StatelessWidget {
   }
 }
 
-enum _EditorToolbarMenuAction { syncLatest, differences }
+enum _EditorToolbarMenuAction { differences }
 
 /// Overflow actions for the active document.
 ///
@@ -518,25 +516,12 @@ class EditorToolbarMenuButton extends ConsumerWidget {
   Future<void> _show(
     BuildContext context, {
     required VoidCallback? openDifferences,
-    required Future<void> Function()? syncLatest,
     required bool hasPendingProposal,
   }) async {
     final colors = context.ds;
     final choice = await showDsMenu<_EditorToolbarMenuAction>(
       context: context,
       items: [
-        DsMenuItem<_EditorToolbarMenuAction>(
-          value: _EditorToolbarMenuAction.syncLatest,
-          enabled: syncLatest != null,
-          child: Text(
-            'Sync latest',
-            style: uiTextStyle(
-              size: 13,
-              color: syncLatest == null ? colors.muted : colors.text,
-            ),
-          ),
-        ),
-        const DsMenuDivider(),
         DsMenuItem<_EditorToolbarMenuAction>(
           key: const Key('editor-menu-differences'),
           value: _EditorToolbarMenuAction.differences,
@@ -579,8 +564,6 @@ class EditorToolbarMenuButton extends ConsumerWidget {
     if (!context.mounted) return;
     if (choice == _EditorToolbarMenuAction.differences) {
       openDifferences?.call();
-    } else if (choice == _EditorToolbarMenuAction.syncLatest) {
-      await syncLatest?.call();
     }
   }
 
@@ -598,28 +581,6 @@ class EditorToolbarMenuButton extends ConsumerWidget {
         mayReview && open != null && documentProposals.isNotEmpty
         ? () => openDifferencesForDocument(context, ref, open.document.id)
         : null;
-    final canSync =
-        role != null && role != KbRole.local && role != KbRole.invited;
-
-    Future<void> syncLatest() async {
-      final notifications = ref.read(notificationStoreProvider.notifier);
-      try {
-        final result = await ref
-            .read(sharingControllerProvider)
-            .pullRemoteChanges();
-        final parts = <String>[
-          '${result.updated} updated',
-          '${result.recoveredDeletions} recovered deletion(s)',
-        ];
-        if (result.conflicts > 0) {
-          parts.add('${result.conflicts} local conflict(s) left untouched');
-        }
-        notifications.record(DsNotificationKind.sync, parts.join(' · '));
-      } catch (error) {
-        notifications.record(DsNotificationKind.error, '$error');
-      }
-    }
-
     return Tooltip(
       message: 'Editor menu',
       child: SizedBox.square(
@@ -631,7 +592,6 @@ class EditorToolbarMenuButton extends ConsumerWidget {
           onPressed: () => _show(
             context,
             openDifferences: openDifferences,
-            syncLatest: canSync ? syncLatest : null,
             hasPendingProposal: documentProposals.isNotEmpty,
           ),
           child: Stack(

@@ -31,6 +31,7 @@ import 'package:dayseven/shared/notifications/notification.dart';
 import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/features/knowledge_base/ui/invite_dialog.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
+import 'package:dayseven/features/knowledge_base/ui/knowledge_base_sync_button.dart';
 import 'package:dayseven/features/knowledge_base/ui/name_prompt.dart';
 
 class KnowledgeBaseMenu extends ConsumerWidget {
@@ -53,6 +54,8 @@ class KnowledgeBaseMenu extends ConsumerWidget {
             children: [
               const Expanded(child: _KbDropdown()),
               if (session != null) ...[
+                const SizedBox(width: DsSpace.islandGap),
+                const KnowledgeBaseSyncButton(),
                 const SizedBox(width: DsSpace.islandGap),
                 const KnowledgeBaseSettingsButton(),
               ],

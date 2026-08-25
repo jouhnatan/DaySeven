@@ -4,7 +4,7 @@
 /// The app historically assumed both collaborators already had identical
 /// copies and only exchanged single-document publishes/proposals. Creating
 /// `Awayside/Untitled.md` locally therefore never appeared on a peer that
-/// had no `Awayside` folder until that peer ran `Sync latest` and the
+/// had no `Awayside` folder until that peer ran Sync and the
 /// ledger + path conflict checks allowed the write. This replicator is the
 /// explicit, testable place that ensures missing hierarchy and file data are
 /// created when absent and kept in sync otherwise.
@@ -32,9 +32,8 @@ import 'package:dayseven/shared/kb/bundle.dart';
 
 /// Keeps a local folder hierarchy and its document contents in sync with the
 /// canonical store. Single-document `publishOpenDocument` stays the explicit
-/// user action; this class is the bulk, idempotent reconciler that a manual
-/// `Sync latest` or a Realtime wake-up can call to replicate any missing
-/// hierarchy and data.
+/// document action; this class is the bulk, idempotent reconciler that manual
+/// Knowledge Base Sync can call to replicate missing hierarchy and data.
 ///
 /// Behaviour matches `SharingController.pullRemoteChanges` / `pushLocalChanges`
 /// but is extracted so it can be unit-tested and reused. In particular:
@@ -60,12 +59,18 @@ class KbHierarchyReplicator {
     KbSession? sessionOverride,
     DocumentRepository? documentsOverride,
     AssetRepository? assetsOverride,
+    KbRole? roleOverride,
   }) async {
     final session = sessionOverride ?? _ref.read(kbSessionProvider);
     if (session == null) {
       throw const SyncException('Open a Knowledge Base first.');
     }
-    final role = await _ref.read(kbRoleProvider.future);
+    final KbRole role;
+    if (roleOverride != null) {
+      role = roleOverride;
+    } else {
+      role = await _ref.read(kbRoleProvider.future);
+    }
     if (role == KbRole.local) {
       throw const SyncException('This Knowledge Base is not shared.');
     }
@@ -220,12 +225,18 @@ class KbHierarchyReplicator {
     KbSession? sessionOverride,
     DocumentRepository? documentsOverride,
     AssetRepository? assetsOverride,
+    KbRole? roleOverride,
   }) async {
     final session = sessionOverride ?? _ref.read(kbSessionProvider);
     if (session == null) {
       throw const SyncException('Open a Knowledge Base first.');
     }
-    final role = await _ref.read(kbRoleProvider.future);
+    final KbRole role;
+    if (roleOverride != null) {
+      role = roleOverride;
+    } else {
+      role = await _ref.read(kbRoleProvider.future);
+    }
     if (role.publishingRank == null) {
       throw const SyncException('Your role cannot publish local changes.');
     }
@@ -310,22 +321,25 @@ class KbHierarchyReplicator {
   }
 
   /// Bidirectional reconcile: first pulls missing remote hierarchy/data, then
-  /// pushes local hierarchy/data. Useful for manual "Sync latest" and for
-  /// Realtime wake-ups.
+  /// pushes local hierarchy/data. Used by the manual Knowledge Base Sync
+  /// control.
   Future<ReconcileResult> reconcile({
     KbSession? sessionOverride,
     DocumentRepository? documentsOverride,
     AssetRepository? assetsOverride,
   }) async {
+    final role = await _ref.read(kbRoleProvider.future);
     final pull = await ensureLocalMatchesRemote(
       sessionOverride: sessionOverride,
       documentsOverride: documentsOverride,
       assetsOverride: assetsOverride,
+      roleOverride: role,
     );
     final push = await ensureRemoteMatchesLocal(
       sessionOverride: sessionOverride,
       documentsOverride: documentsOverride,
       assetsOverride: assetsOverride,
+      roleOverride: role,
     );
     return ReconcileResult(pull: pull, push: push);
   }

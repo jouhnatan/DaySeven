@@ -96,8 +96,10 @@ class _DsSearchBarState extends ConsumerState<DsSearchBar> {
   }
 
   Future<void> _open(SearchHit hit) async {
-    await ref.read(documentControllerProvider.notifier).open(hit.relativePath);
-    ref.read(viewProvider.notifier).state = DsView.editor;
+    final documents = ref.read(documentControllerProvider.notifier);
+    final view = ref.read(viewProvider.notifier);
+    await documents.open(hit.relativePath);
+    view.state = DsView.editor;
   }
 
   @override

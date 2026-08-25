@@ -157,7 +157,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Publish directly'), findsNothing);
-    expect(find.text('Sync latest'), findsOneWidget);
+    expect(find.text('Sync latest'), findsNothing);
     expect(find.text('Differences'), findsNWidgets(2));
     expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
 

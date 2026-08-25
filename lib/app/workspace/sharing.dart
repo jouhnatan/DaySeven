@@ -177,7 +177,7 @@ final incomingCanonicalSyncProvider = Provider<void>((ref) {
         ref.invalidate(openDocumentPublishActionProvider);
         ref.invalidate(protectedDocumentsByPathProvider);
       } on Object {
-        // Manual Sync latest remains available and surfaces its error. A wake
+        // Manual Sync remains available and surfaces its error. A wake
         // signal must never replace durable state with an assumed empty value.
       }
     }());
@@ -270,7 +270,7 @@ class SharingController {
       }
     } finally {
       // Once accepted, keep the local bundle reachable even if a network
-      // interruption made the first download partial. Sync latest can resume.
+      // interruption made the first download partial. Manual Sync can resume.
       await _ref.read(kbControllerProvider.notifier).openFolder(folder);
       _ref.invalidate(kbInvitationsProvider);
       _ref.invalidate(kbRoleProvider);
@@ -349,8 +349,8 @@ class SharingController {
 
     if (current != null && synced == null) {
       final error = const SyncException(
-        'This device has no sync base for the canonical document. Sync latest '
-        'before publishing.',
+        'This device has no sync base for the canonical document. Sync the '
+        'Knowledge Base before publishing.',
       );
       _ref
           .read(differencesControllerProvider.notifier)
@@ -379,7 +379,8 @@ class SharingController {
         final base = await documents.revision(synced.revisionId);
         if (base == null) {
           throw const SyncException(
-            'The saved merge base is unavailable. Sync latest before publishing.',
+            'The saved merge base is unavailable. Sync the Knowledge Base '
+            'before publishing.',
           );
         }
         final merge = threeWayMerge(
@@ -715,14 +716,27 @@ class SharingController {
         .read(kbHierarchyReplicatorProvider)
         .ensureLocalMatchesRemote();
     _ref.invalidate(protectedDocumentsByPathProvider);
+    _ref.invalidate(openDocumentProtectionProvider);
+    _ref.invalidate(openDocumentPublishActionProvider);
     return result;
   }
 
   /// Bidirectional reconcile: first pulls missing hierarchy/data, then pushes
-  /// local changes. Used by manual "Sync latest" and Realtime wake-ups when a
+  /// local changes. Used by manual Sync when a
   /// full hierarchy sync is desired rather than a single-direction pull.
-  Future<ReconcileResult> reconcileHierarchy() =>
-      _ref.read(kbHierarchyReplicatorProvider).reconcile();
+  Future<ReconcileResult> reconcileHierarchy() async {
+    final session = _ref.read(kbSessionProvider);
+    if (session == null) {
+      throw const SyncException('Open a Knowledge Base first.');
+    }
+    final result = await _ref
+        .read(kbHierarchyReplicatorProvider)
+        .reconcile(sessionOverride: session);
+    _ref.invalidate(protectedDocumentsByPathProvider);
+    _ref.invalidate(openDocumentProtectionProvider);
+    _ref.invalidate(openDocumentPublishActionProvider);
+    return result;
+  }
 }
 
 enum SyncOutcome { committed, proposed, unchanged }
