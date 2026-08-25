@@ -13,6 +13,8 @@ import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/document_publish_controls.dart';
+import 'package:dayseven/app/workspace/document_presence_indicator.dart';
+import 'package:dayseven/app/workspace/presence.dart';
 import 'package:dayseven/app/shell/pane_visibility.dart';
 import 'package:dayseven/app/shell/pane_widths.dart';
 import 'package:dayseven/features/app_settings/ui/app_settings_dialog.dart';
@@ -44,6 +46,9 @@ class DsShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(incomingCanonicalSyncProvider);
+    // Held here rather than left to whichever widget happens to read a peer
+    // first, so the channel's lifetime is the shell's and not a panel's.
+    ref.watch(presenceControllerProvider.select((_) => null));
     final view = ref.watch(viewProvider);
     final pendingDifferencesCount = ref.watch(
       differencesStateProvider.select((state) => state.pendingCount),
@@ -460,6 +465,7 @@ class _EditingToolbarIsland extends StatelessWidget {
               ),
             ),
             const SizedBox(width: DsSpace.islandGap),
+            const DocumentPresenceIndicator(),
             const DocumentReviewSyncIndicator(),
             const SizedBox(width: DsSpace.controlGap),
             const DocumentPublishButton(),

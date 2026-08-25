@@ -14,6 +14,9 @@ import 'package:path/path.dart' as p;
 import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/presence.dart';
+import 'package:dayseven/shared/presence/peer_presence.dart';
+import 'package:dayseven/shared/ui/presence_dots.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
@@ -662,6 +665,12 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
         : ref
               .watch(protectedDocumentsByPathProvider)
               .valueOrNull?[node.relativePath];
+    // Who else is in this document right now. Keyed by path rather than by
+    // document id because that is what a row has, and because a path still
+    // matches when the two copies have drifted apart.
+    final peers = isFolder
+        ? const <PeerPresence>[]
+        : ref.watch(peersByPathProvider)[node.relativePath] ?? const [];
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -729,6 +738,13 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
                   ),
                 ),
               ),
+              if (peers.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                PresenceDots(
+                  key: ValueKey('presence-at-${node.relativePath}'),
+                  peers: peers,
+                ),
+              ],
               if (protection != null) ...[
                 const SizedBox(width: 6),
                 Tooltip(

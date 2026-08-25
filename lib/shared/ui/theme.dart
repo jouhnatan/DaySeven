@@ -131,6 +131,34 @@ class DsRadius {
   static const block = Radius.circular(5);
 }
 
+/// Collaborator colours.
+///
+/// One per person, picked by hashing their user id so that somebody is the
+/// same colour on both machines. Presence dots are small and sit on the island
+/// and the editor surface in both themes, so these are mid-tone hues that hold
+/// their identity against either without going neon.
+class DsPresence {
+  const DsPresence._();
+
+  static const palette = <Color>[
+    Color(0xFF4E8FCF), // blue
+    Color(0xFFC97B3C), // amber
+    Color(0xFF57A177), // green
+    Color(0xFFA972C4), // violet
+    Color(0xFFCB6A72), // rose
+    Color(0xFF3FA0A6), // teal
+  ];
+
+  /// The dot size in the tree and the toolbar.
+  static const dotSize = 14.0;
+
+  /// How far each dot in a stack overlaps the one before it.
+  static const dotOverlap = 4.0;
+
+  /// The width of the bar drawn beside a block a collaborator is in.
+  static const blockMarkerWidth = 2.0;
+}
+
 class DsSpace {
   /// The gap that separates the island from the editor.
   static const islandGap = 10.0;

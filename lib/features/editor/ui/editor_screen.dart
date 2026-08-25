@@ -20,6 +20,9 @@ import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/workspace/editing_keybinds.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/presence.dart';
+import 'package:dayseven/shared/presence/peer_presence.dart';
+import 'package:dayseven/shared/ui/presence_dots.dart';
 import 'package:dayseven/app/workspace/document_publish_controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/documents/documents.dart';
@@ -822,6 +825,9 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
+    // Read once here and passed down, rather than watched per block: a
+    // collaborator moving should repaint two blocks, not the whole document.
+    final peersByBlockId = ref.watch(peersByBlockProvider);
 
     return Focus(
       onKeyEvent: (node, event) => KeyEventResult.ignored,
@@ -857,6 +863,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
                 padding: EdgeInsets.only(top: block.spaceBefore),
                 child: _BlockHoverGrip(
                   enabled: !widget.readOnly,
+                  peers: peersByBlockId[block.id] ?? const [],
                   onMenu: (position) => _showBlockMenu(position, block),
                   child: switch (block) {
                   // Headings differ from paragraphs only in the style the text
@@ -1205,15 +1212,26 @@ class _BlockHoverGrip extends StatefulWidget {
     required this.child,
     required this.onMenu,
     required this.enabled,
+    this.peers = const [],
   });
 
   final Widget child;
   final void Function(Offset position) onMenu;
   final bool enabled;
 
+  /// Collaborators whose caret is in this block. Shown whether or not the
+  /// grip itself is enabled: a read-only view still wants to know who is
+  /// working where.
+  final List<PeerPresence> peers;
+
   @override
   State<_BlockHoverGrip> createState() => _BlockHoverGripState();
 }
+
+/// How far into the page margin the peer marker sits. The editor's own list
+/// padding is 48, so this leaves the marker clear of the text without
+/// reaching the pane edge.
+const double _peerMarkerInset = 34;
 
 class _BlockHoverGripState extends State<_BlockHoverGrip> {
   bool _hovered = false;
@@ -1229,8 +1247,43 @@ class _BlockHoverGripState extends State<_BlockHoverGrip> {
         if (_hovered) setState(() => _hovered = false);
       },
       child: Stack(
+        // The peer marker sits out in the page margin, the way it does in the
+        // editors this borrows from, so it never crowds the prose.
+        clipBehavior: Clip.none,
         children: [
           widget.child,
+          if (widget.peers.isNotEmpty)
+            Positioned(
+              left: -_peerMarkerInset,
+              top: 0,
+              bottom: 0,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.topLeft,
+                    child: PresenceDots(
+                      key: ValueKey('presence-in-block-${widget.peers.first.blockId}'),
+                      peers: widget.peers,
+                      maxVisible: 2,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  SizedBox(
+                    width: DsPresence.blockMarkerWidth,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: presenceColorFor(widget.peers.first.userId),
+                        borderRadius: const BorderRadius.all(
+                          Radius.circular(DsPresence.blockMarkerWidth),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (widget.enabled && _hovered)
             Positioned(
               right: 0,

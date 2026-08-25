@@ -61,6 +61,18 @@ so that every version anyone runs corresponds to a build that exists.
   a question the app could not actually answer is a lie.
 - **The install swap cannot be done by the process being replaced.** Both
   platforms write a detached script, hand off, and exit. Keep it that way.
+- **Clients may never gain `insert` on the `kb:%` Realtime topic.** That topic
+  is the notification bus, and everything on it is written by a database
+  trigger. A client able to insert there could forge a `document_published` or
+  `proposal_created` event and drive a collaborator's sync from nothing. Live
+  presence is the one thing clients send, which is exactly why it has its own
+  topic, `presence:<kbId>`, and why the `insert` policy is scoped to that
+  prefix alone. If you add another client-sent Realtime message, give it its
+  own topic too rather than widening this one.
+- **Presence must stay ephemeral and best-effort.** It writes no table, creates
+  no revision, and touches no ledger; its failures are swallowed into a health
+  value rather than surfaced. It is chrome. If it ever becomes something the
+  reviewed-edit path depends on, that is a bug.
 - **`public.app_releases` is the only table `anon` may read.** It must stay
   readable signed-out — the person most in need of an update is the one whose
   old build cannot sign in. Nothing client-side may write it; publishing goes

@@ -34,7 +34,7 @@ lib/
     app_store.dart Per-installation state: recents, pane widths
     shell/         The three-pane frame and resizable pane state
     workspace/     What is currently open: the Knowledge Base, the document,
-                   and the sharing that syncs them
+                   the sharing that syncs them, and who else is here
   features/      One folder per feature: ui/, plus state/, data/ or domain/
     auth/          The sign-in button
     editor/        The document editor and its rich-text controller
@@ -45,6 +45,7 @@ lib/
     views/         The left-side Home and Editor navigation menu
   shared/        Used by more than one feature; depends on no feature
     blocks/        Block model, revisions, the FTS5 search index — pure Dart
+    presence/      Where a collaborator is — pure Dart, and ephemeral
     kb/            Knowledge Base bundle: the folder on disk
     documents/     ODT and DOCX import/export
     auth/          Who is signed in
@@ -188,6 +189,53 @@ That is what lets one person bold a phrase while another rewrites a different
 sentence and keep both. Where the two genuinely overlap, the proposal wins and
 the block is marked as conflicted in the diff before you approve.
 
+## Live presence
+
+Editing is reviewed, but *being there* is live. While a Knowledge Base is
+shared, each person broadcasts where they are, and you see them in three
+places:
+
+- a coloured initial on their document's row in the Knowledge Base tree,
+- a marker out in the page margin beside the block their caret is in, when you
+  have that document open too,
+- and a dot beside the save state in the bottom bar, for anyone in the open
+  document.
+
+There are no line numbers to point at. A document is a list of blocks with
+stable ids, so a position is a block, which is the better address anyway: a
+block id survives the other person editing above it, and it survives your two
+copies holding different text while a proposal waits for review. A character
+offset would survive neither.
+
+That last case is why the bottom-bar dot exists. Until you approve their
+proposal, a collaborator can be sitting in a block your copy does not have. No
+marker can honestly be drawn against any of your blocks, so none is — but they
+are still in the document, and the bottom bar says so.
+
+Presence is **ephemeral and content-free**. Realtime holds it per connection
+and drops it when the socket closes; nothing is written to a table, no revision
+is created, and the sync ledger is untouched. The payload is a user, a path, a
+document id and a block id — the same identifiers-only rule the notification
+bus follows. If the presence channel fails entirely, the app behaves exactly as
+it did before it existed, and nothing about it is ever shown as an error.
+
+It is on whenever you are signed in to a shared Knowledge Base, and off
+entirely otherwise: signed out, without Supabase configured, or in a folder
+that is yours alone, nothing is broadcast. Somebody who has been invited but
+has not accepted neither sees nor is seen. After five minutes untouched a
+person's dot goes hollow, so a laptop left open stops claiming they are at the
+desk.
+
+### Its own channel, deliberately
+
+Presence is the one thing clients *send*, so its topic — `presence:<kbId>` — is
+the one granted `insert` on `realtime.messages`. The notification bus,
+`kb:<kbId>`, stays read-only for clients: everything published there comes from
+a database trigger, and a client able to insert into it could forge a
+`document_published` event and drive a collaborator's sync. Splitting the topic
+is what keeps the write grant away from the bus that is trusted to be
+server-authored.
+
 ## Interface
 
 - **Three panes** — the Views menu, the editor and the Knowledge Base menu
@@ -213,14 +261,16 @@ the block is marked as conflicted in the diff before you approve.
   Right-click a document to rename it, or edit its title in the editor and
   press Enter or click away; the Markdown filename is the canonical title
   everywhere. Right-click any item to delete it after a permanent-deletion
-  confirmation.
+  confirmation. A collaborator viewing a document shows as a coloured
+  initial on its row.
 - **Resizing** — drag the gap between the three panes. The editor keeps a
   minimum width however far you drag, and the widths are remembered between
   sessions.
 - **Bottom** — an editor-width toolbar island with extra vertical breathing
   room. Formatting controls stay as individual buttons; an ellipsis menu holds
   the open-document *Differences* shortcut and *Publish directly* for Owners
-  and Co-Owners. The reviewed-edit save state remains visible beside it.
+  and Co-Owners. The reviewed-edit save state remains visible beside it, and
+  beside that, anyone else in the open document.
 - **Top right** — one rounded button: "Sign in" when signed out, your display
   name when signed in, opening a short menu to change that name or sign out.
 - **Home** — "Welcome back!" in Archivo, and recent files.
@@ -385,7 +435,8 @@ formatting survival and the conflict case), the Knowledge Base on disk and its
 layout migrations, moving items between folders, live folder watching, FTS5
 search, ODT/DOCX round-trips in
 both directions and across formats, the rich text controller, the editor's block
-behaviour, and the shell's layout rules.
+behaviour, presence folding and the chrome it drives, and the shell's layout
+rules.
 
 `test/app/appearance_test.dart` renders the shell to `test/app/goldens/`. Those
 images are how the layout is meant to look — they caught a real misalignment
