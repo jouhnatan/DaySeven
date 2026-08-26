@@ -16,7 +16,17 @@ const String kSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const String kSupabasePublishableKey = String.fromEnvironment(
   'SUPABASE_PUBLISHABLE_KEY',
 );
-const Duration kSupabaseRequestTimeout = Duration(seconds: 15);
+/// Just above the server's `statement_timeout`, which is 8s for the
+/// `authenticated` role (verified on the live project, 2026-08-26).
+///
+/// The order matters. If the client gives up first it abandons a query the
+/// server is still running, learns nothing about why, and — with a blind retry
+/// behind it — starts another. Waiting slightly longer than the server means a
+/// slow query comes back as a real error with a real message, and only a
+/// genuinely unresponsive network hits this ceiling. The previous 15s left a
+/// seven-second window where the request was already dead and the client was
+/// still holding it open.
+const Duration kSupabaseRequestTimeout = Duration(seconds: 10);
 
 /// True when the app was built with Supabase credentials. Without them the
 /// application still runs entirely locally — a Knowledge Base is a folder, and
@@ -30,7 +40,19 @@ Future<void> initSupabase() async {
     url: kSupabaseUrl,
     publishableKey: kSupabasePublishableKey,
     postgrestOptions: const PostgrestClientOptions(
-      retryCount: 1,
+      // Deliberately no transport-level retry.
+      //
+      // A blind retry does not know what it is resending. During the
+      // 2026-08-25 outage three endpoints retried in lockstep every 2-3
+      // seconds, which is how a slow instance became an unavailable one:
+      // every retry added load to the thing that was already failing, and
+      // arrived at the same moment as everyone else's.
+      //
+      // Retrying is now the caller's decision, taken where the caller knows
+      // whether the request can succeed at all — `RetryBudget`, which backs
+      // off exponentially, jitters so peers do not synchronise, and gives up
+      // rather than resending forever.
+      retryCount: 0,
       requestTimeout: kSupabaseRequestTimeout,
     ),
   );

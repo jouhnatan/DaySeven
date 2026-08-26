@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dayseven/shared/backend/retry_budget.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,7 +7,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   late DateTime now;
-  RetryBudget budget() => RetryBudget(clock: () => now);
+
+  /// Jitter off, so the backoff curve itself can be asserted exactly. The
+  /// jitter is covered separately below.
+  RetryBudget budget() => RetryBudget(clock: () => now, jitter: 0);
 
   setUp(() => now = DateTime.utc(2026, 8, 26, 12));
 
@@ -41,6 +46,7 @@ void main() {
   test('backoff is capped at the ceiling', () {
     final b = RetryBudget(
       clock: () => now,
+      jitter: 0,
       maxConsecutiveFailures: 100,
       firstDelay: const Duration(seconds: 1),
       ceiling: const Duration(seconds: 10),
@@ -104,6 +110,50 @@ void main() {
       now = now.add(const Duration(hours: 1)); // never wait-limited
     }
     expect(attempts, 5);
+  });
+
+  group('jitter', () {
+    test('keeps the delay inside the deterministic half plus the spread', () {
+      // Half fixed, half random: never shorter than half the nominal delay,
+      // never longer than the whole of it.
+      for (var seed = 0; seed < 50; seed++) {
+        final b = RetryBudget(clock: () => now, random: math.Random(seed))
+          ..recordFailure('doc-1');
+        final wait = b.remaining('doc-1')!;
+        expect(wait, greaterThanOrEqualTo(const Duration(milliseconds: 250)));
+        expect(wait, lessThanOrEqualTo(const Duration(milliseconds: 500)));
+      }
+    });
+
+    test('two clients failing at the same instant do not retry together', () {
+      // This is the whole reason jitter exists. Without it these are equal,
+      // and a shared cause produces a synchronised retry burst.
+      final waits = <Duration>{};
+      for (var seed = 0; seed < 20; seed++) {
+        final b = RetryBudget(clock: () => now, random: math.Random(seed))
+          ..recordFailure('doc-1');
+        waits.add(b.remaining('doc-1')!);
+      }
+      expect(waits.length, greaterThan(1));
+    });
+
+    test('jitter never exceeds the ceiling', () {
+      for (var seed = 0; seed < 20; seed++) {
+        final b = RetryBudget(
+          clock: () => now,
+          random: math.Random(seed),
+          maxConsecutiveFailures: 100,
+          firstDelay: const Duration(seconds: 1),
+          ceiling: const Duration(seconds: 10),
+        );
+        for (var i = 0; i < 20; i++) {
+          b.recordFailure('doc-1');
+          now = now.add(const Duration(minutes: 1));
+        }
+        b.recordFailure('doc-1');
+        expect(b.remaining('doc-1')!, lessThanOrEqualTo(const Duration(seconds: 10)));
+      }
+    });
   });
 
   group('PT429', () {

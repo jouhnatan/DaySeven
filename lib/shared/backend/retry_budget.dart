@@ -26,8 +26,12 @@ class RetryBudget {
     this.maxConsecutiveFailures = 5,
     this.firstDelay = const Duration(milliseconds: 500),
     this.ceiling = const Duration(minutes: 2),
+    this.jitter = 0.5,
     DateTime Function()? clock,
-  }) : _now = clock ?? DateTime.now;
+    math.Random? random,
+  }) : _now = clock ?? DateTime.now,
+       _random = random ?? math.Random(),
+       assert(jitter >= 0 && jitter <= 1);
 
   /// Failures past this point stop earning a retry at all until something
   /// resets the key. Five is enough to ride out a transient server blip and far
@@ -40,7 +44,18 @@ class RetryBudget {
   /// The longest a caller is ever asked to wait.
   final Duration ceiling;
 
+  /// How much of each delay is randomised, from 0 (none) to 1 (the whole
+  /// delay).
+  ///
+  /// Backoff alone is not enough when several clients fail at the same instant
+  /// for the same reason — they then retry at the same instant too, and the
+  /// server sees the same simultaneous burst, just less often. Jitter is what
+  /// breaks that lockstep. The default keeps half the delay deterministic so
+  /// backoff still grows predictably, and spreads the other half.
+  final double jitter;
+
   final DateTime Function() _now;
+  final math.Random _random;
   final Map<String, _Streak> _streaks = <String, _Streak>{};
 
   /// Whether [key] may be attempted right now.
@@ -84,7 +99,12 @@ class RetryBudget {
 
   Duration _delayAfter(int failures) {
     final doubled = firstDelay * math.pow(2, failures - 1).toDouble();
-    return doubled > ceiling ? ceiling : doubled;
+    final capped = doubled > ceiling ? ceiling : doubled;
+    if (jitter == 0) return capped;
+    final micros = capped.inMicroseconds;
+    final fixed = (micros * (1 - jitter)).round();
+    final spread = micros - fixed;
+    return Duration(microseconds: fixed + _random.nextInt(spread + 1));
   }
 }
 
