@@ -1,0 +1,11 @@
+[package]
+name = "dayseven_crdt"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+yrs = "0.23"
+flutter_rust_bridge = "=2.13.0"

@@ -50,6 +50,7 @@ dependencies:
   # release feed, so it has to be the version the installer actually stamped
   # rather than a constant compiled in beside it.
   package_info_plus: ^8.3.1
+  flutter_rust_bridge: 2.13.0
 
 dev_dependencies:
   integration_test:

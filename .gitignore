@@ -62,3 +62,6 @@ app.*.map.json
 # Golden-diff output, written by `flutter test` when a golden mismatches.
 # Useful while looking at a failure, never worth committing.
 test/**/failures/
+
+# Rust CRDT core build artifacts
+rust/target/
