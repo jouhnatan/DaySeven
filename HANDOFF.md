@@ -132,8 +132,24 @@ From `AGENTS.md` and `scripts/check_layers.sh`:
   mid-rewrite and shipping it would deliver nothing while risking the updater
   for the two people who run this app.
 - Do not touch `supabase/migrations/`, the release feed, or
-  `lib/shared/platform/app_update.dart`. Supabase is being kept for build
-  updates and is out of scope.
+  `lib/shared/platform/app_update.dart`.
+
+> **Supabase is not going away — be clear on this before you design anything.**
+> The finished architecture keeps it in **two** roles:
+>
+> 1. **Collaboration transport.** Yjs updates ride Supabase Realtime Broadcast
+>    on a new client-writable `crdt:<kbId>` topic; Awareness rides the existing
+>    `presence:<kbId>` topic; and durable CRDT state lives in Postgres
+>    (`yjs_updates` / `yjs_snapshots`) so a peer that was offline catches up.
+>    This is **not** peer-to-peer and there is no embedded server.
+> 2. **Build updates.** `app_releases` and the `releases` bucket, unchanged.
+>
+> Both roles are out of scope for *this session* — the steps below are
+> deliberately offline so they can be tested without a backend. That is a
+> property of this slice, not of the system. Do not design the workspace store
+> as though sync will be local-only or peer-to-peer; it will be a relay, and the
+> store must be able to hand out and apply incremental updates
+> (`workspaceDiff` / `workspaceApply`) rather than only whole documents.
 - Never print, commit or echo `SUPABASE_SERVICE_ROLE_KEY`.
 
 ---
