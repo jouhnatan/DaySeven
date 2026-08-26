@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use yrs::types::PathSegment;
+use yrs::types::{Event, PathSegment};
 use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{
@@ -188,14 +188,34 @@ pub fn workspace_apply(handle: u64, update: Vec<u8>) -> Result<Vec<String>, Stri
     let touched = Arc::new(Mutex::new(Vec::<String>::new()));
     let sink = touched.clone();
     let files = doc.get_or_insert_map(FILES);
-    let subscription = files.observe_deep(move |_txn, events| {
+    let subscription = files.observe_deep(move |txn, events| {
         let mut out = sink.lock().unwrap();
         for event in events.iter() {
-            if let Some(PathSegment::Key(key)) = event.path().front() {
-                let id = key.to_string();
-                if !out.contains(&id) {
-                    out.push(id);
+            match event.path().front() {
+                // A change *inside* one file — its text, path, or owners. The
+                // first path segment is the file id.
+                Some(PathSegment::Key(key)) => {
+                    let id = key.to_string();
+                    if !out.contains(&id) {
+                        out.push(id);
+                    }
                 }
+                // A change to the `files` map itself: a file created or
+                // removed. Here the path is empty and the ids are the event's
+                // changed keys. Missing this case meant a collaborator's *new*
+                // document synced into the CRDT and was never reported, so it
+                // was never materialised to Markdown.
+                None => {
+                    if let Event::Map(map_event) = event {
+                        for key in map_event.keys(txn).keys() {
+                            let id = key.to_string();
+                            if !out.contains(&id) {
+                                out.push(id);
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     });
@@ -532,4 +552,72 @@ mod tests {
         assert_eq!(meta.owners.len(), 2);
         assert_eq!(file_ids(ws).unwrap(), vec![FILE.to_string()]);
     }
+
+    #[test]
+    fn apply_reports_a_file_created_by_a_peer() {
+        // A change *inside* a file arrives with the file id at the front of the
+        // event path; a file being created arrives as a change to the `files`
+        // map itself, with an empty path. Both must be reported, or a
+        // collaborator's new document syncs invisibly and never reaches disk.
+        let author = workspace_create("awayside".into());
+        let peer = workspace_load(workspace_encode(author).unwrap()).unwrap();
+
+        file_upsert(
+            author,
+            FILE.into(),
+            "Characters/Aldric.md".into(),
+            false,
+            vec!["haoyu".into()],
+        )
+        .unwrap();
+        file_set_text(author, FILE.into(), "The moor is wide.".into()).unwrap();
+
+        let update = workspace_diff(author, workspace_state_vector(peer).unwrap()).unwrap();
+        let touched = workspace_apply(peer, update).unwrap();
+
+        assert_eq!(touched, vec![FILE.to_string()]);
+        assert_eq!(file_text(peer, FILE.into()).unwrap(), "The moor is wide.");
+
+        workspace_close(author);
+        workspace_close(peer);
+    }
+
+    #[test]
+    fn apply_reports_a_file_removed_by_a_peer() {
+        let author = workspace_with_file("The moor is wide.");
+        let peer = workspace_load(workspace_encode(author).unwrap()).unwrap();
+
+        file_remove(author, FILE.into()).unwrap();
+        let update = workspace_diff(author, workspace_state_vector(peer).unwrap()).unwrap();
+
+        assert_eq!(workspace_apply(peer, update).unwrap(), vec![FILE.to_string()]);
+        assert!(file_ids(peer).unwrap().is_empty());
+
+        workspace_close(author);
+        workspace_close(peer);
+    }
+
+    #[test]
+    fn applying_the_same_update_twice_reports_nothing_the_second_time() {
+        // Broadcast and the durable log deliver the same bytes on purpose.
+        let author = workspace_with_file("The moor is wide.");
+        let peer = workspace_load(workspace_encode(author).unwrap()).unwrap();
+
+        file_set_text(author, FILE.into(), "The moor is wide and cold.".into()).unwrap();
+        let update = workspace_diff(author, workspace_state_vector(peer).unwrap()).unwrap();
+
+        assert_eq!(
+            workspace_apply(peer, update.clone()).unwrap(),
+            vec![FILE.to_string()]
+        );
+        assert!(workspace_apply(peer, update).unwrap().is_empty());
+        assert_eq!(
+            file_text(peer, FILE.into()).unwrap(),
+            "The moor is wide and cold."
+        );
+
+        workspace_close(author);
+        workspace_close(peer);
+    }
+
 }
