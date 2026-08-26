@@ -20,6 +20,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/security_log.dart';
@@ -28,14 +29,41 @@ import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/crdt/awareness.dart';
 import 'package:dayseven/shared/crdt/crdt_authorization.dart';
+import 'package:dayseven/shared/crdt/generated/api/policy.dart'
+    as policy_crypto;
 import 'package:dayseven/shared/crdt/crdt_session.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_repository.dart';
+import 'package:dayseven/shared/crdt/policy_key_store.dart';
 import 'package:dayseven/shared/crdt/workspace_policy.dart';
 import 'package:dayseven/shared/crdt/workspace_store.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/security/security_log.dart';
 
 const String kPolicyFileName = 'policy.json';
+
+enum PolicySigningHealth {
+  /// This account is not responsible for signing the current policy.
+  notApplicable,
+
+  /// This device holds the seed matching the published public key.
+  ready,
+
+  /// The policy verifies, but this device cannot sign the next revision until
+  /// its locally held key is explicitly republished.
+  needsRepublish,
+}
+
+class PolicySigningState {
+  const PolicySigningState({
+    this.health = PolicySigningHealth.notApplicable,
+    this.detail,
+  });
+
+  final PolicySigningHealth health;
+  final String? detail;
+
+  bool get canRepublish => health == PolicySigningHealth.needsRepublish;
+}
 
 /// Everything running for one open Knowledge Base, or the reason nothing is.
 class CrdtCollaboration {
@@ -45,6 +73,10 @@ class CrdtCollaboration {
     this.awareness,
     this.policy,
     this.unavailable,
+    this.linkState = const CrdtLinkState(),
+    this.lastRefusal,
+    this.refusalCount = 0,
+    this.policySigning = const PolicySigningState(),
   });
 
   final WorkspaceStore? store;
@@ -57,7 +89,29 @@ class CrdtCollaboration {
   /// for — [isActive] is the question to ask, not this.
   final String? unavailable;
 
+  final CrdtLinkState linkState;
+  final CrdtDecision? lastRefusal;
+  final int refusalCount;
+  final PolicySigningState policySigning;
+
   bool get isActive => session != null;
+
+  CrdtCollaboration copyWith({
+    CrdtLinkState? linkState,
+    CrdtDecision? Function()? lastRefusal,
+    int? refusalCount,
+    PolicySigningState? policySigning,
+  }) => CrdtCollaboration(
+    store: store,
+    session: session,
+    awareness: awareness,
+    policy: policy,
+    unavailable: unavailable,
+    linkState: linkState ?? this.linkState,
+    lastRefusal: lastRefusal == null ? this.lastRefusal : lastRefusal(),
+    refusalCount: refusalCount ?? this.refusalCount,
+    policySigning: policySigning ?? this.policySigning,
+  );
 
   static const CrdtCollaboration off = CrdtCollaboration();
 }
@@ -78,17 +132,23 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
   final Ref _ref;
 
   StreamSubscription<List<String>>? _remoteChanges;
+  StreamSubscription<CrdtLinkState>? _linkStates;
+  StreamSubscription<CrdtDecision>? _refusals;
   String? _boundKbId;
   SecurityLog? _log;
+  final PolicyKeyStore _policyKeys = PolicyKeyStore();
+
+  /// Re-reads the developer flag and rebuilds (or stops) the open session.
+  Future<void> refresh() => _bind(_ref.read(kbSessionProvider), force: true);
 
   /// Rebuilds the whole stack for whatever Knowledge Base is now open.
-  Future<void> _bind(KbSession? session) async {
+  Future<void> _bind(KbSession? session, {bool force = false}) async {
     final kb = session?.kb;
     if (kb == null) {
       await _teardown();
       return;
     }
-    if (_boundKbId == kb.manifest.kbId && _last.isActive) return;
+    if (!force && _boundKbId == kb.manifest.kbId && _last.isActive) return;
     await _teardown();
 
     final store = await _ref.read(appStoreProvider.future);
@@ -98,10 +158,13 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
       return;
     }
     if (!isSupabaseConfigured) {
-      _publish(const CrdtCollaboration(
-        unavailable: 'This build has no Supabase credentials, so collaboration '
-            'is unavailable. The Knowledge Base still works locally.',
-      ));
+      _publish(
+        const CrdtCollaboration(
+          unavailable:
+              'This build has no Supabase credentials, so collaboration '
+              'is unavailable. The Knowledge Base still works locally.',
+        ),
+      );
       return;
     }
     final user = _ref.read(currentUserProvider);
@@ -115,7 +178,19 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     }
 
     try {
-      await _start(kb: kb, userId: user.id);
+      final profile = await _profileForPolicy(user);
+      await _start(kb: kb, userId: user.id, username: profile.username);
+    } on _PolicySigningRequired catch (error) {
+      await _teardown();
+      _publish(
+        CrdtCollaboration(
+          unavailable: error.message,
+          policySigning: PolicySigningState(
+            health: PolicySigningHealth.needsRepublish,
+            detail: error.message,
+          ),
+        ),
+      );
     } on Object catch (error) {
       // Every failure here is survivable. The Knowledge Base is a folder of
       // Markdown and it keeps working.
@@ -127,16 +202,18 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
   Future<void> _start({
     required KnowledgeBase kb,
     required String userId,
+    required String username,
   }) async {
     final kbId = kb.manifest.kbId;
     final repository = CrdtSyncRepository(supabase);
-    final workspace = await WorkspaceStore.openFor(kb);
-
-    final policy = await _loadPolicy(
+    final prepared = await _preparePolicy(
       kb: kb,
       kbId: kbId,
+      userId: userId,
+      username: username,
       repository: repository,
     );
+    final workspace = await WorkspaceStore.openFor(kb);
 
     final log = await _openSecurityLog();
     final session = CrdtSession(
@@ -144,7 +221,7 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
       store: workspace,
       repository: repository,
       authorId: userId,
-      gate: CrdtAuthorizationGate(store: workspace, policy: policy),
+      gate: CrdtAuthorizationGate(store: workspace, policy: prepared.policy),
       securityLog: log,
     );
 
@@ -163,6 +240,19 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
         await _ref.read(kbControllerProvider.notifier).refreshTree();
       }
     });
+    _linkStates = session.states.listen((linkState) {
+      if (!identical(_last.session, session)) return;
+      _publish(_last.copyWith(linkState: linkState));
+    });
+    _refusals = session.refusals.listen((decision) {
+      if (!identical(_last.session, session)) return;
+      _publish(
+        _last.copyWith(
+          lastRefusal: () => decision,
+          refusalCount: _last.refusalCount + 1,
+        ),
+      );
+    });
 
     _boundKbId = kbId;
     _log = log;
@@ -171,43 +261,181 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
         store: workspace,
         session: session,
         awareness: AwarenessResolver(workspace),
-        policy: policy,
+        policy: prepared.policy,
+        linkState: session.state,
+        policySigning: prepared.signing,
       ),
     );
 
     await session.start();
   }
 
-  /// Reads and verifies `metadata/yjs/policy.json`.
-  ///
-  /// A missing policy and an unverifiable one are different things and are
-  /// handled differently on purpose. Missing means a Knowledge Base with
-  /// nothing protected, which is ordinary. Unverifiable means somebody changed
-  /// the file, and that must stop collaboration rather than quietly proceed
-  /// with no protections — so it is rethrown.
-  Future<WorkspacePolicy?> _loadPolicy({
-    required KnowledgeBase kb,
-    required String kbId,
-    required CrdtSyncRepository repository,
-  }) async {
-    final file = File(
-      p.join(kb.rootPath, kMetadataDirName, kYjsSubdirName, kPolicyFileName),
-    );
-    if (!await file.exists()) return null;
-
-    final publicKey = await repository.policyPublicKey(kbId);
-    if (publicKey == null) {
+  Future<Profile> _profileForPolicy(User user) async {
+    try {
+      final profile = await _ref.read(myProfileProvider.future);
+      if (profile != null) return profile;
+    } on Object {
+      // Auth metadata is the immediate fallback used elsewhere in the app.
+    }
+    final metadata = user.userMetadata ?? const <String, Object?>{};
+    final username = metadata['username'];
+    if (username is! String || usernameProblem(username) != null) {
       throw const WorkspacePolicyException(
-        'This Knowledge Base has a policy file but no published signing key, '
-        'so its permissions cannot be verified. Ask the owner to republish the '
-        'policy.',
+        'Your immutable username could not be loaded, so this device cannot '
+        'open policy signing safely.',
       );
     }
-    return WorkspacePolicy.verified(
-      await file.readAsString(),
-      ownerPublicKey: publicKey,
-      expectedKbId: kbId,
+    return Profile(id: user.id, username: username, displayName: username);
+  }
+
+  Future<_PreparedPolicy> _preparePolicy({
+    required KnowledgeBase kb,
+    required String kbId,
+    required String userId,
+    required String username,
+    required CrdtSyncRepository repository,
+  }) async {
+    final policyFile = _policyFile(kb);
+    final remoteKey = await repository.policyPublicKey(kbId);
+    final snapshot = await repository.policySnapshot(kbId);
+    final role = snapshot.roleOf(userId);
+    final maySign = role == PolicyRole.owner || role == PolicyRole.coOwner;
+    final secret = maySign ? await _policyKeys.read(username) : null;
+    final localPublic = secret == null
+        ? null
+        : await policy_crypto.policyPublicKey(secretKey: secret);
+    final keyMatches =
+        remoteKey != null &&
+        localPublic != null &&
+        _sameBytes(remoteKey, localPublic);
+
+    if (remoteKey == null) {
+      if (!maySign) {
+        if (await policyFile.exists()) {
+          throw const WorkspacePolicyException(
+            'This Knowledge Base has a policy file but no published signing '
+            'key. Ask an owner or co-owner to republish the policy.',
+          );
+        }
+        return const _PreparedPolicy(policy: null);
+      }
+
+      final keypair = await _policyKeys.loadOrCreate(username);
+      await repository.setPolicyPublicKey(
+        kbId: kbId,
+        publicKey: keypair.publicKey,
+      );
+      await _writeSignedPolicy(policyFile, snapshot, keypair.secretKey);
+      return _PreparedPolicy(
+        policy: snapshot,
+        signing: const PolicySigningState(health: PolicySigningHealth.ready),
+      );
+    }
+
+    WorkspacePolicy? verified;
+    Object? verificationError;
+    if (await policyFile.exists()) {
+      try {
+        verified = await WorkspacePolicy.verified(
+          await policyFile.readAsString(),
+          ownerPublicKey: remoteKey,
+          expectedKbId: kbId,
+        );
+      } on Object catch (error) {
+        verificationError = error;
+      }
+    }
+
+    if (maySign && keyMatches) {
+      if (verified == null || !verified.hasSameRulesAs(snapshot)) {
+        await _writeSignedPolicy(policyFile, snapshot, secret!);
+        verified = snapshot;
+      }
+      return _PreparedPolicy(
+        policy: verified,
+        signing: const PolicySigningState(health: PolicySigningHealth.ready),
+      );
+    }
+
+    if (verified == null) {
+      final reason = verificationError == null
+          ? 'The signed policy file is missing.'
+          : 'The signed policy file cannot be verified.';
+      if (maySign) {
+        throw _PolicySigningRequired(
+          '$reason Republish the policy from this device to create a new '
+          'trusted signing root.',
+        );
+      }
+      throw WorkspacePolicyException(
+        '$reason Ask an owner or co-owner to republish it.',
+      );
+    }
+
+    return _PreparedPolicy(
+      policy: verified,
+      signing: maySign
+          ? const PolicySigningState(
+              health: PolicySigningHealth.needsRepublish,
+              detail:
+                  'This device does not hold the key matching the published '
+                  'policy. Republish before changing membership or protection.',
+            )
+          : const PolicySigningState(),
     );
+  }
+
+  /// Explicit recovery for a fresh install, lost Keychain item, or a policy
+  /// currently signed by another owner device.
+  Future<void> republishPolicy() async {
+    final kb = _ref.read(kbSessionProvider)?.kb;
+    final user = _ref.read(currentUserProvider);
+    if (kb == null || user == null) {
+      throw const WorkspacePolicyException(
+        'Open a shared Knowledge Base and sign in before republishing.',
+      );
+    }
+    final profile = await _profileForPolicy(user);
+    final repository = CrdtSyncRepository(supabase);
+    final snapshot = await repository.policySnapshot(kb.manifest.kbId);
+    final role = snapshot.roleOf(user.id);
+    if (role != PolicyRole.owner && role != PolicyRole.coOwner) {
+      throw const WorkspacePolicyException(
+        'Only an owner or co-owner may republish the policy.',
+      );
+    }
+
+    final keypair = await _policyKeys.loadOrCreate(profile.username);
+    await repository.setPolicyPublicKey(
+      kbId: kb.manifest.kbId,
+      publicKey: keypair.publicKey,
+    );
+    await _writeSignedPolicy(_policyFile(kb), snapshot, keypair.secretKey);
+    await _bind(_ref.read(kbSessionProvider), force: true);
+  }
+
+  File _policyFile(KnowledgeBase kb) => File(
+    p.join(kb.rootPath, kMetadataDirName, kYjsSubdirName, kPolicyFileName),
+  );
+
+  Future<void> _writeSignedPolicy(
+    File file,
+    WorkspacePolicy policy,
+    List<int> secret,
+  ) async {
+    await file.parent.create(recursive: true);
+    final temporary = File('${file.path}.tmp');
+    await temporary.writeAsString(await policy.signedJson(secret), flush: true);
+    await temporary.rename(file.path);
+  }
+
+  static bool _sameBytes(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    var difference = 0;
+    for (var i = 0; i < a.length; i++) {
+      difference |= a[i] ^ b[i];
+    }
+    return difference == 0;
   }
 
   /// The installation's log, shared with sign-in and membership changes, so
@@ -249,6 +477,10 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
   Future<void> _teardown() async {
     await _remoteChanges?.cancel();
     _remoteChanges = null;
+    await _linkStates?.cancel();
+    _linkStates = null;
+    await _refusals?.cancel();
+    _refusals = null;
     _boundKbId = null;
     _log?.flush();
     _log = null;
@@ -273,4 +505,20 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     unawaited(_teardown());
     super.dispose();
   }
+}
+
+class _PreparedPolicy {
+  const _PreparedPolicy({
+    required this.policy,
+    this.signing = const PolicySigningState(),
+  });
+
+  final WorkspacePolicy? policy;
+  final PolicySigningState signing;
+}
+
+class _PolicySigningRequired implements Exception {
+  const _PolicySigningRequired(this.message);
+
+  final String message;
 }

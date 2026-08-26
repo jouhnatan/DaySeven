@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 export 'package:dayseven/app/workspace/kb_role.dart';
 
 import 'package:dayseven/app/security_log.dart';
+import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/app/workspace/kb_hierarchy_replicator.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/kb_role.dart';
@@ -243,6 +244,27 @@ class SharingController {
     await _ref
         .read(kbRepositoryProvider)
         .invite(kbId: session.kb.manifest.kbId, username: username, role: role);
+  }
+
+  Future<void> setCollaboratorRole({
+    required String kbId,
+    required String userId,
+    required CollaborationRole role,
+  }) async {
+    await _ref
+        .read(kbRepositoryProvider)
+        .setRole(kbId: kbId, userId: userId, role: role);
+    await _ref.read(crdtCollaborationProvider.notifier).refresh();
+  }
+
+  Future<void> removeCollaborator({
+    required String kbId,
+    required String userId,
+  }) async {
+    await _ref
+        .read(kbRepositoryProvider)
+        .removeMember(kbId: kbId, userId: userId);
+    await _ref.read(crdtCollaborationProvider.notifier).refresh();
   }
 
   Future<void> acceptInvitationIntoFolder(
@@ -595,6 +617,7 @@ class SharingController {
     _ref.invalidate(openDocumentProtectionProvider);
     _ref.invalidate(openDocumentPublishActionProvider);
     _ref.invalidate(protectedDocumentsByPathProvider);
+    await _ref.read(crdtCollaborationProvider.notifier).refresh();
     return updated;
   }
 

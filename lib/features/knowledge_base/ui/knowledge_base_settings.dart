@@ -76,8 +76,8 @@ class _KnowledgeBaseSettingsDialogState
   ) async {
     try {
       await ref
-          .read(kbRepositoryProvider)
-          .setRole(kbId: kbId, userId: userId, role: role);
+          .read(sharingControllerProvider)
+          .setCollaboratorRole(kbId: kbId, userId: userId, role: role);
       ref.invalidate(kbCollaboratorsProvider(kbId));
       ref.invalidate(kbRoleProvider);
     } catch (error) {
@@ -88,8 +88,8 @@ class _KnowledgeBaseSettingsDialogState
   Future<void> _removeMember(String kbId, String userId) async {
     try {
       await ref
-          .read(kbRepositoryProvider)
-          .removeMember(kbId: kbId, userId: userId);
+          .read(sharingControllerProvider)
+          .removeCollaborator(kbId: kbId, userId: userId);
       ref.invalidate(kbCollaboratorsProvider(kbId));
     } catch (error) {
       if (mounted) setState(() => _error = describeError(error));

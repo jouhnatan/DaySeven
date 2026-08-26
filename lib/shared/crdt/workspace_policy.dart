@@ -49,10 +49,7 @@ enum PolicyRole {
 
 /// A file that cannot be changed directly by everybody who can edit.
 class ProtectedFile {
-  const ProtectedFile({
-    required this.fileId,
-    required this.minimumPublishRole,
-  });
+  const ProtectedFile({required this.fileId, required this.minimumPublishRole});
 
   /// The workspace file id. Never a path — a path can be renamed out from
   /// under a policy, and a policy that names paths protects the wrong file the
@@ -126,6 +123,31 @@ class WorkspacePolicy {
 
   bool isProtected(String fileId) => protectedFiles.containsKey(fileId);
 
+  /// Whether two snapshots describe the same authorization rules.
+  ///
+  /// [issuedAt] is intentionally ignored. Re-signing solely because the app
+  /// reopened would create a CRDT update with no policy change.
+  bool hasSameRulesAs(WorkspacePolicy other) {
+    if (version != other.version ||
+        kbId != other.kbId ||
+        ownerId != other.ownerId ||
+        members.length != other.members.length ||
+        protectedFiles.length != other.protectedFiles.length) {
+      return false;
+    }
+    for (final entry in members.entries) {
+      if (other.members[entry.key] != entry.value) return false;
+    }
+    for (final entry in protectedFiles.entries) {
+      final otherFile = other.protectedFiles[entry.key];
+      if (otherFile == null ||
+          otherFile.minimumPublishRole != entry.value.minimumPublishRole) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// The exact bytes that get signed.
   ///
   /// Keys are emitted in a fixed order and collections are sorted, so the same
@@ -177,7 +199,10 @@ class WorkspacePolicy {
     }
     final kbId = body['kb_id'];
     final ownerId = body['owner_id'];
-    if (kbId is! String || kbId.isEmpty || ownerId is! String || ownerId.isEmpty) {
+    if (kbId is! String ||
+        kbId.isEmpty ||
+        ownerId is! String ||
+        ownerId.isEmpty) {
       throw const WorkspacePolicyException(
         'policy.json is missing its Knowledge Base or owner',
       );
@@ -245,7 +270,9 @@ class WorkspacePolicy {
     try {
       signatureBytes = base64Decode(signature);
     } on FormatException {
-      throw const WorkspacePolicyException('policy.json signature is malformed');
+      throw const WorkspacePolicyException(
+        'policy.json signature is malformed',
+      );
     }
 
     final bool ok;

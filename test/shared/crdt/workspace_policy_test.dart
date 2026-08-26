@@ -116,26 +116,61 @@ void main() {
         expect(verified.isProtected(_protectedFile), isTrue);
       });
 
-      test('canonical bytes are stable regardless of map insertion order',
-          () async {
-        // Two clients must agree byte-for-byte on what was signed, or a
-        // signature stops verifying for reasons nobody can see.
-        final a = WorkspacePolicy(
-          kbId: _kb,
-          ownerId: _owner,
-          issuedAt: DateTime.utc(2026, 8, 26),
-          members: const {_owner: PolicyRole.owner, _editor: PolicyRole.editor},
-          protectedFiles: const {},
-        );
-        final b = WorkspacePolicy(
-          kbId: _kb,
-          ownerId: _owner,
-          issuedAt: DateTime.utc(2026, 8, 26),
-          members: const {_editor: PolicyRole.editor, _owner: PolicyRole.owner},
-          protectedFiles: const {},
-        );
-        expect(a.canonicalBytes(), b.canonicalBytes());
-      });
+      test(
+        'canonical bytes are stable regardless of map insertion order',
+        () async {
+          // Two clients must agree byte-for-byte on what was signed, or a
+          // signature stops verifying for reasons nobody can see.
+          final a = WorkspacePolicy(
+            kbId: _kb,
+            ownerId: _owner,
+            issuedAt: DateTime.utc(2026, 8, 26),
+            members: const {
+              _owner: PolicyRole.owner,
+              _editor: PolicyRole.editor,
+            },
+            protectedFiles: const {},
+          );
+          final b = WorkspacePolicy(
+            kbId: _kb,
+            ownerId: _owner,
+            issuedAt: DateTime.utc(2026, 8, 26),
+            members: const {
+              _editor: PolicyRole.editor,
+              _owner: PolicyRole.owner,
+            },
+            protectedFiles: const {},
+          );
+          expect(a.canonicalBytes(), b.canonicalBytes());
+        },
+      );
+
+      test(
+        'rule comparison ignores issue time but catches permission changes',
+        () {
+          final sameRulesLater = WorkspacePolicy(
+            kbId: _kb,
+            ownerId: _owner,
+            issuedAt: DateTime.utc(2030),
+            members: policy().members,
+            protectedFiles: policy().protectedFiles,
+          );
+          final promotedEditor = WorkspacePolicy(
+            kbId: _kb,
+            ownerId: _owner,
+            issuedAt: DateTime.utc(2030),
+            members: const {
+              _owner: PolicyRole.owner,
+              _editor: PolicyRole.coOwner,
+              _reviewer: PolicyRole.reviewer,
+            },
+            protectedFiles: policy().protectedFiles,
+          );
+
+          expect(policy().hasSameRulesAs(sameRulesLater), isTrue);
+          expect(policy().hasSameRulesAs(promotedEditor), isFalse);
+        },
+      );
 
       test('promoting yourself in the file breaks the signature', () async {
         // The attack: edit policy.json to make yourself an owner, leave the
@@ -191,27 +226,29 @@ void main() {
         );
       });
 
-      test('a validly signed policy for another Knowledge Base is refused',
-          () async {
-        // Copy a folder's policy into a different workspace and inherit its
-        // ownership. The signature proves who wrote it, not what it is for.
-        final other = await policy(kbId: 'some-other-kb')
-            .signedJson(ownerKeys.secretKey);
-        await expectLater(
-          WorkspacePolicy.verified(
-            other,
-            ownerPublicKey: ownerKeys.publicKey,
-            expectedKbId: _kb,
-          ),
-          throwsA(
-            isA<WorkspacePolicyException>().having(
-              (e) => e.message,
-              'message',
-              contains('signed for Knowledge Base'),
+      test(
+        'a validly signed policy for another Knowledge Base is refused',
+        () async {
+          // Copy a folder's policy into a different workspace and inherit its
+          // ownership. The signature proves who wrote it, not what it is for.
+          final other = await policy(kbId: 'some-other-kb')
+              .signedJson(ownerKeys.secretKey);
+          await expectLater(
+            WorkspacePolicy.verified(
+              other,
+              ownerPublicKey: ownerKeys.publicKey,
+              expectedKbId: _kb,
             ),
-          ),
-        );
-      });
+            throwsA(
+              isA<WorkspacePolicyException>().having(
+                (e) => e.message,
+                'message',
+                contains('signed for Knowledge Base'),
+              ),
+            ),
+          );
+        },
+      );
     });
 
     group('malformed input', () {
@@ -233,7 +270,10 @@ void main() {
       test('refuses non-JSON, non-objects, and missing halves', () async {
         await refuses('not json at all', because: 'not valid JSON');
         await refuses('[]', because: 'not an object');
-        await refuses('{"policy":{}}', because: 'missing its body or signature');
+        await refuses(
+          '{"policy":{}}',
+          because: 'missing its body or signature',
+        );
         await refuses('{"signature":"AAAA"}', because: 'missing its body');
       });
 
@@ -245,35 +285,39 @@ void main() {
         await refuses(jsonEncode(signed), because: 'malformed');
       });
 
-      test('refuses a future policy version rather than half-believing it',
-          () async {
-        final signed = jsonDecode(
-          await policy().signedJson(ownerKeys.secretKey),
-        ) as Map<String, Object?>;
-        (signed['policy'] as Map<String, Object?>)['version'] = 99;
-        await refuses(jsonEncode(signed), because: 'Update DaySeven');
-      });
+      test(
+        'refuses a future policy version rather than half-believing it',
+        () async {
+          final signed = jsonDecode(
+            await policy().signedJson(ownerKeys.secretKey),
+          ) as Map<String, Object?>;
+          (signed['policy'] as Map<String, Object?>)['version'] = 99;
+          await refuses(jsonEncode(signed), because: 'Update DaySeven');
+        },
+      );
 
-      test('a signature that could not be checked is not a silent failure',
-          () async {
-        // Wrong-sized key: the crypto cannot answer. That must read as
-        // "could not be checked", never as "checked and passed".
-        final signed = await policy().signedJson(ownerKeys.secretKey);
-        await expectLater(
-          WorkspacePolicy.verified(
-            signed,
-            ownerPublicKey: const [1, 2, 3],
-            expectedKbId: _kb,
-          ),
-          throwsA(
-            isA<WorkspacePolicyException>().having(
-              (e) => e.message,
-              'message',
-              contains('could not be checked'),
+      test(
+        'a signature that could not be checked is not a silent failure',
+        () async {
+          // Wrong-sized key: the crypto cannot answer. That must read as
+          // "could not be checked", never as "checked and passed".
+          final signed = await policy().signedJson(ownerKeys.secretKey);
+          await expectLater(
+            WorkspacePolicy.verified(
+              signed,
+              ownerPublicKey: const [1, 2, 3],
+              expectedKbId: _kb,
             ),
-          ),
-        );
-      });
+            throwsA(
+              isA<WorkspacePolicyException>().having(
+                (e) => e.message,
+                'message',
+                contains('could not be checked'),
+              ),
+            ),
+          );
+        },
+      );
     });
   });
 }

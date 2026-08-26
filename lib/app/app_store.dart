@@ -207,3 +207,68 @@ class AppStore {
 }
 
 final appStoreProvider = FutureProvider<AppStore>((ref) => AppStore.open());
+
+class DeveloperSettings {
+  const DeveloperSettings({
+    this.showWorkspaceMetadata = false,
+    this.crdtCollaboration = false,
+  });
+
+  final bool showWorkspaceMetadata;
+  final bool crdtCollaboration;
+
+  DeveloperSettings copyWith({
+    bool? showWorkspaceMetadata,
+    bool? crdtCollaboration,
+  }) => DeveloperSettings(
+    showWorkspaceMetadata: showWorkspaceMetadata ?? this.showWorkspaceMetadata,
+    crdtCollaboration: crdtCollaboration ?? this.crdtCollaboration,
+  );
+}
+
+final developerSettingsProvider =
+    StateNotifierProvider<
+      DeveloperSettingsController,
+      AsyncValue<DeveloperSettings>
+    >((ref) => DeveloperSettingsController(ref));
+
+class DeveloperSettingsController
+    extends StateNotifier<AsyncValue<DeveloperSettings>> {
+  DeveloperSettingsController(this._ref) : super(const AsyncValue.loading()) {
+    _load();
+  }
+
+  final Ref _ref;
+
+  Future<void> _load() async {
+    try {
+      final store = await _ref.read(appStoreProvider.future);
+      state = AsyncValue.data(
+        DeveloperSettings(
+          showWorkspaceMetadata: await store.developerFlag(
+            AppStore.showWorkspaceMetadata,
+          ),
+          crdtCollaboration: await store.developerFlag(
+            AppStore.crdtCollaboration,
+          ),
+        ),
+      );
+    } on Object catch (error, stack) {
+      state = AsyncValue.error(error, stack);
+    }
+  }
+
+  Future<void> setShowWorkspaceMetadata(bool enabled) async {
+    final current = state.valueOrNull ?? const DeveloperSettings();
+    final store = await _ref.read(appStoreProvider.future);
+    await store.setDeveloperFlag(AppStore.showWorkspaceMetadata, enabled);
+    state = AsyncValue.data(current.copyWith(showWorkspaceMetadata: enabled));
+  }
+
+  Future<void> setCrdtCollaboration(bool enabled) async {
+    final current = state.valueOrNull ?? const DeveloperSettings();
+    final store = await _ref.read(appStoreProvider.future);
+    await store.setDeveloperFlag(AppStore.crdtCollaboration, enabled);
+    state = AsyncValue.data(current.copyWith(crdtCollaboration: enabled));
+  }
+}

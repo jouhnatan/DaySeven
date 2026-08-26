@@ -87,6 +87,19 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
     state = AsyncValue.data(session.withTree(tree));
   }
 
+  /// Applies the developer metadata view immediately to the open session.
+  ///
+  /// This changes only the tree and search index. The two synchronization
+  /// reads that intentionally ignore this view setting remain untouched.
+  Future<void> setWorkspaceMetadataVisible(bool visible) async {
+    _showMetadata = visible;
+    final session = state.valueOrNull;
+    if (session == null) return;
+    session.index.includeMetadata = visible;
+    await session.index.rebuild();
+    await refreshTree();
+  }
+
   /// Creates the next available Untitled document in [folder].
   Future<String> createDocument({String folder = ''}) async {
     final session = state.valueOrNull;

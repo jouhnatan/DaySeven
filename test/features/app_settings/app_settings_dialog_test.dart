@@ -71,14 +71,17 @@ class RecordingController extends AppUpdateController {
 
 Future<void> openDialog(
   WidgetTester tester,
-  AppUpdateController controller,
-) async {
+  AppUpdateController controller, {
+  AppSettingsDeveloperOptions? developerOptions,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [appUpdateProvider.overrideWith((ref) => controller)],
       child: MaterialApp(
         theme: dsTheme(Brightness.dark),
-        home: const Scaffold(body: AppSettingsDialog()),
+        home: Scaffold(
+          body: AppSettingsDialog(developerOptions: developerOptions),
+        ),
       ),
     ),
   );
@@ -109,6 +112,83 @@ void main() {
 
     expect(find.text('DaySeven 1.3.2'), findsOneWidget);
     expect(find.text('Build 7'), findsOneWidget);
+  });
+
+  testWidgets('shows and changes both developer toggles', (tester) async {
+    bool? crdt;
+    bool? metadata;
+    await openDialog(
+      tester,
+      RecordingController(),
+      developerOptions: AppSettingsDeveloperOptions(
+        showWorkspaceMetadata: false,
+        crdtCollaboration: false,
+        setShowWorkspaceMetadata: (value) async => metadata = value,
+        setCrdtCollaboration: (value) async => crdt = value,
+        collaborationHealth: AppSettingsCollaborationHealth.off,
+      ),
+    );
+
+    expect(find.text('Developer'), findsOneWidget);
+    expect(find.text('CRDT collaboration'), findsOneWidget);
+    expect(find.text('Show workspace metadata'), findsOneWidget);
+
+    final crdtSwitch = find.descendant(
+      of: find.byKey(const Key('app-settings-crdt-toggle')),
+      matching: find.byType(Switch),
+    );
+    await tester.ensureVisible(crdtSwitch);
+    await tester.pumpAndSettle();
+    await tester.tap(crdtSwitch);
+    await tester.pumpAndSettle();
+    final metadataSwitch = find.descendant(
+      of: find.byKey(const Key('app-settings-metadata-toggle')),
+      matching: find.byType(Switch),
+    );
+    await tester.ensureVisible(metadataSwitch);
+    await tester.pumpAndSettle();
+    await tester.tap(metadataSwitch);
+    await tester.pumpAndSettle();
+
+    expect(crdt, isTrue);
+    expect(metadata, isTrue);
+  });
+
+  testWidgets('shows live link backlog, refusals, and policy recovery', (
+    tester,
+  ) async {
+    var republished = false;
+    await openDialog(
+      tester,
+      RecordingController(),
+      developerOptions: AppSettingsDeveloperOptions(
+        showWorkspaceMetadata: true,
+        crdtCollaboration: true,
+        setShowWorkspaceMetadata: (_) async {},
+        setCrdtCollaboration: (_) async {},
+        collaborationHealth: AppSettingsCollaborationHealth.connected,
+        cursor: 42,
+        pendingLocalPush: true,
+        queuedInbound: 3,
+        refusalCount: 1,
+        refusalDetail: 'role reviewer cannot edit',
+        policyDetail: 'This device does not hold the published key.',
+        republishPolicy: () async => republished = true,
+      ),
+    );
+
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.textContaining('Durable cursor 42'), findsOneWidget);
+    expect(find.textContaining('3 incoming update(s) queued'), findsOneWidget);
+    expect(find.text('Policy signing needs attention'), findsOneWidget);
+    expect(find.text('An incoming update was refused'), findsOneWidget);
+
+    final republish = find.byKey(const Key('app-settings-republish-policy'));
+    await tester.ensureVisible(republish);
+    await tester.pumpAndSettle();
+    await tester.tap(republish);
+    await tester.pumpAndSettle();
+    expect(republished, isTrue);
   });
 
   // The design sets a row's title in the display face and its second line in

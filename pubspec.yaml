@@ -51,6 +51,10 @@ dependencies:
   # rather than a constant compiled in beside it.
   package_info_plus: ^8.3.1
   flutter_rust_bridge: 2.13.0
+  # The policy signing seed belongs to the device-user, not to Supabase. Use
+  # Keychain/protected platform storage when it is available; the app has a
+  # restrictive application-support-file fallback for hosts where it is not.
+  flutter_secure_storage: 10.3.1
   rust_lib_dayseven:
     path: rust_builder
 

@@ -26,6 +26,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:dayseven/shared/crdt/workspace_policy.dart';
 
 /// How long a client accumulates local edits before writing them to Postgres.
 /// The server rejects a caller averaging faster than 2/second over 10 seconds.
@@ -110,7 +111,6 @@ class CrdtCatchUp {
     );
   }
 }
-
 
 /// A protected-file change awaiting review, as the queue lists it.
 ///
@@ -229,7 +229,6 @@ class CrdtSyncRepository {
     return (value as num).toInt();
   }
 
-
   /// Routes a change to a protected file into the review queue instead of the
   /// update log. The server re-checks the caller's role regardless of what the
   /// client decided.
@@ -304,6 +303,61 @@ class CrdtSyncRepository {
       for (var i = 0; i + 1 < hex.length; i += 2)
         int.parse(hex.substring(i, i + 2), radix: 16),
     ]);
+  }
+
+  /// Builds the policy body from the database's independently enforced view.
+  ///
+  /// These are three fixed, KB-scoped reads rather than one read per member or
+  /// document. Only identifiers and roles cross this boundary; no document
+  /// content is needed to sign authorization metadata.
+  Future<WorkspacePolicy> policySnapshot(String kbId) async {
+    final rows = await Future.wait<Object?>([
+      client.from('knowledge_bases').select('owner_id').eq('id', kbId).single(),
+      client
+          .from('kb_members')
+          .select('user_id, role, accepted_at')
+          .eq('kb_id', kbId),
+      client
+          .from('documents')
+          .select('id, minimum_publish_role')
+          .eq('kb_id', kbId),
+    ]);
+
+    final kb = Map<String, Object?>.from(rows[0]! as Map);
+    final ownerId = kb['owner_id'] as String;
+    final members = <String, PolicyRole>{};
+    for (final raw in rows[1]! as List) {
+      final row = Map<String, Object?>.from(raw as Map);
+      if (row['accepted_at'] == null) continue;
+      final userId = row['user_id'];
+      final role = PolicyRole.fromWire(row['role']);
+      if (userId is String && role != null) members[userId] = role;
+    }
+    // owner_id is the database's canonical ownership fact. A malformed or
+    // partially migrated membership row must not produce a policy that omits
+    // the owner who is allowed to repair it.
+    members[ownerId] = PolicyRole.owner;
+
+    final protected = <String, ProtectedFile>{};
+    for (final raw in rows[2]! as List) {
+      final row = Map<String, Object?>.from(raw as Map);
+      final fileId = row['id'];
+      final role = PolicyRole.fromWire(row['minimum_publish_role']);
+      if (fileId is String && role != null) {
+        protected[fileId] = ProtectedFile(
+          fileId: fileId,
+          minimumPublishRole: role,
+        );
+      }
+    }
+
+    return WorkspacePolicy(
+      kbId: kbId,
+      ownerId: ownerId,
+      members: members,
+      protectedFiles: protected,
+      issuedAt: DateTime.now().toUtc(),
+    );
   }
 
   /// PostgREST renders `bytea` as a hex string. Base64 would be smaller, but

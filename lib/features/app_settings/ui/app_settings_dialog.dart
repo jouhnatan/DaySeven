@@ -16,19 +16,73 @@ import 'package:dayseven/features/app_settings/ui/app_settings_design.dart';
 import 'package:dayseven/features/app_settings/ui/grain.dart';
 import 'package:dayseven/shared/platform/app_update.dart';
 
-Future<void> showAppSettingsDialog(BuildContext context) => showDialog<void>(
+typedef AppSettingsDeveloperOptionsBuilder =
+    AppSettingsDeveloperOptions Function(WidgetRef ref);
+
+enum AppSettingsCollaborationHealth {
+  off,
+  connecting,
+  connected,
+  degraded,
+  unavailable,
+}
+
+class AppSettingsDeveloperOptions {
+  const AppSettingsDeveloperOptions({
+    required this.showWorkspaceMetadata,
+    required this.crdtCollaboration,
+    required this.setShowWorkspaceMetadata,
+    required this.setCrdtCollaboration,
+    required this.collaborationHealth,
+    this.collaborationDetail,
+    this.cursor = 0,
+    this.pendingLocalPush = false,
+    this.queuedInbound = 0,
+    this.refusalCount = 0,
+    this.refusalDetail,
+    this.policyDetail,
+    this.republishPolicy,
+  });
+
+  final bool showWorkspaceMetadata;
+  final bool crdtCollaboration;
+  final Future<void> Function(bool enabled) setShowWorkspaceMetadata;
+  final Future<void> Function(bool enabled) setCrdtCollaboration;
+  final AppSettingsCollaborationHealth collaborationHealth;
+  final String? collaborationDetail;
+  final int cursor;
+  final bool pendingLocalPush;
+  final int queuedInbound;
+  final int refusalCount;
+  final String? refusalDetail;
+  final String? policyDetail;
+  final Future<void> Function()? republishPolicy;
+}
+
+Future<void> showAppSettingsDialog(
+  BuildContext context, {
+  AppSettingsDeveloperOptionsBuilder? developerOptions,
+}) => showDialog<void>(
   context: context,
-  builder: (context) => const AppSettingsDialog(),
+  builder: (context) => Consumer(
+    builder: (context, ref, _) =>
+        AppSettingsDialog(developerOptions: developerOptions?.call(ref)),
+  ),
 );
 
 class AppSettingsDialog extends ConsumerStatefulWidget {
-  const AppSettingsDialog({super.key});
+  const AppSettingsDialog({super.key, this.developerOptions});
+
+  final AppSettingsDeveloperOptions? developerOptions;
 
   @override
   ConsumerState<AppSettingsDialog> createState() => _AppSettingsDialogState();
 }
 
 class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
+  final Set<String> _workingSettings = {};
+  String? _settingsError;
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +100,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   Widget build(BuildContext context) {
     final state = ref.watch(appUpdateProvider);
     final enabled = ref.read(appUpdateProvider.notifier).enabled;
+    final developer = widget.developerOptions;
 
     return Dialog(
       key: const Key('app-settings-dialog'),
@@ -89,6 +144,83 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                           :final release,
                         ))
                           _Alert(message: message, release: release),
+                        if (developer != null) ...[
+                          const _SectionHeading('Developer'),
+                          _DeveloperToggleRow(
+                            key: const Key('app-settings-crdt-toggle'),
+                            icon: Icons.hub_outlined,
+                            title: 'CRDT collaboration',
+                            subtitle: developer.crdtCollaboration
+                                ? 'On for the open Knowledge Base. The reviewed '
+                                      'edit path remains available.'
+                                : 'Off. Reviewed edits remain authoritative.',
+                            value: developer.crdtCollaboration,
+                            working: _workingSettings.contains('crdt'),
+                            onChanged: (value) => _changeSetting(
+                              'crdt',
+                              () => developer.setCrdtCollaboration(value),
+                            ),
+                          ),
+                          _DeveloperToggleRow(
+                            key: const Key('app-settings-metadata-toggle'),
+                            icon: Icons.folder_open_outlined,
+                            title: 'Show workspace metadata',
+                            subtitle: developer.showWorkspaceMetadata
+                                ? 'metadata/ is visible in the tree and search.'
+                                : 'metadata/ stays hidden from the writing view.',
+                            value: developer.showWorkspaceMetadata,
+                            working: _workingSettings.contains('metadata'),
+                            onChanged: (value) => _changeSetting(
+                              'metadata',
+                              () => developer.setShowWorkspaceMetadata(value),
+                            ),
+                          ),
+                          const _SectionHeading('Collaboration'),
+                          _CollaborationRow(options: developer),
+                          if (developer.policyDetail case final detail?)
+                            _Row(
+                              key: const Key('app-settings-policy-signing'),
+                              plate: const _Plate(
+                                Icons.key_outlined,
+                                pale: true,
+                              ),
+                              title: developer.republishPolicy == null
+                                  ? 'Policy signing ready'
+                                  : 'Policy signing needs attention',
+                              subtitle: detail,
+                              subtitleIsMeta: false,
+                              trailing: developer.republishPolicy == null
+                                  ? null
+                                  : _FlatButton(
+                                      key: const Key(
+                                        'app-settings-republish-policy',
+                                      ),
+                                      label: _workingSettings.contains('policy')
+                                          ? 'Republishing…'
+                                          : 'Republish',
+                                      onPressed:
+                                          _workingSettings.contains('policy')
+                                          ? null
+                                          : () => _changeSetting(
+                                              'policy',
+                                              developer.republishPolicy!,
+                                            ),
+                                    ),
+                            ),
+                          if (developer.refusalCount > 0)
+                            _Alert(
+                              title: 'An incoming update was refused',
+                              message:
+                                  '${developer.refusalCount} update(s) were '
+                                  'kept out of this workspace. '
+                                  '${developer.refusalDetail ?? 'The signed policy did not allow them.'}',
+                            ),
+                        ],
+                        if (_settingsError case final message?)
+                          _Alert(
+                            title: "Couldn't change that setting",
+                            message: message,
+                          ),
                         const SizedBox(height: 14),
                       ],
                     ),
@@ -100,6 +232,107 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _changeSetting(
+    String name,
+    Future<void> Function() change,
+  ) async {
+    setState(() {
+      _workingSettings.add(name);
+      _settingsError = null;
+    });
+    try {
+      await change();
+    } on Object catch (error) {
+      if (mounted) setState(() => _settingsError = '$error');
+    } finally {
+      if (mounted) setState(() => _workingSettings.remove(name));
+    }
+  }
+}
+
+class _DeveloperToggleRow extends StatelessWidget {
+  const _DeveloperToggleRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.working,
+    required this.onChanged,
+    super.key,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final bool working;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => _Row(
+    plate: _Plate(icon, pale: true),
+    title: title,
+    subtitle: subtitle,
+    subtitleIsMeta: false,
+    trailing: Switch(
+      value: value,
+      onChanged: working ? null : onChanged,
+      activeTrackColor: AppSettingsPalette.green,
+      activeThumbColor: AppSettingsPalette.paper,
+      inactiveTrackColor: AppSettingsPalette.greenTint,
+      inactiveThumbColor: AppSettingsPalette.green,
+    ),
+  );
+}
+
+class _CollaborationRow extends StatelessWidget {
+  const _CollaborationRow({required this.options});
+
+  final AppSettingsDeveloperOptions options;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = switch (options.collaborationHealth) {
+      AppSettingsCollaborationHealth.off => 'Collaboration is off',
+      AppSettingsCollaborationHealth.connecting => 'Connecting',
+      AppSettingsCollaborationHealth.connected => 'Connected',
+      AppSettingsCollaborationHealth.degraded => 'Connection degraded',
+      AppSettingsCollaborationHealth.unavailable => 'Collaboration unavailable',
+    };
+    final detail =
+        options.collaborationDetail ??
+        switch (options.collaborationHealth) {
+          AppSettingsCollaborationHealth.off =>
+            'Enable the developer toggle above to start a session.',
+          AppSettingsCollaborationHealth.connecting =>
+            'Catching up from the durable update log.',
+          AppSettingsCollaborationHealth.connected => [
+            'Durable cursor ${options.cursor}',
+            if (options.pendingLocalPush) 'local changes waiting to push',
+            if (options.queuedInbound > 0)
+              '${options.queuedInbound} incoming update(s) queued',
+          ].join(' · '),
+          AppSettingsCollaborationHealth.degraded =>
+            'Files remain saved on this device while sharing recovers.',
+          AppSettingsCollaborationHealth.unavailable =>
+            'Local editing remains available.',
+        };
+
+    return _Row(
+      key: const Key('app-settings-collaboration-state'),
+      plate: _Plate(switch (options.collaborationHealth) {
+        AppSettingsCollaborationHealth.connected => Icons.cloud_done_outlined,
+        AppSettingsCollaborationHealth.connecting => Icons.sync,
+        AppSettingsCollaborationHealth.degraded ||
+        AppSettingsCollaborationHealth.unavailable => Icons.cloud_off_outlined,
+        AppSettingsCollaborationHealth.off => Icons.hub_outlined,
+      }),
+      title: title,
+      subtitle: detail,
+      subtitleIsMeta: false,
     );
   }
 }
@@ -374,9 +607,10 @@ class _UpdateRow extends ConsumerWidget {
 
 /// The solid ink block the design reserves for things that went wrong.
 class _Alert extends StatelessWidget {
-  const _Alert({required this.message, this.release});
+  const _Alert({required this.message, this.release, this.title});
 
   final String message;
+  final String? title;
 
   /// Present when an install failed rather than a check, so there is something
   /// to fall back to fetching by hand.
@@ -404,9 +638,10 @@ class _Alert extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                release == null
-                    ? "Couldn't check for updates"
-                    : "Couldn't install that update",
+                title ??
+                    (release == null
+                        ? "Couldn't check for updates"
+                        : "Couldn't install that update"),
                 style: appSettingsDisplay(
                   weight: FontWeight.w500,
                   color: AppSettingsPalette.paper,

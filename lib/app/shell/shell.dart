@@ -9,7 +9,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/view.dart';
+import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/workspace/editing_focus.dart';
+import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/document_publish_controls.dart';
 import 'package:dayseven/app/workspace/document_presence_indicator.dart';
@@ -36,6 +38,7 @@ import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
+import 'package:dayseven/shared/crdt/crdt_session.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
 
 class DsShell extends ConsumerWidget {
@@ -166,6 +169,8 @@ class DsShell extends ConsumerWidget {
                                                   onSelected: () =>
                                                       showAppSettingsDialog(
                                                         context,
+                                                        developerOptions:
+                                                            _developerOptions,
                                                       ),
                                                 ),
                                               ],
@@ -281,6 +286,62 @@ class DsShell extends ConsumerWidget {
       },
     );
   }
+}
+
+AppSettingsDeveloperOptions _developerOptions(WidgetRef ref) {
+  final settings =
+      ref.watch(developerSettingsProvider).valueOrNull ??
+      const DeveloperSettings();
+  final collaboration = ref.watch(crdtCollaborationProvider);
+  final link = collaboration.linkState;
+
+  final health = !settings.crdtCollaboration
+      ? AppSettingsCollaborationHealth.off
+      : collaboration.unavailable != null
+      ? AppSettingsCollaborationHealth.unavailable
+      : switch (link.health) {
+          CrdtLinkHealth.inactive => AppSettingsCollaborationHealth.off,
+          CrdtLinkHealth.connecting =>
+            AppSettingsCollaborationHealth.connecting,
+          CrdtLinkHealth.connected => AppSettingsCollaborationHealth.connected,
+          CrdtLinkHealth.degraded => AppSettingsCollaborationHealth.degraded,
+        };
+
+  final signing = collaboration.policySigning;
+  return AppSettingsDeveloperOptions(
+    showWorkspaceMetadata: settings.showWorkspaceMetadata,
+    crdtCollaboration: settings.crdtCollaboration,
+    setShowWorkspaceMetadata: (enabled) async {
+      await ref
+          .read(developerSettingsProvider.notifier)
+          .setShowWorkspaceMetadata(enabled);
+      await ref
+          .read(kbControllerProvider.notifier)
+          .setWorkspaceMetadataVisible(enabled);
+    },
+    setCrdtCollaboration: (enabled) async {
+      await ref
+          .read(developerSettingsProvider.notifier)
+          .setCrdtCollaboration(enabled);
+      await ref.read(crdtCollaborationProvider.notifier).refresh();
+    },
+    collaborationHealth: health,
+    collaborationDetail: collaboration.unavailable ?? link.detail,
+    cursor: link.cursor,
+    pendingLocalPush: link.pendingLocalPush,
+    queuedInbound: link.queuedInbound,
+    refusalCount: collaboration.refusalCount,
+    refusalDetail: collaboration.lastRefusal?.detail,
+    policyDetail: switch (signing.health) {
+      PolicySigningHealth.ready =>
+        'This device holds the key matching the published policy.',
+      PolicySigningHealth.needsRepublish => signing.detail,
+      PolicySigningHealth.notApplicable => null,
+    },
+    republishPolicy: signing.canRepublish
+        ? () => ref.read(crdtCollaborationProvider.notifier).republishPolicy()
+        : null,
+  );
 }
 
 /// A fixed-width right pane revealed through an animated slot. As the slot
