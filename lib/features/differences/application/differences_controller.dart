@@ -18,6 +18,7 @@ import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/features/differences/data/change_set_repository.dart';
 import 'package:dayseven/features/differences/domain/change_set.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
+import 'package:dayseven/shared/backend/retry_budget.dart';
 import 'package:dayseven/shared/backend/asset_repository.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
@@ -152,6 +153,10 @@ class DifferencesController extends StateNotifier<DifferencesState>
   RealtimeChannel? _channel;
   final Map<String, OpenDocument> _pendingDocuments = {};
   final Map<String, Future<void>> _activeSubmissions = {};
+
+  /// Stops a rejected submission from being resent on a loop. Cleared per
+  /// document by a landed write or by the person editing again.
+  final RetryBudget _submitBudget = RetryBudget();
   String? _boundKbId;
   String? _boundUserId;
   int _refreshGeneration = 0;
@@ -300,6 +305,14 @@ class DifferencesController extends StateNotifier<DifferencesState>
         previous.relativePath != next.relativePath ||
         previous.dirty != next.dirty;
     if (!changed) return;
+    final contentChanged =
+        previous == null ||
+        previous.document.id != next.document.id ||
+        previous.document.contentHash != next.document.contentHash;
+    // Only new content counts as new intent. A path or dirty-flag change can
+    // come from the sync machinery itself, and must not hand a looping
+    // submission a fresh budget.
+    if (contentChanged) _submitBudget.reset(next.document.id);
     _setDocumentSync(
       next.document.id,
       DocumentReviewSyncState(
@@ -315,11 +328,18 @@ class DifferencesController extends StateNotifier<DifferencesState>
     final active = _activeSubmissions[documentId];
     if (active != null) {
       await active;
-      if (_pendingDocuments.containsKey(documentId)) {
+      // A failed submission leaves its working copy queued so the edit is not
+      // lost. That queued copy must not re-enter the drain immediately: doing
+      // so turns one rejected proposal into an unbounded request loop, which is
+      // how 5.57M doomed publishes reached the server on 2026-08-25. The budget
+      // is what makes the retry deliberate rather than automatic.
+      if (_pendingDocuments.containsKey(documentId) &&
+          _submitBudget.allows(documentId)) {
         await _submitDebounced(documentId);
       }
       return;
     }
+    if (!_submitBudget.allows(documentId)) return;
 
     final submission = _performSubmission(documentId);
     _activeSubmissions[documentId] = submission;
@@ -378,6 +398,7 @@ class DifferencesController extends StateNotifier<DifferencesState>
           synced.contentHash == workingCopy.document.contentHash &&
           synced.path == workingCopy.relativePath) {
         _removeSubmittedWorkingCopy(documentId, workingCopy);
+        _submitBudget.recordSuccess(documentId);
         _setDocumentSync(
           documentId,
           const DocumentReviewSyncState(DifferenceSyncPhase.synced),
@@ -411,6 +432,7 @@ class DifferencesController extends StateNotifier<DifferencesState>
               content: workingCopy.document,
             );
       _removeSubmittedWorkingCopy(documentId, workingCopy);
+      _submitBudget.recordSuccess(documentId);
       _setDocumentSync(
         documentId,
         DocumentReviewSyncState(
@@ -420,6 +442,8 @@ class DifferencesController extends StateNotifier<DifferencesState>
       );
       await refresh(showLoading: false);
     } on Object catch (error) {
+      _submitBudget.recordFailure(documentId);
+      final exhausted = _submitBudget.isExhausted(documentId);
       _setDocumentSync(
         documentId,
         DocumentReviewSyncState(
@@ -428,17 +452,29 @@ class DifferencesController extends StateNotifier<DifferencesState>
               : _isOffline(error)
               ? DifferenceSyncPhase.offline
               : DifferenceSyncPhase.error,
-          detail: describeError(error),
+          detail: exhausted
+              // The edit is still queued and still safe on disk; what has
+              // stopped is the automatic resending of it.
+              ? '${describeError(error)}\n\nThis edit stopped retrying after '
+                    '${_submitBudget.maxConsecutiveFailures} attempts. It is '
+                    'safe on this device. Sync the Knowledge Base, or edit the '
+                    'document again, to try once more.'
+              : describeError(error),
         ),
       );
     }
   }
 
+  /// The explicit "send this now" path. A person asking again is fresh intent,
+  /// so it clears the budget rather than being held off by it — the budget
+  /// exists to stop the *automatic* drain from resending on a loop, not to make
+  /// someone wait after they have decided to retry.
   Future<void> submitPendingEditNow(String documentId) async {
     final open = _ref.read(documentControllerProvider);
     if (open != null && open.document.id == documentId) {
       _pendingDocuments[documentId] = open;
     }
+    _submitBudget.reset(documentId);
     await _submitDebounced(documentId);
   }
 

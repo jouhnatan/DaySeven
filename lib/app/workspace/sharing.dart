@@ -22,6 +22,7 @@ import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/features/differences/domain/merge.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/backend/retry_budget.dart';
 import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 
@@ -189,6 +190,11 @@ class SharingController {
 
   final Ref _ref;
   Future<SyncOutcome>? _activeOpenDocumentPublish;
+
+  /// Publishing is user-initiated, so this does not schedule retries — it only
+  /// refuses to keep sending a request the server has already rejected several
+  /// times running, and explains why rather than failing silently.
+  final RetryBudget _publishBudget = RetryBudget();
   Future<SyncPullResult>? _activeHierarchyPull;
   Future<ReconcileResult>? _activeHierarchyReconcile;
 
@@ -388,6 +394,7 @@ class SharingController {
           current?.revisionId == synced.revisionId &&
           synced.contentHash == workingDocument.contentHash &&
           synced.path == workingPath) {
+        _publishBudget.recordSuccess(document.id);
         differences.markPublished(document.id);
         return SyncOutcome.unchanged;
       }
@@ -450,6 +457,7 @@ class SharingController {
         expectedCurrentRevisionId: synced?.revisionId,
       );
       if (!receipt.wasPublished) {
+        _publishBudget.recordSuccess(document.id);
         differences.markProposed(document.id, receipt.id);
         await differences.refresh(showLoading: false);
         return SyncOutcome.proposed;
@@ -477,6 +485,7 @@ class SharingController {
         path: workingPath,
         protection: current?.protection ?? synced?.protection,
       );
+      _publishBudget.recordSuccess(document.id);
       differences.markPublished(document.id);
       _ref.invalidate(openDocumentProtectionProvider);
       _ref.invalidate(openDocumentPublishActionProvider);
@@ -484,7 +493,10 @@ class SharingController {
     } on PublishConflict {
       rethrow;
     } on Object catch (error) {
-      if (retryOnMove && _isOptimisticMove(error)) {
+      _publishBudget.recordFailure(document.id);
+      if (retryOnMove &&
+          _isOptimisticMove(error) &&
+          !_publishBudget.isExhausted(document.id)) {
         return _publishOpenDocument(retryOnMove: false);
       }
       differences.markPublishError(document.id, error);

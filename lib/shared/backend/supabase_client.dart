@@ -64,6 +64,15 @@ String describeError(Object error) {
   }
 
   if (error is PostgrestException) {
+    // `private.publish_gate` answers a looping caller with PT429 rather than
+    // doing the work. That is a deliberate refusal, not a fault, and it reads
+    // as one.
+    if (isRateLimited(error)) {
+      return 'Too many rejected publishes in a row, so the server is holding '
+          'this document off for a moment. Sync the Knowledge Base to pick up '
+          'the newest revision, then publish again.'
+          '${error.hint == null ? '' : '\n\n${error.hint}'}';
+    }
     final parts = <String>[
       error.message,
       if (error.code != null) 'code ${error.code}',
@@ -91,6 +100,12 @@ String describeError(Object error) {
 
   return '$error';
 }
+
+/// The server refused a request because the caller was repeating it. Distinct
+/// from an optimistic-lock conflict: a conflict is worth one considered retry
+/// against fresh state, this is worth none at all.
+bool isRateLimited(Object error) =>
+    error is PostgrestException && error.code == 'PT429';
 
 class SyncException implements Exception {
   const SyncException(this.message);
