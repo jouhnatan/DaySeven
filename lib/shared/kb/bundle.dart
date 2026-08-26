@@ -18,6 +18,7 @@ import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/blocks/markdown.dart';
 
 const String kSettingsDirName = '.settings';
+const String kMetadataDirName = 'metadata';
 const String kManifestFileName = 'dayseven.kb.json';
 const String kDocumentsDirName = 'documents';
 const String kAssetsDirName = 'assets';
@@ -224,9 +225,13 @@ class KnowledgeBase {
       if (entity is! File) continue;
       if (!entity.path.endsWith(kLegacyDocumentExtension)) continue;
 
-      // `.settings/` and anything else hidden is the app's, not the user's.
+      // `.settings/`, `metadata/` and anything else hidden is the app's, not the user's.
       final relative = p.relative(entity.path, from: folder);
-      if (p.split(relative).any((part) => part.startsWith('.'))) continue;
+      final segments = p.split(relative);
+      if (segments.any((part) => part.startsWith('.')) ||
+          (segments.isNotEmpty && segments.first == kMetadataDirName)) {
+        continue;
+      }
 
       try {
         await _convertOneDocument(entity);
@@ -346,6 +351,7 @@ class KnowledgeBase {
     await for (final entity in dir.list(followLinks: false)) {
       final name = p.basename(entity.path);
       if (name.startsWith('.')) continue;
+      if (relative.isEmpty && name == kMetadataDirName) continue;
       final childRelative = relative.isEmpty ? name : '$relative/$name';
 
       if (entity is Directory) {
@@ -560,7 +566,8 @@ class KnowledgeBase {
         p.windows.isAbsolute(relativePath) ||
         segments.isEmpty ||
         segments.any((part) => part == '.' || part == '..') ||
-        segments.first == kSettingsDirName;
+        segments.first == kSettingsDirName ||
+        segments.first == kMetadataDirName;
     if (isUnsafe) {
       throw const KbException('That item cannot be deleted.');
     }

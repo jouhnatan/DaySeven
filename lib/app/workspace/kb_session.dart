@@ -263,7 +263,10 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   void _onFileSystemEvent(KnowledgeBase kb, FileSystemEvent event) {
     // The app's own bookkeeping is not a change to the Knowledge Base.
     final relative = p.split(p.relative(event.path, from: kb.rootPath));
-    if (relative.contains(kSettingsDirName)) return;
+    if (relative.contains(kSettingsDirName) ||
+        relative.contains(kMetadataDirName)) {
+      return;
+    }
 
     // A burst of events — a folder of files dropped in — settles into one read.
     _watchDebounce?.cancel();

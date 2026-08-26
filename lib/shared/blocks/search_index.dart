@@ -95,9 +95,14 @@ class SearchIndex {
     final dir = Directory(_kb.documentsPath);
     if (!await dir.exists()) return;
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is File && isDocumentPath(entity.path)) {
-        yield entity;
+      if (entity is! File || !isDocumentPath(entity.path)) continue;
+      final relative = _kb.relativePathFor(entity.path);
+      final segments = p.posix.split(relative);
+      if (segments.any((part) => part.startsWith('.')) ||
+          (segments.isNotEmpty && segments.first == kMetadataDirName)) {
+        continue;
       }
+      yield entity;
     }
   }
 
