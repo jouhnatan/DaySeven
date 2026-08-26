@@ -1,358 +1,234 @@
-# Handoff: CRDT collaboration, session 2
+# Handoff: CRDT collaboration
 
-You are picking up a rewrite in progress. Read this file completely before
-touching anything, then read `AGENTS.md` and `README.md`.
+You are picking up a rewrite that is **built but not proven**. Read this file
+completely before touching anything, then read `AGENTS.md` and `README.md`.
 
-**Scope discipline matters here.** The full rewrite is ten phases; this session
-covers two of them plus build integration. Do the work in this file, verify it,
-and stop. Do not start the networking phases — they are listed at the bottom
-only so you understand where this is heading.
+Phases 1–10 of the plan are implemented and committed. **None of it has ever
+run between two real machines.** That is the whole of what is left, and it is
+not a formality — see §4.
 
 ---
 
 ## 1. Where things stand
 
-`main` is at commit `422a927`, "Add the CRDT core: yrs behind
-flutter_rust_bridge". That commit is **additive and inert**: it added a working
-CRDT core but wired it into nothing. Every existing code path still runs on
-Supabase exactly as before, and all 22 files that import `supabase` are
-untouched.
+Ten phases, all landed:
 
-What already works and is committed:
+| Phase | What it is | Where |
+|---|---|---|
+| 1–4 | yrs core, workspace loading, persistence, Markdown materialisation | `rust/`, `lib/shared/crdt/workspace_store.dart` |
+| 5 | Durable log, `crdt:<kbId>` topic, chunked protocol | `lib/shared/crdt/crdt_{sync_repository,protocol,session}.dart` |
+| 6 | Limits, backpressure, jittered backoff, timeout alignment | `crdt_session.dart`, `lib/shared/backend/retry_budget.dart` |
+| 7 | Signed policy, receive-side gate, proposals | `workspace_policy.dart`, `crdt_authorization.dart` |
+| 8 | Awareness cursors as Yjs relative positions | `awareness.dart`, `lib/shared/presence/peer_presence.dart` |
+| 9 | `metadata/` hidden, developer setting to show it | `lib/shared/kb/bundle.dart`, `lib/app/app_store.dart` |
+| 10 | Security log | `lib/shared/security/security_log.dart`, `lib/app/security_log.dart` |
 
-- `rust/` — the `dayseven_crdt` crate wrapping `yrs` (Rust port of Yjs).
-  **8 passing Rust tests.**
-- `lib/shared/crdt/generated/` — flutter_rust_bridge bindings (generated; never
-  hand-edit).
-- `test/shared/crdt/workspace_crdt_test.dart` — **7 passing Dart tests** calling
-  real `yrs` across the bridge.
-- `flutter_rust_bridge.yaml` — codegen config.
-- `rust/target/` is gitignored (874 MB — never commit it).
+Baseline, all verified on 2026-08-26:
 
-Baseline: `flutter analyze` clean, `./scripts/check_layers.sh` passes,
-**456/457** tests pass.
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+cd rust && cargo test          # 22 passing
+cd .. && flutter analyze       # clean
+flutter test                   # 608 passing
+./scripts/check_layers.sh      # passes
+flutter build macos --debug    # succeeds; app launches, dylib bundled
+```
 
 > **Known pre-existing flake, not yours:**
 > `test/features/search/search_bar_test.dart: opens a document when its search
 > result is clicked` fails intermittently under the full suite and passes in
-> isolation. It predates this work. Do not "fix" it, and do not treat it as a
-> regression. If it fails, re-run it alone to confirm.
+> isolation. It predates all of this. Do not "fix" it. Re-run it alone to
+> confirm.
 
 ## 2. Environment
 
 Rust is installed but **deliberately not on your PATH** — the install used
-`--no-modify-path` because `~/.zshenv` already has two broken `source` lines
-(`.rokit/env`, `.aftman/env`). Those errors print on every shell command and are
-**harmless noise**; ignore them, do not fix them.
-
-Prefix Rust work with:
+`--no-modify-path` because `~/.zshenv` has two broken `source` lines
+(`.rokit/env`, `.aftman/env`). Those errors print on every shell command and
+are **harmless noise**; ignore them, do not fix them.
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
-Installed: `rustc`/`cargo` 1.98.0, `rustfmt`, `cargo-expand`,
-`flutter_rust_bridge_codegen` 2.13.0. Flutter 3.47.1.
-
-## 3. The existing CRDT API
-
-Do not redesign this. Dart signatures, from
-`lib/shared/crdt/generated/api/workspace.dart`:
-
-```dart
-Future<BigInt>     workspaceCreate({required String workspaceId});
-Future<BigInt>     workspaceLoad({required List<int> bytes});
-Future<void>       workspaceClose({required BigInt handle});
-Future<String>     workspaceId({required BigInt handle});
-Future<Uint8List>  workspaceEncode({required BigInt handle});
-Future<Uint8List>  workspaceStateVector({required BigInt handle});
-Future<Uint8List>  workspaceDiff({required BigInt handle, required List<int> sinceStateVector});
-Future<List<String>> workspaceApply({required BigInt handle, required List<int> update});
-Future<List<String>> workspaceStageApply({required BigInt handle, required List<int> update});
-Future<List<String>> fileIds({required BigInt handle});
-Future<void>       fileUpsert({required BigInt handle, required String fileId,
-                               required String path, required bool protected,
-                               required List<String> owners});
-Future<void>       fileRemove({required BigInt handle, required String fileId});
-Future<String>     fileText({required BigInt handle, required String fileId});
-Future<FileMeta>   fileMeta({required BigInt handle, required String fileId});
-Future<void>       fileSetText({required BigInt handle, required String fileId, required String next});
-```
-
-`class FileMeta { String fileId; String path; bool protected; List<String> owners; }`
-
-Documents live in a Rust-side registry behind integer handles, so `BigInt` is
-just an opaque token. **Always `workspaceClose` what you open** or you leak.
-
-Document shape:
-
-```
-files: Y.Map<fileId, Y.Map{ path: String, protected: bool,
-                            owners: Y.Array<String>, content: Y.Text }>
-workspaceMeta: Y.Map{ workspaceId, schemaVersion }
-```
+Installed: `rustc`/`cargo` 1.98.0, `flutter_rust_bridge_codegen` 2.13.0,
+Flutter 3.47.1. `rust/target/` is gitignored (874 MB — never commit it).
 
 If you change any `pub fn` in `rust/src/api/`, regenerate:
 
 ```bash
-export PATH="$HOME/.cargo/bin:$PATH"
 flutter_rust_bridge_codegen generate
 ```
 
-## 4. Gotchas already paid for — do not rediscover these
+## 3. How it fits together
+
+```
+KbController opens a Knowledge Base
+  └─ CrdtCollaborationController          lib/app/workspace/crdt_collaboration.dart
+       ├─ WorkspaceStore                  the yrs document, behind the Rust bridge
+       ├─ WorkspacePolicy (verified)      metadata/yjs/policy.json + key from Postgres
+       ├─ CrdtAuthorizationGate           stage → judge → apply
+       └─ CrdtSession                     transport
+            ├─ CrdtSyncRepository         yjs_updates / yjs_snapshots / yjs_proposals
+            ├─ CrdtAssembler              chunking, replay rejection, size limits
+            └─ SecurityLog                what was refused, and why
+```
+
+Outbound: local edit → diff since last send → broadcast (200 ms) **and** push
+to the log (3 s). Inbound: frame → assemble → bounded queue → stage → judge →
+apply → materialise to Markdown.
+
+**Off by default.** `AppStore.crdtCollaboration` must be switched on. Until
+CRDT sync is proven, `documents`/`revisions` and the reviewed-edit workflow in
+`lib/features/differences/` stay authoritative and must not be deleted.
+
+## 4. What is actually left
+
+### 4.1 Prove it between two machines — the only real task
+
+Everything is tested against a `FakeRelay`, a fake channel, and direct SQL.
+Two real clients have never synced. Until they have, treat all of the below as
+unverified:
+
+- Two signed-in clients on one Knowledge Base, `crdtCollaboration` on.
+- One types; the other sees it. Check the broadcast path and the log path
+  separately — kill the socket on one client and confirm it catches up from
+  `yjs_updates` on reconnect.
+- A first sync of the real Awayside KB (9 documents, nested folders,
+  `Oetes [Ωετες].md`). **This is where chunking gets its first real test**;
+  everything above 256 KB has only ever been exercised synthetically.
+- A protected file: confirm an editor's change becomes a proposal, an owner
+  can approve it, and the approved bytes reach both documents.
+- Watch `select count(*) from public.yjs_updates` while somebody types for a
+  minute. If it grows faster than about one row every three seconds, the
+  debounce is not working and you should stop and fix that before anything
+  else.
+
+### 4.2 Compaction is never called
+
+`yjs_compact` exists, is tested, and enforces its own ordering. Nothing
+decides when to run it, so the log grows forever. Owners and co-owners only.
+A reasonable trigger is on Knowledge Base close when the log is over some
+length, but this is a real decision, not a detail.
+
+### 4.3 Nothing shows collaboration state in the UI
+
+`CrdtSession.states` and `.refusals` are streams nobody watches.
+`CrdtLinkState` carries health, cursor, pending-push and queue depth. A
+refused update currently tells the person nothing.
+
+### 4.4 Nothing draws collaborators' carets
+
+`AwarenessResolver` resolves peers to clamped offsets and is tested, and
+presence sends the anchors. No editor code renders them.
+
+### 4.5 No UI for the developer settings
+
+`AppStore.showWorkspaceMetadata` and `AppStore.crdtCollaboration` are read at
+Knowledge Base open but can only be set by editing the JSON in the app support
+directory. App settings needs toggles — and note `AGENTS.md`: App settings
+follows its own design deliberately, so match what is there.
+
+### 4.6 No one has ever signed a policy
+
+`WorkspacePolicy.signedJson` and `set_policy_public_key` work and are tested,
+but no code path generates an owner keypair, writes `policy.json`, or
+publishes the key. **Where the owner's secret key is stored is an open
+decision** — it must never reach the server, and it is currently nowhere.
+Until this exists, every Knowledge Base runs with `policy: null`, which means
+nothing is protected on the CRDT path and only the server's own checks apply.
+
+### 4.7 The cutover
+
+Removing `lib/features/differences/` and the three-way merge in
+`lib/shared/blocks/` happens only after §4.1 has been done and lived with.
+
+## 5. Gotchas already paid for — do not rediscover these
 
 1. **`OffsetKind::Utf16` is mandatory.** `yrs` defaults to `Bytes` (UTF-8), but
-   Yjs indexes UTF-16. On the default, offsets disagree with Dart strings the
-   moment text is non-ASCII (the KB contains `Oetes [Ωετες].md`) and updates
-   stop being Yjs-compatible. All `Doc`s are built in `new_doc()` in
+   Yjs indexes UTF-16. All `Doc`s are built in `new_doc()` in
    `rust/src/api/workspace.rs`. **Never construct a `Doc` anywhere else.**
 2. **Never replace a whole `Y.Text`.** `file_set_text` preserves the common
-   prefix/suffix and rewrites only the differing span. A wholesale replace
-   destroys concurrent edits and every collaborator's cursor. There is a test
-   for this; keep it passing.
-3. **Errors cross as `String`, not `AnyhowException`.** The Rust API returns
-   `Result<T, String>`. Assert on message content in tests.
-4. **`flutter_rust_bridge_codegen generate` injects `mod frb_generated;` at the
-   very top of `rust/src/lib.rs`**, above the `//!` module docs, which is
-   invalid Rust. After every regeneration, move that line below the doc comment
-   or the crate will not compile.
-5. `yrs` value type is `Out` (`Out::Any(Any::String(..))` etc.), not castable to
-   `Any` directly. Helpers `as_string` / `as_bool` / `as_i64` exist.
+   prefix/suffix. A wholesale replace destroys concurrent edits and every
+   collaborator's cursor. There is a test; keep it passing.
+3. **The first update a peer sends must be the whole document, not a diff.** A
+   diff is relative to a state vector, and the only one a peer can name is its
+   own — which omits its own earlier operations, leaving every later update
+   causally dangling and permanently unapplied, silently, because Yjs buffers
+   rather than errors.
+4. **An empty Yjs v1 update is `[0, 0]`, not zero bytes.** Use
+   `isEmptyYjsUpdate`. Without it an idle workspace appends a row per debounce
+   tick forever. The server rejects them too.
+5. **`workspace_apply` reports created files via the event's *keys*, not its
+   path.** A change inside a file has the file id at the front of the event
+   path; a file being created is a change to the `files` map itself, with an
+   empty path. Missing the second case means a collaborator's new document
+   syncs invisibly and never reaches disk.
+6. **A relative position resolves to a *hint*.** An anchor in deleted text
+   resolves to where that text used to be, not to nothing. Clamp against the
+   local length — `AwarenessResolver` does.
+7. **Never open a second transaction inside a `with_doc` read.** It deadlocks.
+   `text_relative_position` needs a mutable transaction, so it opens exactly
+   one.
+8. **Errors cross the bridge as `String`.** Assert on message content.
+9. **`flutter_rust_bridge_codegen generate` can inject `mod frb_generated;`
+   above the `//!` module docs in `rust/src/lib.rs`**, which is invalid Rust.
+   Check after every regeneration.
+10. **Block ids are not prefix-free.** `markdownBodyOffsetOfBlock` matches
+    `<!-- d7 <id> ` *with* the trailing space, or `p-1` finds `p-10`.
 
-## 5. Repo rules you must not break
+## 6. Repo rules you must not break
 
-From `AGENTS.md` and `scripts/check_layers.sh`:
-
-- `shared/` may not import `app/` or `features/`. No feature may import another
-  feature. Feature UI may not import `app/shell/`.
+- `shared/` may not import `app/` or `features/`. No feature may import
+  another feature. Feature UI may not import `app/shell/`.
 - Rendered `fontSize:` must come from `uiTextStyle` or `editorTextStyle`.
-- **Do not bump `version:` in `pubspec.yaml`. Do not tag. Do not publish a
-  release.** `AGENTS.md` says to ship completed changes by default — that rule
-  is **suspended for this session**, because the work here is inert scaffolding
-  mid-rewrite and shipping it would deliver nothing while risking the updater
-  for the two people who run this app.
-- Do not touch `supabase/migrations/`, the release feed, or
-  `lib/shared/platform/app_update.dart`.
-
-> **Supabase is not going away — be clear on this before you design anything.**
-> The finished architecture keeps it in **two** roles:
->
-> 1. **Collaboration transport.** Yjs updates ride Supabase Realtime Broadcast
->    on a new client-writable `crdt:<kbId>` topic; Awareness rides the existing
->    `presence:<kbId>` topic; and durable CRDT state lives in Postgres
->    (`yjs_updates` / `yjs_snapshots`) so a peer that was offline catches up.
->    This is **not** peer-to-peer and there is no embedded server.
-> 2. **Build updates.** `app_releases` and the `releases` bucket, unchanged.
->
-> Both roles are out of scope for *this session* — the steps below are
-> deliberately offline so they can be tested without a backend. That is a
-> property of this slice, not of the system. Do not design the workspace store
-> as though sync will be local-only or peer-to-peer; it will be a relay, and the
-> store must be able to hand out and apply incremental updates
-> (`workspaceDiff` / `workspaceApply`) rather than only whole documents.
+- **Clients may never gain `insert` on `kb:%`.** That topic is the
+  server-authored notification bus. `presence:%` and `crdt:%` are the
+  client-writable ones, and a fourth client-sent message gets a fourth topic
+  rather than widening one of these.
+- **Every CRDT write goes through an RPC.** `yjs_updates`, `yjs_snapshots` and
+  `yjs_proposals` grant `select` only — the RPCs are where the size, rate and
+  role limits live, and a direct insert would skip all of them.
+- **Showing `metadata/` is a view setting.** It must never widen what gets
+  synced, published, or deleted. Two `readTree()` calls deliberately do not
+  take the flag; comments say so.
+- **The security log takes identifiers, never content.** No document text, no
+  keys, no invite codes, no usernames on auth failures.
 - Never print, commit or echo `SUPABASE_SERVICE_ROLE_KEY`.
 
----
+## 7. The outage this replaced
 
-## 6. The work
-
-### Step 1 — Bundle the native library into the app build
-
-Right now the dylib is only reachable from tests via an explicit path. The real
-app cannot load it. Until this is done, nothing downstream can ship.
-
-Use the supported path for an existing project:
-
-```bash
-export PATH="$HOME/.cargo/bin:$PATH"
-flutter_rust_bridge_codegen integrate
-```
-
-This installs Cargokit, which hooks `cargo build` into CocoaPods (macOS) and
-CMake (Windows) so the library is built and bundled automatically.
-
-Then:
-
-- Replace the explicit-path `RustLib.init(externalLibrary: ...)` in
-  `test/shared/crdt/workspace_crdt_test.dart` with the default `RustLib.init()`
-  **only if** integration makes that work under `flutter test`. If it does not,
-  keep the path-based loader for tests — it is not worth fighting.
-- Initialise `RustLib.init()` once at startup in `lib/main.dart`, beside the
-  existing `Supabase.initialize`. It must not throw if the library is missing;
-  degrade to "collaboration unavailable" the way missing Supabase credentials
-  already degrade to local-only.
-- Add the Rust toolchain to **both** `.github/workflows/macos-release.yml` and
-  `.github/workflows/windows-release.yml` (e.g. `dtolnay/rust-toolchain@stable`)
-  before the `flutter build` step.
-
-**Verify:** `flutter build macos --debug` succeeds and the app launches.
-Confirm the dylib is inside the built `.app` bundle.
-
-> **Windows is unverified and is the main risk in this whole project.** It
-> cannot be tested from this machine. If you cannot verify it, say so plainly in
-> your final report rather than implying it works. A release that builds on one
-> platform and not the other splits the two users across incompatible versions.
-
-### Step 2 — Workspace loading (plan Phase 2)
-
-New file: `lib/shared/crdt/workspace_store.dart` (in `shared/`, so it may not
-import `app/` or `features/`).
-
-On opening a Knowledge Base:
-
-1. Create `<kb-root>/metadata/yjs/` if missing.
-2. Load and validate `workspace.bin` if present. On a schema version this build
-   does not understand, refuse and surface a clear message — never partially
-   apply.
-3. Recursively scan for `.md` files, **ignoring `metadata/`** and `.settings/`.
-4. Match known files by normalised path; assign UUIDs to new ones.
-5. Import new Markdown content into `Y.Text` via `fileSetText`.
-
-Reuse `lib/shared/kb/bundle.dart` for path resolution — do not reimplement it.
-
-**File ids:** reuse the existing `BlockDocument.id`. Do not mint a second
-identity. (These already match the `documents.id` column exactly — verified
-against live data, zero mismatches.)
-
-**Note the directory conflict, and follow the spec anyway:** DaySeven keeps its
-own state in the hidden `.settings/`, and this adds a *visible* `metadata/`.
-That inconsistency is intentional and accepted; do not "tidy" it by renaming
-either one.
-
-### Step 3 — Persistence (plan Phase 3)
-
-- Debounce writes (~600 ms; match `open_document.dart:45`).
-- Write `workspace.bin.tmp`, **flush**, then atomically rename to
-  `workspace.bin`. Never write the real file directly.
-- Enforce a configurable maximum workspace size.
-- A crash mid-write must leave the previous good file intact.
-
-### Step 4 — Markdown materialisation and external edits (plan Phase 4)
-
-**Y.Text → Markdown:** write via atomic temp-file rename. Suppress
-self-generated watcher events — `lib/app/workspace/kb_session.dart` already has
-a 250 ms debounced watcher (`_watchDelay`, line 32) and is where suppression
-belongs. Resolve every path against the KB root; **reject path traversal,
-symlinks escaping the root, and non-Markdown targets.**
-
-**Markdown → Y.Text:** call `fileSetText`, which already computes a
-prefix/suffix-minimal edit in Rust. Do **not** add a second diff layer in Dart.
-
-Watch for the write loop: materialising must not retrigger import.
-
-### Step 5 — Hide `metadata/` (plan Phase 9, the part that matters now)
-
-Exclude `metadata/` from the file tree, search and FTS5 indexing so it does not
-appear as user content. Touches
-`lib/features/knowledge_base/ui/knowledge_base_menu.dart` and the indexer in
-`lib/shared/blocks/`. Never open `workspace.bin` as a document.
-
-The developer setting ("Show workspace metadata") and the packaging/export rules
-can wait.
-
----
-
-## 7. Definition of done
-
-All of these must hold:
-
-```bash
-export PATH="$HOME/.cargo/bin:$PATH"
-cd rust && cargo test          # 8+ passing
-cd .. && flutter analyze       # no issues
-flutter test                   # 463+ passing; only the known search flake may fail
-./scripts/check_layers.sh      # passes
-flutter build macos --debug    # succeeds, app launches
-```
-
-New tests required — these are the acceptance criteria, not optional extras:
-
-- Markdown import on first open of an existing KB
-- `workspace.bin` restoration across a close/reopen
-- **Atomic-write recovery**: kill mid-write, previous good file survives
-- External file edit applied as an incremental change, **not** a wholesale
-  `Y.Text` replacement
-- File rename handling
-- **Path traversal and symlink-escape attempts are rejected**
-- `metadata/` absent from the tree and from search results
-
-Use the real Awayside layout as a fixture shape where practical: 9 documents,
-nested folders, and at least one non-ASCII filename (`Oetes [Ωετες].md`).
-
-**Commit** in logical units with real messages. **Do not tag or release.**
-
-## 7b. Status after the 2026-08-26 session
-
-Session 2's work is committed. Two things happened after it that change what
-is left:
-
-**The outage this whole rewrite was a reaction to actually happened again**, on
-2026-08-25, and was diagnosed properly for the first time. It was never a
-capacity problem — storage is 129 MB of 1 GB, database 12 MB of 500 MB. It was
+On 2026-08-25 a shipped client looped on `publish_document_change`: 5,573,597
+rejected calls in 24 hours, peaking near 970/second, from one user. It was
+never a capacity problem — storage is 129 MB of 1 GB. It was
 `DifferencesController._submitDebounced` re-entering with no delay and no
-attempt limit on a queued working copy that had just failed, producing 5.57M
-rejected `publish_document_change` calls in 24 hours, peaking near 970/second.
-Fixed on both sides: `RetryBudget` in `shared/backend/`, and
-`private.publish_gate` in the database. See commit "Stop a rejected publish
-from being resent on a loop".
+attempt limit on a working copy that had just failed.
 
-**Phase 5 is started, not finished.** Committed and applied to the live
-project:
+Two guards, and **do not remove either**: `RetryBudget` client-side, and
+`private.publish_gate` in the database. The CRDT path has its own equivalents
+(`yjs_rate_ok`, the inbound queue bound, the push budget) for the same reason.
 
-- `public.yjs_updates` / `public.yjs_snapshots` with RLS, and the
-  `yjs_push_update` / `yjs_pull` / `yjs_compact` RPCs. Direct table writes are
-  denied; every write goes through an RPC because that is where the size and
-  rate limits are.
-- The `crdt:<kbId>` Realtime policy on `realtime.messages`, read for members
-  and insert for editing roles only.
-- `lib/shared/crdt/crdt_sync_repository.dart` and
-  `lib/shared/crdt/crdt_session.dart`.
+If you are ever tempted to add an automatic retry anywhere in this codebase:
+retries belong where the caller knows whether the request can succeed at all,
+they back off, they jitter, and they give up.
 
-Still to do before CRDT sync is real:
+## 8. Open decisions, not tasks
 
-1. **Nothing constructs a `CrdtSession` yet.** It needs wiring into
-   `kb_session.dart` — start on KB open, `noteLocalChange()` on edit,
-   `remoteChanges` into `materializeFile`, `dispose()` on close.
-2. **No end-to-end test against the live project.** Everything is verified
-   against a `FakeRelay` and by direct SQL; two real clients have never synced.
-3. **Compaction is never called.** `yjs_compact` exists and works; nothing
-   decides when to run it.
-4. Protected-document gating (phase 7) is not attempted. Until it lands, a
-   Knowledge Base with protected documents should not enable CRDT sync —
-   `yjs_push_update` checks only that the caller has *an* editing role.
+- **End-to-end encryption.** The plan flags it as optional. It is *not*
+  implemented, and implementing it would make server-side protected-file
+  gating impossible — the server cannot inspect what it cannot read — leaving
+  only `CrdtAuthorizationGate` client-side. Decide before building on phase 7.
+- **Where an owner's policy secret key lives.** See §4.6.
+- **Whether `sync-step-1` should ever be answered.** It is accepted by the
+  protocol and currently ignored: the durable log answers catch-up better, and
+  replying would mean sending full state to anyone who asks, repeatedly.
 
-Two things worth not rediscovering:
-
-- **The first update a peer sends must be the whole document**, not a diff. A
-  diff is relative to a state vector, and the only one a peer can name is its
-  own, which omits its own earlier operations — every later update then dangles
-  causally and is never applied, silently, because Yjs buffers rather than
-  errors.
-- **An empty Yjs v1 update is `[0, 0]`, not zero bytes.** Use
-  `isEmptyYjsUpdate`. Without it an idle workspace writes a row per debounce
-  tick forever.
-
-## 8. Explicitly out of scope
-
-Do not start these. They are the next sessions:
-
-- The `crdt:<kbId>` Realtime topic, RLS on `realtime.messages`, the Dart
-  broadcast provider (Phase 5)
-- `yjs_updates` / `yjs_snapshots` durability tables (Phase 5) — **note: DB
-  writes must be debounced 2–5 s; per-keystroke writes through PostgREST would
-  recreate the outage that started this project**
-- Abuse protection, backoff, circuit breaker, timeout alignment (Phase 6)
-- `policy.json`, protected-file gating, proposals (Phase 7)
-- Awareness/presence migration (Phase 8)
-- Removing the Supabase sync layer — **it stays working until CRDT sync is
-  proven end to end.** Do not delete `lib/features/differences/` or the
-  three-way merge in `lib/shared/blocks/`.
-
-Full plan, if you need the reasoning behind any of this:
+Full plan, for reasoning behind any of this:
 `~/.claude/plans/analyse-the-codebase-currently-zesty-firefly.md`
 
-## 9. Report honestly
+## 9. Shipping
 
-State plainly what you did, what you verified, and what you could not verify —
-especially Windows. If something is half-done, say so. Do not report completion
-for work you did not test.
+`AGENTS.md` says to ship completed changes by default. **That rule stays
+suspended** until §4.1 is done. None of this is reachable without a developer
+flag, so shipping it delivers nothing while risking the updater for the two
+people who run this app. Do not bump `version:`, do not tag.
