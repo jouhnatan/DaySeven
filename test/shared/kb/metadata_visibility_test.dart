@@ -10,7 +10,6 @@ import 'dart:io';
 
 import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
-import 'package:dayseven/shared/kb/paths.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
