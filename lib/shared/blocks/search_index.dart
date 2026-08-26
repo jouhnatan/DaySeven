@@ -91,6 +91,11 @@ class SearchIndex {
     }
   }
 
+  /// Whether `metadata/` is indexed. Off by default: `workspace.bin` is not
+  /// prose, and a search that returns it is a search that has stopped being
+  /// useful. The developer setting flips it for debugging.
+  bool includeMetadata = false;
+
   Stream<File> _documentFiles() async* {
     final dir = Directory(_kb.documentsPath);
     if (!await dir.exists()) return;
@@ -99,7 +104,9 @@ class SearchIndex {
       final relative = _kb.relativePathFor(entity.path);
       final segments = p.posix.split(relative);
       if (segments.any((part) => part.startsWith('.')) ||
-          (segments.isNotEmpty && segments.first == kMetadataDirName)) {
+          (!includeMetadata &&
+              segments.isNotEmpty &&
+              segments.first == kMetadataDirName)) {
         continue;
       }
       yield entity;

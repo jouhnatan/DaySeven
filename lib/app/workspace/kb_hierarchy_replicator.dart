@@ -54,6 +54,9 @@ Future<_LocalDocumentInventory> _readLocalDocuments(KnowledgeBase kb) async {
   final documents = <_LocalDocument>[];
   final byId = <String, _LocalDocument>{};
   final duplicateIds = <String>{};
+  // Deliberately without `includeMetadata`. This enumerates documents to
+  // publish, and `workspace.bin` is not a document — showing metadata in the
+  // tree is a view setting and must never widen what gets synced.
   final tree = await kb.readTree();
   for (final path in documentPathsIn(tree)) {
     final document = await kb.readDocument(path);

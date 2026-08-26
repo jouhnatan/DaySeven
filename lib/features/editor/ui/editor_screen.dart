@@ -247,6 +247,9 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
         EditingFocus(
           blockId: blockId,
           hasSelection: has,
+          caretOffset: selection.isValid ? selection.extentOffset : null,
+          selectionAnchorOffset:
+              has ? selection.baseOffset : null,
           activeFormats: {
             for (final format in EditingFormat.values)
               if (controller.isFormatActive(format, selection)) format,

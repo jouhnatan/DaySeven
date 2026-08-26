@@ -63,6 +63,32 @@ String encodeMarkdown(BlockDocument document) {
   return '${out.toString().trimRight()}\n';
 }
 
+/// Where a block's body begins in the encoded Markdown, in UTF-16 units.
+///
+/// Awareness needs this. A caret lives at an offset inside one block's text
+/// box, but the CRDT holds each file as a single `Y.Text` of the whole
+/// Markdown, so a block-relative offset has to be turned into a file-relative
+/// one before it can be anchored.
+///
+/// Locating the block by its own marker comment rather than by re-encoding the
+/// preceding blocks keeps this correct when block encodings change: the marker
+/// is the one part of the format that is guaranteed to be present, unique, and
+/// immediately followed by the body.
+///
+/// Returns null when the block is not in this Markdown — a document and an
+/// editor can disagree for a moment after an external edit, and a caret drawn
+/// from a stale mapping is worse than no caret.
+int? markdownBodyOffsetOfBlock(String markdown, String blockId) {
+  // The trailing space matters: block ids are not prefix-free, so searching
+  // for `<!-- d7 p-1` also finds `<!-- d7 p-10`. Every marker has a space
+  // after the id, before either its attributes or the closing `-->`.
+  final marker = markdown.indexOf('<!-- d7 $blockId ');
+  if (marker < 0) return null;
+  final endOfComment = markdown.indexOf('\n', marker);
+  if (endOfComment < 0) return null;
+  return endOfComment + 1;
+}
+
 /// `<!-- d7 <id> align=center space=16 width=0.5 -->`, carrying what the body
 /// cannot. `width` is the image's fraction of the editor content width.
 String _encodeComment(Block block) {

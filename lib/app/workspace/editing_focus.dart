@@ -25,6 +25,8 @@ class EditingFocus {
     required Set<EditingFormat> activeFormats,
     required this.align,
     required this.headingLevel,
+    this.caretOffset,
+    this.selectionAnchorOffset,
   }) : activeFormats = Set.unmodifiable(activeFormats);
 
   final String blockId;
@@ -42,6 +44,16 @@ class EditingFocus {
 
   /// null when the focused block is body text.
   final int? headingLevel;
+
+  /// The caret's offset within this block's text, in UTF-16 units.
+  ///
+  /// Awareness turns this into a file-relative anchor before sending it; on
+  /// its own it means nothing to anybody else, because their copy divides the
+  /// document into blocks the same way only by coincidence.
+  final int? caretOffset;
+
+  /// The other end of the selection, same units. Null at a collapsed caret.
+  final int? selectionAnchorOffset;
 
   bool isActive(EditingFormat format) => activeFormats.contains(format);
 

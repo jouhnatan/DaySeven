@@ -339,9 +339,22 @@ class KnowledgeBase {
 
   // ------------------------------------------------------------------ tree --
 
-  Future<List<KbNode>> readTree() => _readFolder(documentsPath, '');
+  /// The folders and documents a person should see.
+  ///
+  /// `metadata/` holds `workspace.bin` and the signed policy — the workspace's
+  /// own bookkeeping rather than anybody's writing — so it is hidden the way
+  /// `.settings/` is. [includeMetadata] is the developer setting that reveals
+  /// it, for when somebody debugging sync needs to see that those files exist.
+  /// It changes only what is listed: deleting inside `metadata/` stays refused
+  /// regardless, and `workspace.bin` is never openable as a document.
+  Future<List<KbNode>> readTree({bool includeMetadata = false}) =>
+      _readFolder(documentsPath, '', includeMetadata: includeMetadata);
 
-  Future<List<KbNode>> _readFolder(String absolute, String relative) async {
+  Future<List<KbNode>> _readFolder(
+    String absolute,
+    String relative, {
+    required bool includeMetadata,
+  }) async {
     final dir = Directory(absolute);
     if (!await dir.exists()) return const [];
 
@@ -351,7 +364,9 @@ class KnowledgeBase {
     await for (final entity in dir.list(followLinks: false)) {
       final name = p.basename(entity.path);
       if (name.startsWith('.')) continue;
-      if (relative.isEmpty && name == kMetadataDirName) continue;
+      if (relative.isEmpty && name == kMetadataDirName && !includeMetadata) {
+        continue;
+      }
       final childRelative = relative.isEmpty ? name : '$relative/$name';
 
       if (entity is Directory) {
@@ -359,7 +374,11 @@ class KnowledgeBase {
           KbFolder(
             name: name,
             relativePath: childRelative,
-            children: await _readFolder(entity.path, childRelative),
+            children: await _readFolder(
+              entity.path,
+              childRelative,
+              includeMetadata: includeMetadata,
+            ),
           ),
         );
       } else if (entity is File && isDocumentPath(name)) {

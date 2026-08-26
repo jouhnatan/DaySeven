@@ -216,6 +216,8 @@ class SharingController {
     final documents = _ref.read(documentRepositoryProvider);
     final assets = _ref.read(assetRepositoryProvider);
     final ledger = await SyncLedger.open(session.kb);
+    // Never `includeMetadata`: this uploads assets for documents, and
+    // `metadata/` is the workspace's bookkeeping, not content to publish.
     final tree = await session.kb.readTree();
     for (final path in documentPathsIn(tree)) {
       final document = await session.kb.readDocument(path);

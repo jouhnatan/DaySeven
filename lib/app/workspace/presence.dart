@@ -22,7 +22,9 @@ import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/workspace/kb_role.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
+import 'package:dayseven/shared/blocks/markdown.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/presence/peer_presence.dart';
 
@@ -207,6 +209,46 @@ class PresenceController extends StateNotifier<PresenceState> {
   }
 
   /// Where this copy of the app currently is.
+  /// Turns the caret's block-relative offset into a file-relative Yjs anchor.
+  ///
+  /// Returns nulls whenever anything does not line up — no collaboration
+  /// running, no CRDT copy of this file, the editor and the document briefly
+  /// disagreeing after an external edit. A cursor drawn in the wrong place is
+  /// worse than one not drawn, and presence has never been allowed to fail
+  /// loudly.
+  Future<({String? cursor, String? anchor})> _caretAnchors() async {
+    const none = (cursor: null, anchor: null);
+    final collaboration = _ref.read(crdtCollaborationProvider);
+    final awareness = collaboration.awareness;
+    if (awareness == null) return none;
+
+    final open = _ref.read(documentControllerProvider);
+    final focus = _ref.read(editingFocusProvider);
+    if (open == null || focus == null) return none;
+    final caret = focus.caretOffset;
+    if (caret == null) return none;
+
+    final blockStart = markdownBodyOffsetOfBlock(
+      encodeMarkdown(open.document),
+      focus.blockId,
+    );
+    if (blockStart == null) return none;
+
+    final fileId = open.document.id;
+    final cursor = await awareness.encodeCaret(
+      fileId: fileId,
+      offset: blockStart + caret,
+    );
+    final anchorOffset = focus.selectionAnchorOffset;
+    final anchor = anchorOffset == null
+        ? null
+        : await awareness.encodeCaret(
+            fileId: fileId,
+            offset: blockStart + anchorOffset,
+          );
+    return (cursor: cursor, anchor: anchor);
+  }
+
   PeerPresence? _self() {
     final user = _ref.read(currentUserProvider);
     if (user == null) return null;
@@ -267,10 +309,25 @@ class PresenceController extends StateNotifier<PresenceState> {
     final self = _self();
     if (self == null) return;
     // Saying the same thing again costs a round trip and tells nobody
-    // anything.
+    // anything. Compared before the anchors are computed, so a repeat costs
+    // nothing at all.
     if (_lastSent != null && _lastSent!.samePositionAs(self)) return;
     _lastSent = self;
-    unawaited(_track(channel, self));
+    unawaited(_trackWithCaret(channel, self));
+  }
+
+  Future<void> _trackWithCaret(
+    RealtimeChannel channel,
+    PeerPresence self,
+  ) async {
+    final anchors = await _caretAnchors();
+    if (!mounted || !identical(_channel, channel)) return;
+    final withCaret = self.copyWith(
+      cursor: () => anchors.cursor,
+      selectionAnchor: () => anchors.anchor,
+    );
+    _lastSent = withCaret;
+    await _track(channel, withCaret);
   }
 
   Future<void> _track(RealtimeChannel channel, PeerPresence self) async {

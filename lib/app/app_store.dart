@@ -92,6 +92,43 @@ class AppStore {
     await _write(data);
   }
 
+  /// Developer toggles. Off unless explicitly turned on, and read through
+  /// `?? false` everywhere, so a missing or hand-mangled settings file behaves
+  /// exactly like a fresh install rather than enabling something by accident.
+  Future<bool> developerFlag(String name) async {
+    final raw = (await _read())['developerFlags'];
+    if (raw is! Map<String, Object?>) return false;
+    return raw[name] == true;
+  }
+
+  Future<void> setDeveloperFlag(String name, bool enabled) async {
+    final data = await _read();
+    final raw = data['developerFlags'];
+    final flags = raw is Map<String, Object?>
+        ? Map<String, Object?>.from(raw)
+        : <String, Object?>{};
+    flags[name] = enabled;
+    data['developerFlags'] = flags;
+    await _write(data);
+  }
+
+  /// Shows `metadata/` in the tree, search and indexing.
+  ///
+  /// It holds `workspace.bin` and the signed policy, which are the workspace's
+  /// own bookkeeping rather than anybody's writing. Hidden by default for the
+  /// same reason `.settings/` is; visible on request because a person
+  /// debugging sync needs to see that those files exist.
+  static const String showWorkspaceMetadata = 'showWorkspaceMetadata';
+
+  /// Turns on CRDT collaboration for Knowledge Bases that have it available.
+  ///
+  /// Off by default and deliberately so: the reviewed-edit path through
+  /// `documents`/`revisions` is what the two people running this app rely on,
+  /// and it stays authoritative until CRDT sync has been proven end to end
+  /// between two real clients. This flag is how that proving happens without
+  /// putting anybody's Knowledge Base behind it first.
+  static const String crdtCollaboration = 'crdtCollaboration';
+
   /// Recent documents are tracked per Knowledge Base, keyed by its id, so
   /// moving a bundle between machines does not lose the list.
   Future<List<String>> recentDocuments(String kbId) async =>

@@ -35,6 +35,7 @@ import 'package:dayseven/features/home/ui/home_screen.dart';
 import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
+import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
 
 class DsShell extends ConsumerWidget {
@@ -46,6 +47,10 @@ class DsShell extends ConsumerWidget {
     // Held here rather than left to whichever widget happens to read a peer
     // first, so the channel's lifetime is the shell's and not a panel's.
     ref.watch(presenceControllerProvider.select((_) => null));
+    // Same reasoning: the CRDT session belongs to the open Knowledge Base, not
+    // to whichever screen first asks about collaboration. It is inert unless
+    // the developer flag turns it on.
+    ref.watch(crdtCollaborationProvider.select((_) => null));
     final view = ref.watch(viewProvider);
     final pendingDifferencesCount = ref.watch(
       differencesStateProvider.select((state) => state.pendingCount),

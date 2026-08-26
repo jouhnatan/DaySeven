@@ -38,6 +38,10 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   /// contents but not the set of files) does not trigger a search rebuild.
   Set<String> _knownPaths = const {};
 
+  /// Whether `metadata/` is shown, read once when the Knowledge Base opens.
+  /// Held here so every later tree read agrees with the first one.
+  bool _showMetadata = false;
+
   /// Opens (or creates) the bundle in a folder the user chose through the
   /// system file picker, then rebuilds the search index from the files on disk.
   Future<void> openFolder(String folder, {String? createWithName}) async {
@@ -52,18 +56,23 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
             );
 
       final index = await SearchIndex.openFor(kb);
-      await index.rebuild();
 
       _stopWatching();
       state.whenData((previous) => previous?.index.close());
 
-      final tree = await kb.readTree();
+      final store = await _ref.read(appStoreProvider.future);
+
+      final showMetadata = await store.developerFlag(
+        AppStore.showWorkspaceMetadata,
+      );
+      _showMetadata = showMetadata;
+      index.includeMetadata = showMetadata;
+      final tree = await kb.readTree(includeMetadata: showMetadata);
       _knownPaths = _pathsIn(tree);
       state = AsyncValue.data(KbSession(kb: kb, index: index, tree: tree));
 
+      await index.rebuild();
       _startWatching(kb);
-
-      final store = await _ref.read(appStoreProvider.future);
       await store.noteKbOpened(folder);
     } catch (error, stack) {
       state = AsyncValue.error(error, stack);
@@ -73,7 +82,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   Future<void> refreshTree() async {
     final session = state.valueOrNull;
     if (session == null) return;
-    final tree = await session.kb.readTree();
+    final tree = await session.kb.readTree(includeMetadata: _showMetadata);
     _knownPaths = _pathsIn(tree);
     state = AsyncValue.data(session.withTree(tree));
   }
@@ -277,7 +286,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
     final session = state.valueOrNull;
     if (session == null) return;
 
-    final tree = await session.kb.readTree();
+    final tree = await session.kb.readTree(includeMetadata: _showMetadata);
     final paths = _pathsIn(tree);
 
     // Documents appearing or disappearing changes what search should find;
