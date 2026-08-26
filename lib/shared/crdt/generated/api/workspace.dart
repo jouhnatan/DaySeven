@@ -77,6 +77,50 @@ Future<List<String>> workspaceStageApply({
   update: update,
 );
 
+/// Encodes a caret position inside a file's text as a Yjs *relative* position.
+///
+/// An absolute index is meaningless to a collaborator: by the time it reaches
+/// them, their copy has moved, and index 40 in their document is somewhere
+/// else entirely. A relative position is anchored to the character it sits
+/// beside, so it survives concurrent editing and lands where the person
+/// actually is.
+///
+/// `index` is a UTF-16 offset, matching Dart's string indexing and the
+/// `OffsetKind::Utf16` every document here is built with.
+///
+/// Returns an empty vector when the file has no text yet, which is a caret at
+/// the start of nothing rather than an error.
+Future<Uint8List> textRelativePosition({
+  required BigInt handle,
+  required String fileId,
+  required int index,
+}) => RustLib.instance.api.crateApiWorkspaceTextRelativePosition(
+  handle: handle,
+  fileId: fileId,
+  index: index,
+);
+
+/// Resolves a collaborator's relative position into an index in *this* copy.
+///
+/// When the character the position was anchored to has since been deleted,
+/// `yrs` resolves to where that text used to be rather than giving up, so a
+/// caret in a deleted paragraph collapses to the point the paragraph occupied
+/// instead of disappearing. That is the better behaviour for drawing a cursor,
+/// but it means the result is a *hint*, not a guarantee: callers must still
+/// clamp it against the length of their own copy before using it.
+///
+/// `None` means the position could not be resolved at all — an empty position,
+/// or a document that no longer holds the branch it referred to.
+Future<int?> textAbsoluteIndex({
+  required BigInt handle,
+  required String fileId,
+  required List<int> position,
+}) => RustLib.instance.api.crateApiWorkspaceTextAbsoluteIndex(
+  handle: handle,
+  fileId: fileId,
+  position: position,
+);
+
 Future<List<String>> fileIds({required BigInt handle}) =>
     RustLib.instance.api.crateApiWorkspaceFileIds(handle: handle);
 

@@ -17,6 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use yrs::types::{Event, PathSegment};
+use yrs::{Assoc, IndexedSequence, StickyIndex};
 use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{
@@ -242,6 +243,74 @@ pub fn workspace_stage_apply(handle: u64, update: Vec<u8>) -> Result<Vec<String>
     let result = workspace_apply(staging, update);
     workspace_close(staging);
     result
+}
+
+// ------------------------------------------------------- awareness cursors
+
+/// Encodes a caret position inside a file's text as a Yjs *relative* position.
+///
+/// An absolute index is meaningless to a collaborator: by the time it reaches
+/// them, their copy has moved, and index 40 in their document is somewhere
+/// else entirely. A relative position is anchored to the character it sits
+/// beside, so it survives concurrent editing and lands where the person
+/// actually is.
+///
+/// `index` is a UTF-16 offset, matching Dart's string indexing and the
+/// `OffsetKind::Utf16` every document here is built with.
+///
+/// Returns an empty vector when the file has no text yet, which is a caret at
+/// the start of nothing rather than an error.
+pub fn text_relative_position(
+    handle: u64,
+    file_id: String,
+    index: u32,
+) -> Result<Vec<u8>, String> {
+    let found = with_doc(handle, |doc| {
+        let files = doc.get_or_insert_map(FILES);
+        // One transaction throughout. `sticky_index` needs a mutable one, and
+        // opening a second inside a read transaction deadlocks the document.
+        let mut txn = doc.transact_mut();
+        let text = text_ref(&files, &txn, &file_id)?;
+        Some(
+            text.sticky_index(&mut txn, index, Assoc::After)
+                .map(|p| p.encode_v1())
+                .unwrap_or_default(),
+        )
+    })?;
+    found.ok_or_else(|| format!("no file {file_id} in this workspace"))
+}
+
+/// Resolves a collaborator's relative position into an index in *this* copy.
+///
+/// When the character the position was anchored to has since been deleted,
+/// `yrs` resolves to where that text used to be rather than giving up, so a
+/// caret in a deleted paragraph collapses to the point the paragraph occupied
+/// instead of disappearing. That is the better behaviour for drawing a cursor,
+/// but it means the result is a *hint*, not a guarantee: callers must still
+/// clamp it against the length of their own copy before using it.
+///
+/// `None` means the position could not be resolved at all — an empty position,
+/// or a document that no longer holds the branch it referred to.
+pub fn text_absolute_index(
+    handle: u64,
+    file_id: String,
+    position: Vec<u8>,
+) -> Result<Option<u32>, String> {
+    if position.is_empty() {
+        return Ok(None);
+    }
+    let sticky = StickyIndex::decode_v1(&position)
+        .map_err(|e| format!("malformed relative position: {e}"))?;
+    let found = with_doc(handle, |doc| {
+        let files = doc.get_or_insert_map(FILES);
+        let txn = doc.transact();
+        text_ref(&files, &txn, &file_id).map(|_| {
+            sticky
+                .get_offset(&txn)
+                .map(|offset| offset.index)
+        })
+    })?;
+    found.ok_or_else(|| format!("no file {file_id} in this workspace"))
 }
 
 // ------------------------------------------------------------------ files
@@ -618,6 +687,78 @@ mod tests {
 
         workspace_close(author);
         workspace_close(peer);
+    }
+
+
+    #[test]
+    fn a_cursor_follows_text_inserted_before_it() {
+        // The whole point of a relative position: an absolute index is
+        // meaningless to a collaborator whose copy has moved on.
+        let ws = workspace_with_file("The moor is wide.");
+        let at_moor = text_relative_position(ws, FILE.into(), 4).unwrap();
+        assert_eq!(
+            text_absolute_index(ws, FILE.into(), at_moor.clone()).unwrap(),
+            Some(4)
+        );
+
+        file_set_text(ws, FILE.into(), "Beyond, the moor is wide.".into()).unwrap();
+        assert_eq!(
+            text_absolute_index(ws, FILE.into(), at_moor).unwrap(),
+            Some(12)
+        );
+        workspace_close(ws);
+    }
+
+    #[test]
+    fn a_cursor_in_deleted_text_collapses_rather_than_vanishing() {
+        // `yrs` resolves an anchor in deleted text to where that text used to
+        // be. Better for drawing a caret than losing it — but it makes the
+        // result a hint, so callers must clamp it against their own length.
+        let ws = workspace_with_file("The moor is wide.");
+        let inside = text_relative_position(ws, FILE.into(), 6).unwrap();
+        file_set_text(ws, FILE.into(), "Gone.".into()).unwrap();
+
+        let resolved = text_absolute_index(ws, FILE.into(), inside).unwrap();
+        let length = file_text(ws, FILE.into()).unwrap().encode_utf16().count() as u32;
+        assert!(resolved.is_some());
+        assert!(resolved.unwrap() <= length, "must be clampable, got {resolved:?}");
+        workspace_close(ws);
+    }
+
+    #[test]
+    fn a_cursor_survives_the_trip_between_two_peers() {
+        let author = workspace_with_file("The moor is wide.");
+        let peer = workspace_load(workspace_encode(author).unwrap()).unwrap();
+        let position = text_relative_position(author, FILE.into(), 8).unwrap();
+        assert_eq!(
+            text_absolute_index(peer, FILE.into(), position).unwrap(),
+            Some(8)
+        );
+        workspace_close(author);
+        workspace_close(peer);
+    }
+
+    #[test]
+    fn cursor_offsets_are_utf16_like_every_other_offset() {
+        let ws = workspace_create("awayside".into());
+        file_upsert(ws, FILE.into(), "Oetes.md".into(), false, vec![]).unwrap();
+        file_set_text(ws, FILE.into(), "Ωετες lies east".into()).unwrap();
+        // Index 5 is just past the Greek word in UTF-16 units.
+        let position = text_relative_position(ws, FILE.into(), 5).unwrap();
+        assert_eq!(
+            text_absolute_index(ws, FILE.into(), position).unwrap(),
+            Some(5)
+        );
+        workspace_close(ws);
+    }
+
+    #[test]
+    fn a_malformed_position_is_an_error_and_an_empty_one_is_not() {
+        let ws = workspace_with_file("The moor is wide.");
+        assert!(text_absolute_index(ws, FILE.into(), vec![9, 9, 9, 9]).is_err());
+        assert_eq!(text_absolute_index(ws, FILE.into(), vec![]).unwrap(), None);
+        assert!(text_relative_position(ws, "no-such-file".into(), 0).is_err());
+        workspace_close(ws);
     }
 
 }

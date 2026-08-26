@@ -6,6 +6,12 @@
 /// document content, which is the same rule the `kb:<uuid>` notification bus
 /// follows. Presence is ephemeral: Realtime holds it per connection and drops
 /// it when the socket closes, so nothing here is ever persisted.
+///
+/// Awareness rides here too, as Yjs relative positions. A relative position is
+/// an *anchor*, not text: it names the character a caret sits beside by its
+/// CRDT identity. Somebody who does not already have that character learns
+/// nothing from it, which is why cursors can travel on the same channel as
+/// everything else here without the content rule bending.
 library;
 
 /// A collaborator's position, as broadcast by their copy of the app.
@@ -19,6 +25,8 @@ class PeerPresence {
     this.documentId,
     this.blockId,
     this.idle = false,
+    this.cursor,
+    this.selectionAnchor,
   });
 
   final String userId;
@@ -45,6 +53,23 @@ class PeerPresence {
   /// person has probably walked away. A closed laptop drops presence by
   /// itself; this covers the one left open.
   final bool idle;
+
+  /// Their caret, as a Yjs *relative* position, base64-encoded.
+  ///
+  /// Not an index. An absolute offset is meaningless by the time it arrives:
+  /// the receiver's copy has moved on, and character 40 in their document is
+  /// somewhere else. A relative position is anchored to the character it sits
+  /// beside, so it resolves to where the person actually is — and resolves to
+  /// nothing when that text no longer exists, which is the honest answer.
+  ///
+  /// Only meaningful for a file both copies share through the CRDT. It is
+  /// null for a document that has never synced, and null for the older builds
+  /// that do not send it. [blockId] remains the coarse fallback, and is what
+  /// gets drawn when this cannot be resolved.
+  final String? cursor;
+
+  /// The other end of a selection, same encoding. Null at a collapsed caret.
+  final String? selectionAnchor;
 
   /// When their copy last sent this. Used to pick between two connections of
   /// the same person, not to expire anyone — Realtime handles departure.
@@ -73,6 +98,8 @@ class PeerPresence {
     if (relativePath != null) 'path': relativePath,
     if (documentId != null) 'document_id': documentId,
     if (blockId != null) 'block_id': blockId,
+    if (cursor != null) 'cursor': cursor,
+    if (selectionAnchor != null) 'selection_anchor': selectionAnchor,
     if (idle) 'idle': true,
     'updated_at': updatedAt.toUtc().toIso8601String(),
   };
@@ -90,6 +117,8 @@ class PeerPresence {
       relativePath: _nonEmpty(json['path']),
       documentId: _nonEmpty(json['document_id']),
       blockId: _nonEmpty(json['block_id']),
+      cursor: _nonEmpty(json['cursor']),
+      selectionAnchor: _nonEmpty(json['selection_anchor']),
       idle: json['idle'] == true,
       updatedAt:
           DateTime.tryParse(_string(json['updated_at']) ?? '')?.toUtc() ??
@@ -108,6 +137,8 @@ class PeerPresence {
     String? Function()? relativePath,
     String? Function()? documentId,
     String? Function()? blockId,
+    String? Function()? cursor,
+    String? Function()? selectionAnchor,
     bool? idle,
     DateTime? updatedAt,
   }) => PeerPresence(
@@ -117,6 +148,9 @@ class PeerPresence {
     relativePath: relativePath == null ? this.relativePath : relativePath(),
     documentId: documentId == null ? this.documentId : documentId(),
     blockId: blockId == null ? this.blockId : blockId(),
+    cursor: cursor == null ? this.cursor : cursor(),
+    selectionAnchor:
+        selectionAnchor == null ? this.selectionAnchor : selectionAnchor(),
     idle: idle ?? this.idle,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -132,6 +166,8 @@ class PeerPresence {
       relativePath == other.relativePath &&
       documentId == other.documentId &&
       blockId == other.blockId &&
+      cursor == other.cursor &&
+      selectionAnchor == other.selectionAnchor &&
       idle == other.idle;
 
   @override
@@ -148,6 +184,8 @@ class PeerPresence {
     relativePath,
     documentId,
     blockId,
+    cursor,
+    selectionAnchor,
     idle,
     updatedAt,
   );

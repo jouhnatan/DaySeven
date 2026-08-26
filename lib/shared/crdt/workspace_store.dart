@@ -568,6 +568,50 @@ class WorkspaceStore {
     return workspaceStageApply(handle: handle, update: update);
   }
 
+  /// Encodes a caret at [index] as a Yjs relative position, for Awareness.
+  ///
+  /// Empty when the file has no text yet — a caret at the start of nothing.
+  Future<Uint8List> relativePosition({
+    required String fileId,
+    required int index,
+  }) async {
+    _checkNotClosed();
+    return textRelativePosition(handle: handle, fileId: fileId, index: index);
+  }
+
+  /// Resolves a collaborator's relative position into an index in this copy.
+  ///
+  /// The result is a hint: an anchor in text this copy has deleted resolves to
+  /// where that text used to be. Clamp before using it.
+  Future<int?> absoluteIndex({
+    required String fileId,
+    required List<int> position,
+  }) async {
+    _checkNotClosed();
+    return textAbsoluteIndex(handle: handle, fileId: fileId, position: position);
+  }
+
+  /// A throwaway copy of this workspace, for building a change without making
+  /// it.
+  ///
+  /// This is how a protected-file edit becomes a proposal. The author's own
+  /// document must not contain the change — it would be pushed to the log and
+  /// reach every peer as an accomplished fact, which is precisely what review
+  /// exists to prevent — so the edit is made on a branch and only the
+  /// resulting update is submitted. The author's file on disk stays exactly as
+  /// they typed it; it is canonical CRDT state that waits.
+  ///
+  /// Always [WorkspaceBranch.close] it. The branch holds a Rust handle.
+  Future<WorkspaceBranch> branch() async {
+    _checkNotClosed();
+    final bytes = await workspaceEncode(handle: handle);
+    final branchHandle = await workspaceLoad(bytes: bytes);
+    return WorkspaceBranch._(
+      handle: branchHandle,
+      base: await workspaceStateVector(handle: branchHandle),
+    );
+  }
+
   // ------------------------------------------------------------- Lifecycle --
 
   void _checkNotClosed() {
@@ -588,6 +632,51 @@ class WorkspaceStore {
         // Suppress flush error on close
       }
     }
+    await workspaceClose(handle: handle);
+  }
+}
+
+/// A detached copy of a workspace, used to compose an update without applying
+/// it to canonical state.
+///
+/// Deliberately tiny: it can be written to and diffed, and nothing else. It
+/// has no path resolution, no persistence and no materialisation, because a
+/// branch that could write to disk would defeat the point of it being
+/// throwaway.
+class WorkspaceBranch {
+  WorkspaceBranch._({required this.handle, required this.base});
+
+  final BigInt handle;
+
+  /// The state vector this branch started from. The diff is taken against it,
+  /// so the proposal carries the author's change and nothing else.
+  final Uint8List base;
+
+  bool _closed = false;
+
+  Future<void> setFileText({
+    required String fileId,
+    required String next,
+  }) async {
+    _check();
+    await fileSetText(handle: handle, fileId: fileId, next: next);
+  }
+
+  /// Everything written to this branch since it was taken.
+  Future<Uint8List> diffSinceBase() async {
+    _check();
+    return workspaceDiff(handle: handle, sinceStateVector: base);
+  }
+
+  void _check() {
+    if (_closed) {
+      throw const WorkspaceStoreException('WorkspaceBranch is closed.');
+    }
+  }
+
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
     await workspaceClose(handle: handle);
   }
 }
