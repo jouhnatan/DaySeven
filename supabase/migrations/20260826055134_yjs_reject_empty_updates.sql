@@ -1,0 +1,8 @@
+-- A Yjs v1 update carrying nothing encodes as two zero bytes, not as an empty
+-- buffer, so `octet_length = 0` never fires for it. A client that skipped the
+-- content check would append a two-byte row on every debounce tick forever —
+-- slow, silent write amplification of exactly the kind that caused the outage.
+--
+-- Folded into 20260826054341_yjs_rpcs.sql's definition as well, so a fresh
+-- database gets the guard without replaying this file's history.
+-- (see 20260826054341_yjs_rpcs.sql for the full function body)

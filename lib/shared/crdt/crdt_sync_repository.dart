@@ -111,6 +111,71 @@ class CrdtCatchUp {
   }
 }
 
+
+/// A protected-file change awaiting review, as the queue lists it.
+///
+/// Deliberately without its payload. A review queue is a list of decisions to
+/// make; downloading every pending edit to render a list of them is how a
+/// quiet feature becomes an expensive one.
+class CrdtProposalSummary {
+  const CrdtProposalSummary({
+    required this.id,
+    required this.fileId,
+    required this.authorId,
+    required this.byteSize,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String fileId;
+  final String authorId;
+  final int byteSize;
+  final DateTime createdAt;
+
+  static CrdtProposalSummary fromRow(Map<String, Object?> row) =>
+      CrdtProposalSummary(
+        id: row['id'] as String,
+        fileId: row['file_id'] as String,
+        authorId: row['author_id'] as String,
+        byteSize: (row['byte_size'] as num?)?.toInt() ?? 0,
+        createdAt:
+            DateTime.tryParse(row['created_at'] as String? ?? '')?.toUtc() ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      );
+}
+
+/// The outcome of resolving one proposal.
+///
+/// [update] is present only on approval, and is the caller's to apply and
+/// push. The server records the decision but cannot merge Yjs, so approving
+/// and applying are two steps with the ordering enforced server-side.
+class CrdtProposalOutcome {
+  const CrdtProposalOutcome({
+    required this.id,
+    required this.fileId,
+    required this.authorId,
+    required this.approved,
+    this.update,
+  });
+
+  final String id;
+  final String fileId;
+  final String authorId;
+  final bool approved;
+  final Uint8List? update;
+
+  static CrdtProposalOutcome fromRpc(Map<String, Object?> value) {
+    final update = value['update'] as String?;
+    return CrdtProposalOutcome(
+      id: value['id'] as String,
+      fileId: value['file_id'] as String,
+      authorId: value['author_id'] as String,
+      approved: value['status'] == 'approved',
+      update: update == null ? null : base64Decode(update),
+    );
+  }
+}
+
 class CrdtSyncRepository {
   CrdtSyncRepository(this.client);
 
@@ -162,6 +227,83 @@ class CrdtSyncRepository {
       },
     );
     return (value as num).toInt();
+  }
+
+
+  /// Routes a change to a protected file into the review queue instead of the
+  /// update log. The server re-checks the caller's role regardless of what the
+  /// client decided.
+  Future<String> submitProposal({
+    required String kbId,
+    required String fileId,
+    required List<int> update,
+  }) async {
+    final value = await client.rpc(
+      'yjs_submit_proposal',
+      params: {
+        'p_kb_id': kbId,
+        'p_file_id': fileId,
+        'p_update': _toPostgresBytea(update),
+      },
+    );
+    return value as String;
+  }
+
+  Future<List<CrdtProposalSummary>> pendingProposals(String kbId) async {
+    final value = await client.rpc(
+      'yjs_pending_proposals',
+      params: {'p_kb_id': kbId},
+    );
+    return [
+      for (final row in (value as List? ?? const []))
+        CrdtProposalSummary.fromRow(Map<String, Object?>.from(row as Map)),
+    ];
+  }
+
+  /// Approves or rejects. On approval the returned update is this client's to
+  /// apply and push; the server has only recorded the decision.
+  Future<CrdtProposalOutcome> resolveProposal({
+    required String proposalId,
+    required bool approve,
+    String? reviewNote,
+  }) async {
+    final value = await client.rpc(
+      'yjs_resolve_proposal',
+      params: {
+        'p_proposal_id': proposalId,
+        'p_approve': approve,
+        'p_review_note': reviewNote,
+      },
+    );
+    return CrdtProposalOutcome.fromRpc(Map<String, Object?>.from(value as Map));
+  }
+
+  /// Publishes the Ed25519 key that `policy.json` must verify against. Owners
+  /// and co-owners only, enforced server-side.
+  Future<void> setPolicyPublicKey({
+    required String kbId,
+    required List<int> publicKey,
+  }) => client.rpc(
+    'set_policy_public_key',
+    params: {'p_kb_id': kbId, 'p_public_key': _toPostgresBytea(publicKey)},
+  );
+
+  /// The key to verify `policy.json` against, or null when the Knowledge Base
+  /// has never published one.
+  Future<Uint8List?> policyPublicKey(String kbId) async {
+    final row = await client
+        .from('knowledge_bases')
+        .select('policy_public_key')
+        .eq('id', kbId)
+        .maybeSingle();
+    final value = row?['policy_public_key'];
+    // PostgREST renders bytea as a hex string with a leading backslash-x.
+    if (value is! String || !value.startsWith(r'\x')) return null;
+    final hex = value.substring(2);
+    return Uint8List.fromList([
+      for (var i = 0; i + 1 < hex.length; i += 2)
+        int.parse(hex.substring(i, i + 2), radix: 16),
+    ]);
   }
 
   /// PostgREST renders `bytea` as a hex string. Base64 would be smaller, but
