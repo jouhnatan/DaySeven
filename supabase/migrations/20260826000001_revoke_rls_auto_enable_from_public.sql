@@ -1,0 +1,11 @@
+-- The previous revoke was ineffective on its own.
+--
+-- Postgres grants execute on new functions to PUBLIC by default, and both anon
+-- and authenticated are members of PUBLIC, so revoking from those two roles
+-- left the inherited PUBLIC grant intact and the function still reachable at
+-- /rest/v1/rpc/rls_auto_enable. The grant has to come off PUBLIC itself.
+--
+-- postgres keeps its own explicit grant, and the `ensure_rls` event trigger is
+-- unaffected either way: an event trigger runs as the function owner and does
+-- not consult execute privileges.
+revoke execute on function public.rls_auto_enable() from public;

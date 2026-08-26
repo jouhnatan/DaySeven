@@ -232,13 +232,46 @@ class DocumentRepository {
     return rows.cast<Map<String, Object?>>();
   }
 
+  /// Fetches many revisions in one round trip, keyed by id.
+  ///
+  /// Chunked because the ids travel in the query string, and a Knowledge Base
+  /// large enough to overflow a URL would otherwise fail as a bad request
+  /// rather than as anything a caller could act on.
+  Future<Map<String, Revision>> revisionsByIds(Iterable<String> ids) async {
+    const chunkSize = 100;
+    final unique = ids.toSet().toList();
+    final byId = <String, Revision>{};
+    for (var start = 0; start < unique.length; start += chunkSize) {
+      final chunk = unique.sublist(
+        start,
+        start + chunkSize > unique.length ? unique.length : start + chunkSize,
+      );
+      final rows = await client.from('revisions').select().inFilter('id', chunk);
+      for (final row in rows.cast<Map<String, Object?>>()) {
+        byId[row['id'] as String] = Revision.fromRow(row);
+      }
+    }
+    return byId;
+  }
+
+  /// Every current document in a Knowledge Base, with its content.
+  ///
+  /// Two queries regardless of how many documents there are. This runs on every
+  /// peer publish -- a `document_published` broadcast wakes a full pull -- so a
+  /// round trip per document made one person saving one paragraph cost every
+  /// other client a request per document in the Knowledge Base.
   Future<List<RemoteDocumentSnapshot>> snapshot(String kbId) async {
     final documents = await documentsIn(kbId);
+    final revisions = await revisionsByIds([
+      for (final row in documents)
+        if (row['current_revision_id'] != null)
+          row['current_revision_id'] as String,
+    ]);
     final result = <RemoteDocumentSnapshot>[];
     for (final row in documents) {
       final revisionId = row['current_revision_id'] as String?;
       if (revisionId == null) continue;
-      final current = await revision(revisionId);
+      final current = revisions[revisionId];
       if (current == null) continue;
       result.add(
         RemoteDocumentSnapshot(

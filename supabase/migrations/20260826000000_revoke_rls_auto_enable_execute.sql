@@ -1,0 +1,12 @@
+-- Takes public.rls_auto_enable() out of the PostgREST surface.
+--
+-- It is an event-trigger function -- a safety net that enables RLS on any new
+-- table created in public -- and it is kept for that. What it should never
+-- have is execute for anon and authenticated: it is SECURITY DEFINER, and the
+-- anon grant made it reachable unauthenticated at /rest/v1/rpc/rls_auto_enable.
+--
+-- Postgres refuses to call a function returning event_trigger directly, so the
+-- grant was not exploitable on its own. It is still surface nothing needs, and
+-- the event trigger that does call it runs as the owner regardless of who may
+-- execute it. Revoking changes no behaviour.
+revoke execute on function public.rls_auto_enable() from anon, authenticated;
