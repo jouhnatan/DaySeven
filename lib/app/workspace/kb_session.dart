@@ -55,23 +55,23 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
               name: createWithName ?? p.basename(folder),
             );
 
+      final store = await _ref.read(appStoreProvider.future);
+      // Read before the index is built and before the tree is walked, so both
+      // agree about whether `metadata/` exists as far as this session is
+      // concerned.
+      _showMetadata = await store.developerFlag(AppStore.showWorkspaceMetadata);
+
       final index = await SearchIndex.openFor(kb);
+      index.includeMetadata = _showMetadata;
+      await index.rebuild();
 
       _stopWatching();
       state.whenData((previous) => previous?.index.close());
 
-      final store = await _ref.read(appStoreProvider.future);
-
-      final showMetadata = await store.developerFlag(
-        AppStore.showWorkspaceMetadata,
-      );
-      _showMetadata = showMetadata;
-      index.includeMetadata = showMetadata;
-      final tree = await kb.readTree(includeMetadata: showMetadata);
+      final tree = await kb.readTree(includeMetadata: _showMetadata);
       _knownPaths = _pathsIn(tree);
       state = AsyncValue.data(KbSession(kb: kb, index: index, tree: tree));
 
-      await index.rebuild();
       _startWatching(kb);
       await store.noteKbOpened(folder);
     } catch (error, stack) {

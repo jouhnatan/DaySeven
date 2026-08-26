@@ -143,6 +143,26 @@ nothing is protected on the CRDT path and only the server's own checks apply.
 Removing `lib/features/differences/` and the three-way merge in
 `lib/shared/blocks/` happens only after §4.1 has been done and lived with.
 
+### 4.8 Suggested order
+
+Not arbitrary. Each of these makes the next one testable.
+
+1. **§4.6, policy signing.** Everything in phase 7 is inert without it, so
+   proving sync before it exists proves the easy half. Decide where the
+   owner's secret lives first — that is a question for the user, not a
+   detail to pick.
+2. **§4.5, the settings toggles.** You cannot ask somebody to test §4.1 if
+   turning the feature on means hand-editing JSON.
+3. **§4.3, link state in the UI.** Do this before §4.1, not after: without it,
+   a failed sync during testing is indistinguishable from nothing happening,
+   and you will not know which you are looking at.
+4. **§4.1, two real machines.** The point of the whole exercise.
+5. **§4.2, compaction.** Once §4.1 has produced a log worth compacting, and
+   once you can see from §4.3 whether it worked.
+6. **§4.4, drawing carets.** Cosmetic, and easiest to get right when sync is
+   already known good.
+7. **§4.7, the cutover.** Only after §4.1 has been lived with.
+
 ## 5. Gotchas already paid for — do not rediscover these
 
 1. **`OffsetKind::Utf16` is mandatory.** `yrs` defaults to `Bytes` (UTF-8), but
@@ -228,7 +248,37 @@ Full plan, for reasoning behind any of this:
 
 ## 9. Shipping
 
-`AGENTS.md` says to ship completed changes by default. **That rule stays
-suspended** until §4.1 is done. None of this is reachable without a developer
-flag, so shipping it delivers nothing while risking the updater for the two
-people who run this app. Do not bump `version:`, do not tag.
+Two different questions, and they have different answers.
+
+**The outage fix should ship, and has not.** `RetryBudget`, the `retryCount: 0`
+change and the timeout alignment are client-side, and no released build has
+them. The current release is **v1.3.19+24** on both platforms, published
+2026-08-26 00:26 UTC — *during* the incident. `private.publish_gate` caps a
+looping client server-side, so this is no longer urgent, but until a build
+ships, the bug is still on somebody's machine. This is an ordinary completed
+change and `AGENTS.md` applies to it normally.
+
+**The CRDT work delivers nothing yet, and that is fine.** It is unreachable
+without `AppStore.crdtCollaboration`, which has no UI and defaults off. It
+rides along in the same release because it is on the same branch; it does not
+justify one on its own, and §4.1 is not a precondition for shipping the fix
+above.
+
+Before tagging, know that shipping the branch also ships, to every user,
+regardless of the flag:
+
+- `retryCount: 0` and a 10s `requestTimeout` on every PostgREST call
+- publish retry budgets in `DifferencesController` and `SharingController`
+- a `security.log` written in the app support directory
+- an extra `AppStore` read when a Knowledge Base opens
+
+All are intended. None depend on the CRDT flag. Sanity-check them on a real
+build rather than assuming, because they are on the path everybody uses.
+
+The Rust library already ships: v1.3.19 built and published on **both**
+platforms with Cargokit and the toolchain in both workflows, which retires the
+"Windows is unverified" risk the earlier handoff carried. Adding
+`ed25519-dalek` is the only new native dependency since.
+
+Follow `AGENTS.md` when you do it: bump `version:` (raise the build number),
+tag to match exactly, watch both workflows, and confirm the feed moved.
