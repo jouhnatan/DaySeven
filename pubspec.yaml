@@ -51,6 +51,8 @@ dependencies:
   # rather than a constant compiled in beside it.
   package_info_plus: ^8.3.1
   flutter_rust_bridge: 2.13.0
+  rust_lib_dayseven:
+    path: rust_builder
 
 dev_dependencies:
   integration_test:
