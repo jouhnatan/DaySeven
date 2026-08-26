@@ -133,10 +133,37 @@ follows its own design deliberately, so match what is there.
 
 `WorkspacePolicy.signedJson` and `set_policy_public_key` work and are tested,
 but no code path generates an owner keypair, writes `policy.json`, or
-publishes the key. **Where the owner's secret key is stored is an open
-decision** — it must never reach the server, and it is currently nowhere.
-Until this exists, every Knowledge Base runs with `policy: null`, which means
-nothing is protected on the CRDT path and only the server's own checks apply.
+publishes the key. Until this exists, every Knowledge Base runs with
+`policy: null`, which means nothing is protected on the CRDT path and only the
+server's own checks apply.
+
+**Key storage is decided: the keypair is generated per device-user and stored
+locally, indexed by username.** Usernames are immutable in this app, so they
+are a stable handle for a key that has to outlive password changes.
+
+Build it exactly this way:
+
+1. On first need, call `policyGenerateKeypair()`. Store the **secret** in the
+   OS keychain if you can reach one, otherwise in a file in the application
+   support directory with restrictive permissions. Key the entry by username.
+2. Publish the **public** half through `set_policy_public_key` (owner or
+   co-owner only, enforced server-side).
+3. Sign `policy.json` with `WorkspacePolicy.signedJson` and write it to
+   `metadata/yjs/policy.json`.
+
+> **The username is an index, not key material.** It identifies which stored
+> key to load. It is public — presence broadcasts it, `profiles` exposes it —
+> so deriving, seeding or generating the secret from it, or from any other
+> public value, would let anybody who knows a username forge that person's
+> policies and hand themselves ownership. Generate from OS entropy, which is
+> what `policy_generate_keypair` already does. Never send the secret to the
+> server and never write it to the security log.
+
+Consequences to handle, not to discover later: a fresh install has no key, so
+an owner on a new machine must republish and re-sign rather than silently
+losing the ability to sign; and a lost key means the owner can no longer sign,
+so the recovery path is republishing a new public key, which every member's
+client must then accept.
 
 ### 4.7 The cutover
 
@@ -238,7 +265,9 @@ they back off, they jitter, and they give up.
   implemented, and implementing it would make server-side protected-file
   gating impossible — the server cannot inspect what it cannot read — leaving
   only `CrdtAuthorizationGate` client-side. Decide before building on phase 7.
-- **Where an owner's policy secret key lives.** See §4.6.
+- ~~Where an owner's policy secret key lives.~~ **Decided**: generated on
+  device, stored locally indexed by username. See §4.6 for the build order and
+  for why the username indexes the key rather than producing it.
 - **Whether `sync-step-1` should ever be answered.** It is accepted by the
   protocol and currently ignored: the durable log answers catch-up better, and
   replying would mean sending full state to anyone who asks, repeatedly.
