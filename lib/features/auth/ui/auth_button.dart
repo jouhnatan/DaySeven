@@ -7,7 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show User;
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthException, User;
 
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/menu.dart';
@@ -16,6 +16,7 @@ import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
+import 'package:dayseven/app/security_log.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
 
 enum _AccountAction { profileError, changeName, signOut }
@@ -177,7 +178,14 @@ class _SignInDialogState extends ConsumerState<_SignInDialog> {
       ref.invalidate(myProfileProvider);
       ref.invalidate(kbRoleProvider);
       if (mounted) Navigator.of(context).pop();
-    } catch (error) {
+    } on Object catch (error) {
+      // Recorded without the username: somebody mistyping their password is
+      // the common case, and naming them would leak a real account name to
+      // whoever reads the log.
+      recordAuthenticationFailure(
+        ref.read(securityLogSyncProvider),
+        code: error is AuthException ? error.code : null,
+      );
       setState(() => _error = describeError(error));
     }
   }

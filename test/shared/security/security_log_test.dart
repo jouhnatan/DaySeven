@@ -153,6 +153,57 @@ void main() {
     });
   });
 
+  group('the audit surface', () {
+    test('covers every event the plan asks to be recorded', () {
+      // Connection, session identity, authentication and authorization
+      // failures, limit violations, protocol errors, membership changes.
+      final kinds = SecurityEventKind.values.map((k) => k.wire).toSet();
+      expect(
+        kinds,
+        containsAll(<String>[
+          'channel.joined',
+          'channel.left',
+          'channel.error',
+          'membership.changed',
+          'auth.failed',
+          'authz.failed',
+          'limit.exceeded',
+          'protocol.error',
+          'update.rejected',
+        ]),
+      );
+    });
+
+    test('a failed sign-in records that it happened, not who', () {
+      // Somebody mistyping their password is the common case. A log naming
+      // them leaks a real account name to whoever reads it.
+      log()
+        ..record(
+          SecurityEventKind.authenticationFailed,
+          facts: {'code': 'invalid_credentials'},
+        )
+        ..flush();
+      final event = decoded(0);
+      expect(event['code'], 'invalid_credentials');
+      expect(event.containsKey('username'), isFalse);
+    });
+
+    test('a membership change records the change, not the document', () {
+      log()
+        ..record(
+          SecurityEventKind.membershipChanged,
+          facts: {
+            'kb_id': 'kb-1',
+            'change': 'invitation_accepted',
+            'member_id': 'u-2',
+          },
+        )
+        ..flush();
+      expect(decoded(0)['change'], 'invitation_accepted');
+      expect(decoded(0)['kb_id'], 'kb-1');
+    });
+  });
+
   group('the file sink', () {
     late Directory dir;
     setUp(() => dir = Directory.systemTemp.createTempSync('ds-seclog'));

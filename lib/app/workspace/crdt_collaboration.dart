@@ -20,9 +20,9 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'package:dayseven/app/app_store.dart';
+import 'package:dayseven/app/security_log.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
@@ -210,17 +210,10 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     );
   }
 
-  Future<SecurityLog> _openSecurityLog() async {
-    try {
-      final dir = await getApplicationSupportDirectory();
-      return SecurityLog(
-        sink: SecurityLogFileSink(File(p.join(dir.path, 'security.log'))),
-      );
-    } on Object {
-      // Nowhere to write is not a reason to refuse to collaborate.
-      return SecurityLog(sink: const NullSecuritySink());
-    }
-  }
+  /// The installation's log, shared with sign-in and membership changes, so
+  /// the whole trail is one file in one order.
+  Future<SecurityLog> _openSecurityLog() =>
+      _ref.read(securityLogProvider.future);
 
   /// Call after a local edit to [fileId] that this device is allowed to make.
   ///

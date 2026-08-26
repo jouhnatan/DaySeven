@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 export 'package:dayseven/app/workspace/kb_role.dart';
 
+import 'package:dayseven/app/security_log.dart';
 import 'package:dayseven/app/workspace/kb_hierarchy_replicator.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/kb_role.dart';
@@ -257,6 +258,11 @@ class SharingController {
     }
 
     await _ref.read(kbRepositoryProvider).acceptInvitation(invitation.kbId);
+    recordMembershipChange(
+      _ref.read(securityLogSyncProvider),
+      kbId: invitation.kbId,
+      change: 'invitation_accepted',
+    );
     final kb = await KnowledgeBase.create(
       folder: folder,
       name: invitation.name,
@@ -300,6 +306,11 @@ class SharingController {
     await _ref
         .read(kbRepositoryProvider)
         .deleteRemote(session.kb.manifest.kbId);
+    recordMembershipChange(
+      _ref.read(securityLogSyncProvider),
+      kbId: session.kb.manifest.kbId,
+      change: 'sharing_revoked',
+    );
     await _ref
         .read(differencesControllerProvider.notifier)
         .refresh(showLoading: false);
