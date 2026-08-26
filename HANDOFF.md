@@ -281,6 +281,57 @@ nested folders, and at least one non-ASCII filename (`Oetes [Ωετες].md`).
 
 **Commit** in logical units with real messages. **Do not tag or release.**
 
+## 7b. Status after the 2026-08-26 session
+
+Session 2's work is committed. Two things happened after it that change what
+is left:
+
+**The outage this whole rewrite was a reaction to actually happened again**, on
+2026-08-25, and was diagnosed properly for the first time. It was never a
+capacity problem — storage is 129 MB of 1 GB, database 12 MB of 500 MB. It was
+`DifferencesController._submitDebounced` re-entering with no delay and no
+attempt limit on a queued working copy that had just failed, producing 5.57M
+rejected `publish_document_change` calls in 24 hours, peaking near 970/second.
+Fixed on both sides: `RetryBudget` in `shared/backend/`, and
+`private.publish_gate` in the database. See commit "Stop a rejected publish
+from being resent on a loop".
+
+**Phase 5 is started, not finished.** Committed and applied to the live
+project:
+
+- `public.yjs_updates` / `public.yjs_snapshots` with RLS, and the
+  `yjs_push_update` / `yjs_pull` / `yjs_compact` RPCs. Direct table writes are
+  denied; every write goes through an RPC because that is where the size and
+  rate limits are.
+- The `crdt:<kbId>` Realtime policy on `realtime.messages`, read for members
+  and insert for editing roles only.
+- `lib/shared/crdt/crdt_sync_repository.dart` and
+  `lib/shared/crdt/crdt_session.dart`.
+
+Still to do before CRDT sync is real:
+
+1. **Nothing constructs a `CrdtSession` yet.** It needs wiring into
+   `kb_session.dart` — start on KB open, `noteLocalChange()` on edit,
+   `remoteChanges` into `materializeFile`, `dispose()` on close.
+2. **No end-to-end test against the live project.** Everything is verified
+   against a `FakeRelay` and by direct SQL; two real clients have never synced.
+3. **Compaction is never called.** `yjs_compact` exists and works; nothing
+   decides when to run it.
+4. Protected-document gating (phase 7) is not attempted. Until it lands, a
+   Knowledge Base with protected documents should not enable CRDT sync —
+   `yjs_push_update` checks only that the caller has *an* editing role.
+
+Two things worth not rediscovering:
+
+- **The first update a peer sends must be the whole document**, not a diff. A
+  diff is relative to a state vector, and the only one a peer can name is its
+  own, which omits its own earlier operations — every later update then dangles
+  causally and is never applied, silently, because Yjs buffers rather than
+  errors.
+- **An empty Yjs v1 update is `[0, 0]`, not zero bytes.** Use
+  `isEmptyYjsUpdate`. Without it an idle workspace writes a row per debounce
+  tick forever.
+
 ## 8. Explicitly out of scope
 
 Do not start these. They are the next sessions:
