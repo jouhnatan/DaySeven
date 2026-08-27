@@ -22,6 +22,8 @@ import 'package:dayseven/shared/ui/error_box.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/features/knowledge_base/ui/invite_dialog.dart';
+import 'package:dayseven/features/knowledge_base/ui/knowledge_base_sync_button.dart';
+import 'package:path/path.dart' as p;
 
 const double kKnowledgeBaseControlHeight = 38;
 
@@ -204,19 +206,26 @@ class _KnowledgeBaseSettingsPanelState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        _KbSwitcher(
+          session: session,
+          onPick: (path) async {
+            await ref.read(kbControllerProvider.notifier).openFolder(path);
+          },
+        ),
+        const SizedBox(height: 16),
         Text(
           'Sharing connects this on-disk Knowledge Base to Supabase for '
           'invitations and reviewed collaboration. The local folder remains '
           'the Knowledge Base you work in.',
           style: uiTextStyle(size: 13, color: colors.muted),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         if (kbId != null && role != null && role != KbRole.local) ...[
           _SyncStatusCard(
             health: health,
             onRetry: () => ref.invalidate(kbSyncHealthProvider(kbId)),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           _CollaboratorsCard(
             collaborators: collaborators,
             currentRole: role,
@@ -233,7 +242,7 @@ class _KnowledgeBaseSettingsPanelState
                   }
                 : null,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
         ],
         if (!canManage)
           Text(
@@ -279,16 +288,29 @@ class _KnowledgeBaseSettingsPanelState
               style: uiTextStyle(size: 13, color: colors.muted),
             ),
           if (role == KbRole.local || role == KbRole.owner) ...[
-            const SizedBox(height: 8),
-            _SettingsAction(
+            const SizedBox(height: 12),
+            DsSettingRow(
               key: const Key('delete-shared-knowledge-base-setting'),
-              label: 'Delete Shared Knowledge Base',
-              description:
+              label: 'Delete Knowledge Base',
+              helper:
                   'Deletes only the Supabase copy and collaboration history. '
                   'The on-disk Knowledge Base is not deleted or changed, and '
                   'you can share it again later.',
-              danger: true,
-              onPressed: _working ? null : _deleteShared,
+              trailing: DsButton(
+                variant: DsButtonVariant.danger,
+                height: DsSize.smallControl,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                semanticLabel: 'Delete Knowledge Base',
+                onPressed: _working ? null : _deleteShared,
+                child: Text(
+                  'Delete',
+                  style: uiTextStyle(
+                    size: 13,
+                    weight: 500,
+                    color: _working ? CF.faint : CF.danger,
+                  ),
+                ),
+              ),
             ),
           ],
         ],
@@ -357,6 +379,8 @@ class _SyncStatusCard extends StatelessWidget {
                 ],
               ),
             ),
+            const KnowledgeBaseSyncButton(),
+            const SizedBox(width: 8),
             TextButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),
@@ -487,6 +511,21 @@ class _CollaboratorsCard extends StatelessWidget {
                                     ],
                                   ),
                                 ),
+                                if (_canManage(member) &&
+                                    (member.role ==
+                                            CollaborationRole.editor ||
+                                        member.role ==
+                                            CollaborationRole.reviewer))
+                                  Switch(
+                                    value: member.role ==
+                                        CollaborationRole.editor,
+                                    onChanged: (value) => onSetRole(
+                                      member.userId,
+                                      value
+                                          ? CollaborationRole.editor
+                                          : CollaborationRole.reviewer,
+                                    ),
+                                  ),
                                 if (_canManage(member))
                                   PopupMenuButton<Object>(
                                     tooltip: 'Manage collaborator',
@@ -532,20 +571,15 @@ class _SettingsAction extends StatelessWidget {
     required this.label,
     required this.description,
     required this.onPressed,
-    this.danger = false,
   });
 
   final String label;
   final String description;
   final VoidCallback? onPressed;
-  final bool danger;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    final labelColor = danger
-        ? colors.danger
-        : colors.text;
 
     return TextButton(
       onPressed: onPressed,
@@ -564,12 +598,118 @@ class _SettingsAction extends StatelessWidget {
             style: uiTextStyle(
               size: 13,
               weight: 500,
-              color: onPressed == null ? colors.muted : labelColor,
+              color: onPressed == null ? colors.muted : colors.text,
             ),
           ),
           const SizedBox(height: 3),
           Text(description, style: uiTextStyle(size: 11, color: colors.muted)),
         ],
+      ),
+    );
+  }
+}
+
+class _KbSwitcher extends ConsumerWidget {
+  const _KbSwitcher({required this.session, required this.onPick});
+
+  final KbSession? session;
+  final ValueChanged<String> onPick;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.ds;
+    final recentsAsync = ref.watch(recentKbPathsProvider);
+    final currentPath = session?.kb.rootPath;
+    final currentName = currentPath == null
+        ? 'No Knowledge Base open'
+        : p.basename(currentPath);
+
+    return DsCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Knowledge Base',
+                    style: uiTextStyle(
+                      size: 13,
+                      weight: 500,
+                      color: colors.text,
+                    ),
+                  ),
+                  Text(
+                    currentName,
+                    overflow: TextOverflow.ellipsis,
+                    style: uiTextStyle(size: 11, color: colors.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            recentsAsync.when(
+              data: (paths) {
+                final items = paths.take(10).toList();
+                if (items.isEmpty) {
+                  return Text(
+                    'No other Knowledge Bases',
+                    style: uiTextStyle(size: 11, color: colors.muted),
+                  );
+                }
+                return PopupMenuButton<String>(
+                  tooltip: 'Switch Knowledge Base',
+                  onSelected: onPick,
+                  itemBuilder: (_) => [
+                    for (final path in items)
+                      PopupMenuItem(
+                        value: path,
+                        child: Text(
+                          p.basename(path),
+                          overflow: TextOverflow.ellipsis,
+                          style: uiTextStyle(size: 13, color: colors.text),
+                        ),
+                      ),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.island,
+                      borderRadius: const BorderRadius.all(DsRadius.control),
+                      border: Border.all(color: colors.surfaceOutline),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          currentName,
+                          style: uiTextStyle(size: 13, color: colors.text),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.expand_more,
+                          size: 16,
+                          color: colors.muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              loading: () => const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              error: (_, _) => const Icon(Icons.error_outline, size: 18),
+            ),
+          ],
+        ),
       ),
     );
   }

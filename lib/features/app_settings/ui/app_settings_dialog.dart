@@ -65,7 +65,10 @@ class AppSettingsDeveloperOptions {
 /// The sibling regions of App settings, in the order the rail lists them.
 enum AppSettingsSection {
   general('General'),
+  appearance('Appearance'),
+  updates('Updates'),
   knowledgeBase('Knowledge Base'),
+  about('About'),
   developer('Developer');
 
   const AppSettingsSection(this.label);
@@ -114,13 +117,18 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   final Set<String> _workingSettings = {};
   String? _settingsError;
   late AppSettingsSection _section = widget.initialSection;
+  bool _autoUpdate = true;
+  String _channel = 'Stable';
 
   /// A section is listed only when it has something to say. Developer options
   /// are absent in an ordinary build, and there is no Knowledge Base section
   /// until one is open.
   List<AppSettingsSection> get _sections => [
     AppSettingsSection.general,
+    AppSettingsSection.appearance,
+    AppSettingsSection.updates,
     if (widget.knowledgeBasePanel != null) AppSettingsSection.knowledgeBase,
+    AppSettingsSection.about,
     if (widget.developerOptions != null) AppSettingsSection.developer,
   ];
 
@@ -200,8 +208,13 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                               const SizedBox(height: 4),
                               ...switch (_section) {
                                 AppSettingsSection.general => _generalSection(),
+                                AppSettingsSection.appearance =>
+                                  _appearanceSection(),
+                                AppSettingsSection.updates =>
+                                  _updatesSection(),
                                 AppSettingsSection.knowledgeBase =>
                                   _knowledgeBaseSection(),
+                                AppSettingsSection.about => _aboutSection(),
                                 AppSettingsSection.developer =>
                                   _developerSection(),
                               },
@@ -227,21 +240,133 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     );
   }
 
-  List<Widget> _generalSection() {
+  List<Widget> _generalSection() => [
+    const _SectionHeading('General'),
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Text(
+        'DaySeven is a workspace for building worlds. '
+        'Choose a section on the left to adjust its settings.',
+        style: uiTextStyle(size: 13, color: CF.muted),
+      ),
+    ),
+  ];
+
+  List<Widget> _appearanceSection() => [
+    const _SectionHeading('Appearance'),
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: DsSettingRow(
+        label: 'Gradient background',
+        helper: 'Soft pools behind Home and other views',
+        trailing: Switch(
+          value: true,
+          onChanged: (_) {},
+        ),
+      ),
+    ),
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: DsSettingRow(
+        label: 'Window chrome',
+        helper: 'Uses the system theme for the title bar',
+        trailing: Switch(value: true, onChanged: null),
+      ),
+    ),
+  ];
+
+  List<Widget> _updatesSection() {
     final state = ref.watch(appUpdateProvider);
     final enabled = ref.read(appUpdateProvider.notifier).enabled;
 
     return [
-      const _SectionHeading('Version'),
-      _VersionRow(),
       const _SectionHeading('Updates'),
-      _UpdateRow(state: state, enabled: enabled),
+      _UpdateStatusBlock(state: state, enabled: enabled),
       if (state case UpdateCheckFailed(:final message))
         _Alert(message: message),
       if (state case UpdateFailed(:final message, :final release))
         _Alert(message: message, release: release),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: DsSettingRow(
+          label: 'Install updates automatically',
+          helper: 'Applies on next launch',
+          trailing: Switch(
+            value: _autoUpdate,
+            onChanged: (value) => setState(() => _autoUpdate = value),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: CF.hairline)),
+          ),
+          padding: const EdgeInsets.only(top: 12),
+          child: DsSettingRow(
+            label: 'Channel',
+            helper: 'Beta builds land about a week early',
+            trailing: DsSegmented<String>(
+              value: _channel,
+              onPick: (value) => setState(() => _channel = value),
+              options: const [
+                DsSegmentedOption(
+                  value: 'Stable',
+                  semanticLabel: 'Stable',
+                  child: Text('Stable'),
+                ),
+                DsSegmentedOption(
+                  value: 'Beta',
+                  semanticLabel: 'Beta',
+                  child: Text('Beta'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () {},
+              child: Text(
+                "What's new in ${ref.watch(currentVersionProvider).valueOrNull?.name ?? '1.3.7'}",
+                style: uiTextStyle(
+                  size: 13,
+                  color: CF.slate,
+                  weight: 500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 6),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Container(
+          height: 1,
+          color: CF.hairline,
+        ),
+      ),
     ];
   }
+
+  List<Widget> _aboutSection() => [
+    const _SectionHeading('About'),
+    _VersionRow(),
+    Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Text(
+        'A world-building knowledge base editor. '
+        'Updates are published from the release feed and installed on next launch.',
+        style: uiTextStyle(size: 13, color: CF.muted),
+      ),
+    ),
+  ];
 
   List<Widget> _knowledgeBaseSection() => [
     const _SectionHeading('Knowledge Base'),
@@ -407,9 +532,7 @@ class _SectionRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: 172,
-    // Grouped by whitespace and a single rule rather than by a tinted block.
-    // The rule to its right is the only thing separating it from the section
-    // it is navigating.
+    color: CF.inset,
     padding: const EdgeInsets.all(DsSpace.s),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -431,9 +554,6 @@ class _SectionRail extends StatelessWidget {
                     section.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    // A nav label is a control label, so it is set in the
-                    // sans. An inactive one recedes by going grey rather than
-                    // by shrinking.
                     style: DsType.label(
                       color: section == selected ? CF.onFern : CF.muted,
                       weight: section == selected ? 500 : 400,
@@ -623,8 +743,8 @@ class _VersionRow extends ConsumerWidget {
   }
 }
 
-class _UpdateRow extends ConsumerWidget {
-  const _UpdateRow({required this.state, required this.enabled});
+class _UpdateStatusBlock extends ConsumerWidget {
+  const _UpdateStatusBlock({required this.state, required this.enabled});
 
   final AppUpdateState state;
   final bool enabled;
@@ -646,6 +766,7 @@ class _UpdateRow extends ConsumerWidget {
 
     final controller = ref.read(appUpdateProvider.notifier);
     final busy = state is DownloadingUpdate || state is InstallingUpdate;
+    final isCheckAction = state is! UpdateAvailable;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -682,38 +803,58 @@ class _UpdateRow extends ConsumerWidget {
               UpToDate(:final checkedAt) => describeLastChecked(checkedAt),
               _ => 'Nothing newer published',
             },
-            // The action that commits, so it is the one fern-filled control on
-            // this surface. Its label names what will happen.
-            trailing: DsLabelButton(
-              key: const Key('app-settings-run-updates'),
-              label: switch (state) {
-                DownloadingUpdate() => 'Downloading…',
-                InstallingUpdate() => 'Installing…',
-                UpdateAvailable(:final release) =>
-                  'Install ${release.version.name}',
-                _ => 'Run updates',
-              },
-              variant: DsButtonVariant.primary,
-              height: DsSize.control,
-              horizontalPadding: 17,
-              onPressed: busy
-                  ? null
-                  : () => switch (state) {
-                      UpdateAvailable(:final release) => controller.download(
-                        release,
-                      ),
-                      // Already current, or the last check failed: ask again.
-                      _ => controller.check(),
+            trailing: isCheckAction
+                ? DsButton(
+                    key: const Key('app-settings-run-updates'),
+                    height: DsSize.smallControl,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    onPressed: busy
+                        ? null
+                        : () => switch (state) {
+                            UpdateAvailable(:final release) =>
+                              controller.download(release),
+                            _ => controller.check(),
+                          },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.sync, size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          switch (state) {
+                            CheckingForUpdate() => 'Checking…',
+                            DownloadingUpdate() => 'Downloading…',
+                            InstallingUpdate() => 'Installing…',
+                            _ => 'Check now',
+                          },
+                          style: uiTextStyle(size: 13, weight: 500),
+                        ),
+                      ],
+                    ),
+                  )
+                : DsLabelButton(
+                    key: const Key('app-settings-run-updates'),
+                    label: switch (state) {
+                      DownloadingUpdate() => 'Downloading…',
+                      InstallingUpdate() => 'Installing…',
+                      UpdateAvailable(:final release) =>
+                        'Install ${release.version.name}',
+                      _ => 'Check now',
                     },
-            ),
+                    height: DsSize.control,
+                    horizontalPadding: 17,
+                    variant: DsButtonVariant.primary,
+                    onPressed: busy
+                        ? null
+                        : () => controller.download(
+                            (state as UpdateAvailable).release,
+                          ),
+                  ),
           ),
         ),
         if (state case DownloadingUpdate(:final fraction))
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            // Linear, framed, and filled with fern. Progress is one of the
-            // few places a large fern surface is earned: it is the action the
-            // person asked for, still running.
             child: Container(
               height: 16,
               padding: const EdgeInsets.all(2),
@@ -824,11 +965,9 @@ class _Footer extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Dismissal, not a commitment: the action that actually does
-          // something on this surface is the update button, and there is only
-          // ever one of those.
           DsLabelButton(
             label: 'Done',
+            variant: DsButtonVariant.primary,
             height: DsSize.control,
             horizontalPadding: 17,
             onPressed: () => Navigator.of(context).pop(),

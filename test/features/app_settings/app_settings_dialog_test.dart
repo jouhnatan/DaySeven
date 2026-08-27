@@ -124,6 +124,7 @@ void main() {
 
   testWidgets('shows the running version and build', (tester) async {
     await openDialog(tester, RecordingController());
+    await selectSection(tester, AppSettingsSection.about);
 
     // Label left, value right: the name of the thing, then what it is set to.
     expect(find.text('DaySeven'), findsOneWidget);
@@ -265,9 +266,26 @@ void main() {
   ) async {
     await openDialog(tester, RecordingController());
 
-    // One section is not a place to navigate between, so there is no rail at
-    // all in an ordinary build with no Knowledge Base open.
-    expect(find.byKey(const Key('app-settings-section-general')), findsNothing);
+    expect(
+      find.byKey(const Key('app-settings-section-general')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('app-settings-section-appearance')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('app-settings-section-updates')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('app-settings-section-about')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('app-settings-section-knowledgeBase')),
+      findsNothing,
+    );
 
     await openDialog(
       tester,
@@ -300,12 +318,12 @@ void main() {
     );
 
     expect(find.text('kb panel'), findsNothing);
-    expect(find.text('Version'), findsOneWidget);
+    expect(find.textContaining('DaySeven is a workspace'), findsOneWidget);
 
     await selectSection(tester, AppSettingsSection.knowledgeBase);
 
     expect(find.text('kb panel'), findsOneWidget);
-    expect(find.text('Version'), findsNothing);
+    expect(find.textContaining('DaySeven is a workspace'), findsNothing);
 
     // Position is shown by fill: the section you are in is a solid block of
     // the accent, and the others are not.
@@ -354,7 +372,7 @@ void main() {
 
     // Nothing supplied a Knowledge Base panel, so that section does not exist
     // and the rail would otherwise have had nothing selected.
-    expect(find.text('Version'), findsOneWidget);
+    expect(find.textContaining('DaySeven is a workspace'), findsOneWidget);
   });
 
   // Solway labels regions; it never carries a value. A version and a build
@@ -364,6 +382,7 @@ void main() {
     tester,
   ) async {
     await openDialog(tester, RecordingController());
+    await selectSection(tester, AppSettingsSection.about);
 
     for (final label in [
       'DaySeven',
@@ -414,11 +433,12 @@ void main() {
   testWidgets('checks on open and reports being current', (tester) async {
     await openDialog(tester, RecordingController(releases: FakeReleases(same)));
 
+    await selectSection(tester, AppSettingsSection.updates);
     expect(find.text('Up to date'), findsOneWidget);
     // A state that can go stale carries the moment it was established, so
     // that a fresh answer can be told from one sitting there since yesterday.
     expect(find.textContaining('Checked today at'), findsOneWidget);
-    expect(find.text('Run updates'), findsOneWidget);
+    expect(find.text('Check now'), findsOneWidget);
   });
 
   testWidgets('checks on open and names a newer version', (tester) async {
@@ -427,6 +447,7 @@ void main() {
       RecordingController(releases: FakeReleases(newer)),
     );
 
+    await selectSection(tester, AppSettingsSection.updates);
     expect(find.text('Version 1.4.0'), findsOneWidget);
     expect(find.text('Build 8'), findsOneWidget);
     // A button says what will happen, with the object it happens to, so that
@@ -437,6 +458,7 @@ void main() {
   testWidgets('installs the release when asked', (tester) async {
     final controller = RecordingController(releases: FakeReleases(newer));
     await openDialog(tester, controller);
+    await selectSection(tester, AppSettingsSection.updates);
 
     await tester.tap(find.byKey(const Key('app-settings-run-updates')));
     await tester.pumpAndSettle();
@@ -449,6 +471,7 @@ void main() {
   ) async {
     final controller = RecordingController();
     await openDialog(tester, controller);
+    await selectSection(tester, AppSettingsSection.updates);
 
     controller.show(const DownloadingUpdate(newer, 1048576));
     await tester.pump();
@@ -465,6 +488,7 @@ void main() {
   ) async {
     final controller = RecordingController();
     await openDialog(tester, controller);
+    await selectSection(tester, AppSettingsSection.updates);
 
     controller.show(const InstallingUpdate(newer));
     await tester.pump();
@@ -483,6 +507,7 @@ void main() {
         releases: FakeReleases()..error = Exception('offline'),
       ),
     );
+    await selectSection(tester, AppSettingsSection.updates);
 
     expect(
       find.byKey(const Key('app-settings-alert')),
@@ -498,6 +523,7 @@ void main() {
   ) async {
     final controller = RecordingController();
     await openDialog(tester, controller);
+    await selectSection(tester, AppSettingsSection.updates);
 
     controller.show(const UpdateFailed(newer, 'The disk was full.'));
     await tester.pump();
@@ -510,10 +536,12 @@ void main() {
     tester,
   ) async {
     await openDialog(tester, RecordingController(enabled: false));
+    await selectSection(tester, AppSettingsSection.updates);
 
     expect(find.text('No server configured'), findsOneWidget);
     expect(find.textContaining('published to Supabase'), findsOneWidget);
-    // The version is still worth seeing without one.
+    // The version is still worth seeing, now in About.
+    await selectSection(tester, AppSettingsSection.about);
     expect(find.text('1.3.2'), findsOneWidget);
   });
 

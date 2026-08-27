@@ -551,19 +551,27 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Share Knowledge Base'), findsOneWidget);
-      expect(find.text('Delete Shared Knowledge Base'), findsOneWidget);
+      expect(find.text('Delete Knowledge Base'), findsOneWidget);
       expect(
         find.textContaining('on-disk Knowledge Base is not deleted or changed'),
         findsOneWidget,
       );
 
       final danger = tester.widget<Text>(
-        find.text('Delete Shared Knowledge Base'),
+        find.descendant(
+          of: find.byKey(
+            const Key('delete-shared-knowledge-base-setting'),
+          ),
+          matching: find.text('Delete'),
+        ),
       );
       expect(danger.style?.color, DsColors.cream.danger);
 
       await tester.tap(
-        find.byKey(const Key('delete-shared-knowledge-base-setting')),
+        find.descendant(
+          of: find.byKey(const Key('delete-shared-knowledge-base-setting')),
+          matching: find.byType(DsButton),
+        ),
       );
       await tester.pumpAndSettle();
 
