@@ -35,7 +35,11 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_sync_button.d
 import 'package:dayseven/features/knowledge_base/ui/name_prompt.dart';
 
 class KnowledgeBaseMenu extends ConsumerWidget {
-  const KnowledgeBaseMenu({super.key});
+  const KnowledgeBaseMenu({super.key, this.onOpenSettings});
+
+  /// Opens App settings on the Knowledge Base section. Supplied from above,
+  /// because App settings is another feature.
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -57,7 +61,7 @@ class KnowledgeBaseMenu extends ConsumerWidget {
                 const SizedBox(width: DsSpace.islandGap),
                 const KnowledgeBaseSyncButton(),
                 const SizedBox(width: DsSpace.islandGap),
-                const KnowledgeBaseSettingsButton(),
+                KnowledgeBaseSettingsButton(onPressed: onOpenSettings),
               ],
             ],
           ),

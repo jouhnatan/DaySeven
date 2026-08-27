@@ -73,6 +73,8 @@ Future<void> openDialog(
   WidgetTester tester,
   AppUpdateController controller, {
   AppSettingsDeveloperOptions? developerOptions,
+  Widget? knowledgeBasePanel,
+  AppSettingsSection section = AppSettingsSection.general,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -80,11 +82,24 @@ Future<void> openDialog(
       child: MaterialApp(
         theme: dsTheme(),
         home: Scaffold(
-          body: AppSettingsDialog(developerOptions: developerOptions),
+          body: AppSettingsDialog(
+            developerOptions: developerOptions,
+            knowledgeBasePanel: knowledgeBasePanel,
+            initialSection: section,
+          ),
         ),
       ),
     ),
   );
+  await tester.pumpAndSettle();
+}
+
+/// Moves to a section the way a person does, through the rail.
+Future<void> selectSection(
+  WidgetTester tester,
+  AppSettingsSection section,
+) async {
+  await tester.tap(find.byKey(Key('app-settings-section-${section.name}')));
   await tester.pumpAndSettle();
 }
 
@@ -129,7 +144,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Developer'), findsOneWidget);
+    // Developer options are a region of their own, reached from the rail.
+    expect(find.text('CRDT collaboration'), findsNothing);
+    await selectSection(tester, AppSettingsSection.developer);
+
     expect(find.text('CRDT collaboration'), findsOneWidget);
     expect(find.text('Show workspace metadata'), findsOneWidget);
 
@@ -175,6 +193,7 @@ void main() {
         policyDetail: 'This device does not hold the published key.',
         republishPolicy: () async => republished = true,
       ),
+      section: AppSettingsSection.developer,
     );
 
     expect(find.text('Connected'), findsOneWidget);
@@ -189,6 +208,103 @@ void main() {
     await tester.tap(republish);
     await tester.pumpAndSettle();
     expect(republished, isTrue);
+  });
+
+  testWidgets('the rail lists only the regions this build actually has', (
+    tester,
+  ) async {
+    await openDialog(tester, RecordingController());
+
+    // One section is not a place to navigate between, so there is no rail at
+    // all in an ordinary build with no Knowledge Base open.
+    expect(find.byKey(const Key('app-settings-section-general')), findsNothing);
+
+    await openDialog(
+      tester,
+      RecordingController(),
+      knowledgeBasePanel: const Text('kb panel'),
+    );
+
+    expect(
+      find.byKey(const Key('app-settings-section-general')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('app-settings-section-knowledgeBase')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('app-settings-section-developer')),
+      findsNothing,
+      reason: 'developer options are absent from an ordinary build',
+    );
+  });
+
+  testWidgets('the rail moves between sections and shows where you are', (
+    tester,
+  ) async {
+    await openDialog(
+      tester,
+      RecordingController(),
+      knowledgeBasePanel: const Text('kb panel'),
+    );
+
+    expect(find.text('kb panel'), findsNothing);
+    expect(find.text('Version'), findsOneWidget);
+
+    await selectSection(tester, AppSettingsSection.knowledgeBase);
+
+    expect(find.text('kb panel'), findsOneWidget);
+    expect(find.text('Version'), findsNothing);
+
+    // Position is shown by fill: the section you are in is a solid block of
+    // the accent, and the others are not.
+    Color railFill(AppSettingsSection section) => (tester
+                .widget<AnimatedContainer>(
+                  find
+                      .descendant(
+                        of: find.byKey(
+                          Key('app-settings-section-${section.name}'),
+                        ),
+                        matching: find.byType(AnimatedContainer),
+                      )
+                      .first,
+                )
+                .decoration!
+            as BoxDecoration)
+        .color!;
+
+    expect(railFill(AppSettingsSection.knowledgeBase), CF.fern);
+    expect(railFill(AppSettingsSection.general), isNot(CF.fern));
+  });
+
+  testWidgets('opens straight onto the section it was asked for', (
+    tester,
+  ) async {
+    await openDialog(
+      tester,
+      RecordingController(),
+      knowledgeBasePanel: const Text('kb panel'),
+      section: AppSettingsSection.knowledgeBase,
+    );
+
+    // The gear beside the Knowledge Base tree lands here rather than making
+    // somebody find the section themselves.
+    expect(find.text('kb panel'), findsOneWidget);
+  });
+
+  testWidgets('falls back to General when a section is not in this build', (
+    tester,
+  ) async {
+    await openDialog(
+      tester,
+      RecordingController(),
+      section: AppSettingsSection.knowledgeBase,
+    );
+
+    // Nothing supplied a Knowledge Base panel, so that section does not exist
+    // and the rail would otherwise have had nothing selected.
+    expect(find.text('Version'), findsOneWidget);
   });
 
   // Solway labels regions; it never carries a value. A version and a build
@@ -380,13 +496,23 @@ void main() {
   // The dialog follows a design of its own, so the only real check on it is
   // what it renders.
   testWidgets('looks the way it is meant to', (tester) async {
-    tester.view.physicalSize = const Size(720, 900);
+    tester.view.physicalSize = const Size(1000, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
+    // Photographed with everything it can show: the rail needs more than one
+    // region before it is a rail at all.
     await openDialog(
       tester,
       RecordingController(releases: FakeReleases(newer)),
+      knowledgeBasePanel: const SizedBox.shrink(),
+      developerOptions: AppSettingsDeveloperOptions(
+        showWorkspaceMetadata: false,
+        crdtCollaboration: false,
+        setShowWorkspaceMetadata: (_) async {},
+        setCrdtCollaboration: (_) async {},
+        collaborationHealth: AppSettingsCollaborationHealth.off,
+      ),
     );
 
     await expectLater(

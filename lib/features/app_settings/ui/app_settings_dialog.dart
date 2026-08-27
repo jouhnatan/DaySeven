@@ -62,21 +62,49 @@ class AppSettingsDeveloperOptions {
   final Future<void> Function()? republishPolicy;
 }
 
+/// The sibling regions of App settings, in the order the rail lists them.
+enum AppSettingsSection {
+  general('General'),
+  knowledgeBase('Knowledge Base'),
+  developer('Developer');
+
+  const AppSettingsSection(this.label);
+
+  /// Named as the user would name it, not as the system does.
+  final String label;
+}
+
 Future<void> showAppSettingsDialog(
   BuildContext context, {
   AppSettingsDeveloperOptionsBuilder? developerOptions,
+  Widget? knowledgeBasePanel,
+  AppSettingsSection initialSection = AppSettingsSection.general,
 }) => showDialog<void>(
   context: context,
   builder: (context) => Consumer(
-    builder: (context, ref, _) =>
-        AppSettingsDialog(developerOptions: developerOptions?.call(ref)),
+    builder: (context, ref, _) => AppSettingsDialog(
+      developerOptions: developerOptions?.call(ref),
+      knowledgeBasePanel: knowledgeBasePanel,
+      initialSection: initialSection,
+    ),
   ),
 );
 
 class AppSettingsDialog extends ConsumerStatefulWidget {
-  const AppSettingsDialog({super.key, this.developerOptions});
+  const AppSettingsDialog({
+    super.key,
+    this.developerOptions,
+    this.knowledgeBasePanel,
+    this.initialSection = AppSettingsSection.general,
+  });
 
   final AppSettingsDeveloperOptions? developerOptions;
+
+  /// The Knowledge Base section's body, supplied by the composition root.
+  /// It belongs to another feature, and features do not import each other.
+  final Widget? knowledgeBasePanel;
+
+  final AppSettingsSection initialSection;
 
   @override
   ConsumerState<AppSettingsDialog> createState() => _AppSettingsDialogState();
@@ -85,10 +113,23 @@ class AppSettingsDialog extends ConsumerStatefulWidget {
 class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   final Set<String> _workingSettings = {};
   String? _settingsError;
+  late AppSettingsSection _section = widget.initialSection;
+
+  /// A section is listed only when it has something to say. Developer options
+  /// are absent in an ordinary build, and there is no Knowledge Base section
+  /// until one is open.
+  List<AppSettingsSection> get _sections => [
+    AppSettingsSection.general,
+    if (widget.knowledgeBasePanel != null) AppSettingsSection.knowledgeBase,
+    if (widget.developerOptions != null) AppSettingsSection.developer,
+  ];
 
   @override
   void initState() {
     super.initState();
+    // Deep-linking to a section the build does not have would leave the rail
+    // with nothing selected.
+    if (!_sections.contains(_section)) _section = AppSettingsSection.general;
     // Check on open, so the hero is answering rather than guessing. Without a
     // server there is no feed and nothing to ask; the controller already knows
     // whether there is one, so that is where the question goes.
@@ -101,9 +142,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(appUpdateProvider);
-    final enabled = ref.read(appUpdateProvider.notifier).enabled;
-    final developer = widget.developerOptions;
+    final sections = _sections;
 
     return Dialog(
       key: const Key('app-settings-dialog'),
@@ -111,7 +150,9 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       elevation: 0,
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 44),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 580),
+        // A fixed size, so that moving between sections does not resize the
+        // window around the person reading it.
+        constraints: const BoxConstraints(maxWidth: 860, maxHeight: 620),
         child: DecoratedBox(
           decoration: const BoxDecoration(
             color: CF.paper,
@@ -123,109 +164,56 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
           child: ClipRRect(
             borderRadius: const BorderRadius.all(DsRadius.island),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const _Header(),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SizedBox(height: 4),
-                        const _SectionHeading('Version'),
-                        _VersionRow(),
-                        const _SectionHeading('Updates'),
-                        _UpdateRow(state: state, enabled: enabled),
-                        if (state case UpdateCheckFailed(:final message))
-                          _Alert(message: message),
-                        if (state case UpdateFailed(
-                          :final message,
-                          :final release,
-                        ))
-                          _Alert(message: message, release: release),
-                        if (developer != null) ...[
-                          const _SectionHeading('Developer'),
-                          _DeveloperToggleRow(
-                            key: const Key('app-settings-crdt-toggle'),
-                            icon: Icons.hub_outlined,
-                            title: 'CRDT collaboration',
-                            subtitle: developer.crdtCollaboration
-                                ? 'On for the open Knowledge Base. The reviewed '
-                                      'edit path remains available.'
-                                : 'Off. Reviewed edits remain authoritative.',
-                            value: developer.crdtCollaboration,
-                            working: _workingSettings.contains('crdt'),
-                            onChanged: (value) => _changeSetting(
-                              'crdt',
-                              () => developer.setCrdtCollaboration(value),
-                            ),
-                          ),
-                          _DeveloperToggleRow(
-                            key: const Key('app-settings-metadata-toggle'),
-                            icon: Icons.folder_open_outlined,
-                            title: 'Show workspace metadata',
-                            subtitle: developer.showWorkspaceMetadata
-                                ? 'metadata/ is visible in the tree and search.'
-                                : 'metadata/ stays hidden from the writing view.',
-                            value: developer.showWorkspaceMetadata,
-                            working: _workingSettings.contains('metadata'),
-                            onChanged: (value) => _changeSetting(
-                              'metadata',
-                              () => developer.setShowWorkspaceMetadata(value),
-                            ),
-                          ),
-                          const _SectionHeading('Collaboration'),
-                          _CollaborationRow(options: developer),
-                          if (developer.policyDetail case final detail?)
-                            _Row(
-                              key: const Key('app-settings-policy-signing'),
-                              plate: const _Plate(
-                                Icons.key_outlined,
-                                pale: true,
-                              ),
-                              title: developer.republishPolicy == null
-                                  ? 'Policy signing ready'
-                                  : 'Policy signing needs attention',
-                              subtitle: detail,
-                              subtitleIsMeta: false,
-                              trailing: developer.republishPolicy == null
-                                  ? null
-                                  : DsLabelButton(
-                                      key: const Key(
-                                        'app-settings-republish-policy',
-                                      ),
-                                      label: _workingSettings.contains('policy')
-                                          ? 'Republishing…'
-                                          : 'Republish',
-                                      height: DsSize.control,
-                                      onPressed:
-                                          _workingSettings.contains('policy')
-                                          ? null
-                                          : () => _changeSetting(
-                                              'policy',
-                                              developer.republishPolicy!,
-                                            ),
-                                    ),
-                            ),
-                          if (developer.refusalCount > 0)
-                            _Alert(
-                              title: 'An incoming update was refused',
-                              message:
-                                  '${developer.refusalCount} update(s) were '
-                                  'kept out of this workspace. '
-                                  '${developer.refusalDetail ?? 'The signed policy did not allow them.'}',
-                            ),
-                        ],
-                        if (_settingsError case final message?)
-                          _Alert(
-                            title: "Couldn't change that setting",
-                            message: message,
-                          ),
-                        const SizedBox(height: 14),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // With one section there is nowhere to navigate to, and
+                      // a rail of one item would be chrome describing itself.
+                      if (sections.length > 1) ...[
+                        _SectionRail(
+                          sections: sections,
+                          selected: _section,
+                          onSelect: (section) =>
+                              setState(() => _section = section),
+                        ),
+                        const VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: CF.hairline,
+                        ),
                       ],
-                    ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          // Each section starts at its own top rather than
+                          // inheriting the last one's scroll position.
+                          key: ValueKey(_section),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const SizedBox(height: 4),
+                              ...switch (_section) {
+                                AppSettingsSection.general => _generalSection(),
+                                AppSettingsSection.knowledgeBase =>
+                                  _knowledgeBaseSection(),
+                                AppSettingsSection.developer =>
+                                  _developerSection(),
+                              },
+                              if (_settingsError case final message?)
+                                _Alert(
+                                  title: "Couldn't change that setting",
+                                  message: message,
+                                ),
+                              const SizedBox(height: 14),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const _Footer(),
@@ -235,6 +223,101 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
         ),
       ),
     );
+  }
+
+  List<Widget> _generalSection() {
+    final state = ref.watch(appUpdateProvider);
+    final enabled = ref.read(appUpdateProvider.notifier).enabled;
+
+    return [
+      const _SectionHeading('Version'),
+      _VersionRow(),
+      const _SectionHeading('Updates'),
+      _UpdateRow(state: state, enabled: enabled),
+      if (state case UpdateCheckFailed(:final message))
+        _Alert(message: message),
+      if (state case UpdateFailed(:final message, :final release))
+        _Alert(message: message, release: release),
+    ];
+  }
+
+  List<Widget> _knowledgeBaseSection() => [
+    const _SectionHeading('Knowledge Base'),
+    Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: widget.knowledgeBasePanel ?? const SizedBox.shrink(),
+    ),
+  ];
+
+  List<Widget> _developerSection() {
+    final developer = widget.developerOptions;
+    if (developer == null) return const [];
+
+    return [
+      const _SectionHeading('Developer'),
+      _DeveloperToggleRow(
+        key: const Key('app-settings-crdt-toggle'),
+        icon: Icons.hub_outlined,
+        title: 'CRDT collaboration',
+        subtitle: developer.crdtCollaboration
+            ? 'On for the open Knowledge Base. The reviewed '
+                  'edit path remains available.'
+            : 'Off. Reviewed edits remain authoritative.',
+        value: developer.crdtCollaboration,
+        working: _workingSettings.contains('crdt'),
+        onChanged: (value) =>
+            _changeSetting('crdt', () => developer.setCrdtCollaboration(value)),
+      ),
+      _DeveloperToggleRow(
+        key: const Key('app-settings-metadata-toggle'),
+        icon: Icons.folder_open_outlined,
+        title: 'Show workspace metadata',
+        subtitle: developer.showWorkspaceMetadata
+            ? 'metadata/ is visible in the tree and search.'
+            : 'metadata/ stays hidden from the writing view.',
+        value: developer.showWorkspaceMetadata,
+        working: _workingSettings.contains('metadata'),
+        onChanged: (value) => _changeSetting(
+          'metadata',
+          () => developer.setShowWorkspaceMetadata(value),
+        ),
+      ),
+      const _SectionHeading('Collaboration'),
+      _CollaborationRow(options: developer),
+      if (developer.policyDetail case final detail?)
+        _Row(
+          key: const Key('app-settings-policy-signing'),
+          plate: const _Plate(Icons.key_outlined, pale: true),
+          title: developer.republishPolicy == null
+              ? 'Policy signing ready'
+              : 'Policy signing needs attention',
+          subtitle: detail,
+          subtitleIsMeta: false,
+          trailing: developer.republishPolicy == null
+              ? null
+              : DsLabelButton(
+                  key: const Key('app-settings-republish-policy'),
+                  label: _workingSettings.contains('policy')
+                      ? 'Republishing…'
+                      : 'Republish',
+                  height: DsSize.control,
+                  onPressed: _workingSettings.contains('policy')
+                      ? null
+                      : () => _changeSetting(
+                          'policy',
+                          developer.republishPolicy!,
+                        ),
+                ),
+        ),
+      if (developer.refusalCount > 0)
+        _Alert(
+          title: 'An incoming update was refused',
+          message:
+              '${developer.refusalCount} update(s) were '
+              'kept out of this workspace. '
+              '${developer.refusalDetail ?? 'The signed policy did not allow them.'}',
+        ),
+    ];
   }
 
   Future<void> _changeSetting(
@@ -253,6 +336,64 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       if (mounted) setState(() => _workingSettings.remove(name));
     }
   }
+}
+
+/// The rail: the sibling regions of App settings, and which one you are in.
+///
+/// The selected item is a solid block of the accent rather than a bolder
+/// label, because position is shown by fill. It is one of the two things fern
+/// is spent on in this dialog; the other is the update button.
+class _SectionRail extends StatelessWidget {
+  const _SectionRail({
+    required this.sections,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<AppSettingsSection> sections;
+  final AppSettingsSection selected;
+  final ValueChanged<AppSettingsSection> onSelect;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 200,
+    color: CF.inset,
+    padding: const EdgeInsets.all(DsSpace.s),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final section in sections)
+          Padding(
+            padding: const EdgeInsets.only(bottom: DsSpace.xxs),
+            child: DsHoverRow(
+              key: Key('app-settings-section-${section.name}'),
+              selected: section == selected,
+              semanticLabel: section.label,
+              onTap: () => onSelect(section),
+              padding: const EdgeInsets.symmetric(horizontal: 11),
+              child: SizedBox(
+                height: 34,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    section.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    // A nav label is a control label, so it is set in the
+                    // sans. An inactive one recedes by going grey rather than
+                    // by shrinking.
+                    style: DsType.label(
+                      color: section == selected ? CF.onFern : CF.muted,
+                      weight: section == selected ? 500 : 400,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 class _DeveloperToggleRow extends StatelessWidget {

@@ -1,5 +1,10 @@
 /// Settings for the connection between an on-disk Knowledge Base and its
 /// optional Supabase mirror.
+///
+/// These live inside App settings rather than in a dialog of their own: they
+/// are settings, and the application has one place for those. What is left
+/// here is the panel itself and the gear that opens App settings on it, so
+/// that managing the open Knowledge Base is still one click from the tree.
 library;
 
 import 'package:flutter/material.dart';
@@ -22,7 +27,12 @@ const double kKnowledgeBaseControlHeight = 38;
 
 /// The compact gear beside the active Knowledge Base selector.
 class KnowledgeBaseSettingsButton extends ConsumerWidget {
-  const KnowledgeBaseSettingsButton({super.key});
+  const KnowledgeBaseSettingsButton({super.key, this.onPressed});
+
+  /// Opens App settings on the Knowledge Base section. It is supplied from
+  /// above rather than called from here: App settings belongs to another
+  /// feature, and a feature does not reach into one of its siblings.
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,12 +45,8 @@ class KnowledgeBaseSettingsButton extends ConsumerWidget {
         dimension: kKnowledgeBaseControlHeight,
         child: DsButton(
           key: const Key('knowledge-base-settings-button'),
-          onPressed: session == null
-              ? null
-              : () => showDialog<void>(
-                  context: context,
-                  builder: (_) => const _KnowledgeBaseSettingsDialog(),
-                ),
+          semanticLabel: 'Knowledge Base settings',
+          onPressed: session == null ? null : onPressed,
           highlight: colors.selection,
           height: kKnowledgeBaseControlHeight,
           padding: EdgeInsets.zero,
@@ -56,16 +62,17 @@ class KnowledgeBaseSettingsButton extends ConsumerWidget {
   }
 }
 
-class _KnowledgeBaseSettingsDialog extends ConsumerStatefulWidget {
-  const _KnowledgeBaseSettingsDialog();
+/// The Knowledge Base section of App settings.
+class KnowledgeBaseSettingsPanel extends ConsumerStatefulWidget {
+  const KnowledgeBaseSettingsPanel({super.key});
 
   @override
-  ConsumerState<_KnowledgeBaseSettingsDialog> createState() =>
-      _KnowledgeBaseSettingsDialogState();
+  ConsumerState<KnowledgeBaseSettingsPanel> createState() =>
+      _KnowledgeBaseSettingsPanelState();
 }
 
-class _KnowledgeBaseSettingsDialogState
-    extends ConsumerState<_KnowledgeBaseSettingsDialog> {
+class _KnowledgeBaseSettingsPanelState
+    extends ConsumerState<KnowledgeBaseSettingsPanel> {
   bool _working = false;
   String? _error;
 
@@ -105,7 +112,7 @@ class _KnowledgeBaseSettingsDialogState
     try {
       await ref.read(sharingControllerProvider).shareOpenKb();
       if (!mounted) return;
-      Navigator.of(context).pop();
+      setState(() => _working = false);
       ref
           .read(notificationStoreProvider.notifier)
           .record(DsNotificationKind.share, 'Knowledge Base is now shared.');
@@ -125,7 +132,7 @@ class _KnowledgeBaseSettingsDialogState
       builder: (dialogContext) => DsDialog(
         title: Text(
           'Delete shared Knowledge Base?',
-          style: uiTextStyle(size: 16, weight: 600, color: colors.text),
+          style: uiTextStyle(size: 16, weight: 500, color: colors.text),
         ),
         actions: [
           DsDialogAction(
@@ -160,7 +167,7 @@ class _KnowledgeBaseSettingsDialogState
     try {
       await ref.read(sharingControllerProvider).deleteSharedKb();
       if (!mounted) return;
-      Navigator.of(context).pop();
+      setState(() => _working = false);
       ref
           .read(notificationStoreProvider.notifier)
           .record(
@@ -192,19 +199,10 @@ class _KnowledgeBaseSettingsDialogState
         : ref.watch(kbSyncHealthProvider(kbId)).valueOrNull ??
               SyncHealth.checking;
 
-    return DsDialog(
-      width: 680,
-      title: Text(
-        'Knowledge Base Settings',
-        style: uiTextStyle(size: 16, weight: 600, color: colors.text),
-      ),
-      actions: [
-        DsDialogAction(
-          label: 'Done',
-          onPressed: _working ? null : () => Navigator.of(context).pop(),
-          tone: DsDialogActionTone.muted,
-        ),
-      ],
+    return Column(
+      key: const Key('knowledge-base-settings-panel'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           'Sharing connects this on-disk Knowledge Base to Supabase for '
@@ -348,7 +346,7 @@ class _SyncStatusCard extends StatelessWidget {
                     'Sync',
                     style: uiTextStyle(
                       size: 13,
-                      weight: 600,
+                      weight: 500,
                       color: colors.text,
                     ),
                   ),
@@ -413,7 +411,7 @@ class _CollaboratorsCard extends StatelessWidget {
                     'Collaborators',
                     style: uiTextStyle(
                       size: 13,
-                      weight: 600,
+                      weight: 500,
                       color: colors.text,
                     ),
                   ),
@@ -457,7 +455,7 @@ class _CollaboratorsCard extends StatelessWidget {
                                         : member.displayName[0].toUpperCase(),
                                     style: uiTextStyle(
                                       size: 12,
-                                      weight: 600,
+                                      weight: 500,
                                       color: colors.text,
                                     ),
                                   ),
@@ -473,7 +471,7 @@ class _CollaboratorsCard extends StatelessWidget {
                                         overflow: TextOverflow.ellipsis,
                                         style: uiTextStyle(
                                           size: 12,
-                                          weight: 600,
+                                          weight: 500,
                                           color: colors.text,
                                         ),
                                       ),
@@ -546,7 +544,7 @@ class _SettingsAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.ds;
     final labelColor = danger
-        ? Theme.of(context).colorScheme.error
+        ? colors.danger
         : colors.text;
 
     return TextButton(
@@ -565,7 +563,7 @@ class _SettingsAction extends StatelessWidget {
             label,
             style: uiTextStyle(
               size: 13,
-              weight: 600,
+              weight: 500,
               color: onPressed == null ? colors.muted : labelColor,
             ),
           ),

@@ -286,7 +286,8 @@ server-authored.
   matching as you type.
 - **Right** — a Solway *Knowledge Base* heading, a rounded control naming
   the open folder, a manual Sync button that pulls before publishing or
-  proposing local changes, and a separate hierarchy island beneath it. The
+  proposing local changes, a gear that opens App settings on the Knowledge
+  Base section, and a separate hierarchy island beneath it. The
   tree shows folder and document icons, and a hairline running down from each
   folder that turns in to meet its children. The selected row is a solid fern
   block — in a tree, that block is the interface saying where you are. A plus button at the right of
@@ -416,9 +417,16 @@ There is no installer and no code signing certificate on either platform.
 DaySeven is a folder of files — an `.app` bundle on macOS, a directory of
 executables on Windows — and updating is replacing that folder.
 
-Opening **Menu -> App settings** reads `app_releases` and compares the current
-row against the running build, so the dialog opens already saying whether this
-copy is current. **Run updates** then acts on that answer: it downloads the
+**Menu -> App settings** is the one place settings live. A rail down its left
+side lists the regions this build actually has: *General*, which is the version
+and updates; *Knowledge Base*, which is sharing and collaborators for the open
+folder; and *Developer*, when a build has developer options. The gear beside
+the Knowledge Base tree opens the same dialog on its own section rather than a
+second one of its own — there is one settings surface, not two.
+
+Opening it reads `app_releases` and compares the current row against the
+running build, so the dialog opens already saying whether this copy is
+current. **Run updates** then acts on that answer: it downloads the
 archive, checks it against the published SHA-256, unpacks it beside the
 install, and swaps it in — or re-checks, if there was nothing to install.
 

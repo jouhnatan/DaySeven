@@ -6,6 +6,7 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
+import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/asset_repository.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
@@ -497,10 +498,40 @@ void main() {
     expect(find.byType(DsIsland), findsNothing);
   });
 
+  testWidgets('the gear hands the Knowledge Base section up to be opened', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(500, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    var opened = 0;
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: Scaffold(
+            body: KnowledgeBaseMenu(onOpenSettings: () => opened++),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The settings themselves live in App settings, which is another feature.
+    // All this button knows is that somebody above it wants to be told.
+    await tester.tap(find.byTooltip('Knowledge Base settings'));
+    await tester.pumpAndSettle();
+
+    expect(opened, 1);
+  });
+
   testWidgets(
-    'settings owns sharing and explains that remote deletion preserves files',
+    'the settings panel owns sharing and explains that remote deletion '
+    'preserves files',
     (tester) async {
-      tester.view.physicalSize = const Size(500, 700);
+      tester.view.physicalSize = const Size(700, 700);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
@@ -509,16 +540,16 @@ void main() {
           container: container,
           child: MaterialApp(
             theme: dsTheme(),
-            home: const Scaffold(body: KnowledgeBaseMenu()),
+            home: const Scaffold(
+              body: SingleChildScrollView(
+                child: KnowledgeBaseSettingsPanel(),
+              ),
+            ),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Knowledge Base settings'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Knowledge Base Settings'), findsOneWidget);
       expect(find.text('Share Knowledge Base'), findsOneWidget);
       expect(find.text('Delete Shared Knowledge Base'), findsOneWidget);
       expect(
@@ -529,12 +560,7 @@ void main() {
       final danger = tester.widget<Text>(
         find.text('Delete Shared Knowledge Base'),
       );
-      expect(
-        danger.style?.color,
-        Theme.of(tester.element(find.text('Delete Shared Knowledge Base')))
-            .colorScheme
-            .error,
-      );
+      expect(danger.style?.color, DsColors.cream.danger);
 
       await tester.tap(
         find.byKey(const Key('delete-shared-knowledge-base-setting')),

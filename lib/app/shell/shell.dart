@@ -36,6 +36,7 @@ import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/features/home/ui/home_screen.dart';
 import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
+import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/crdt/crdt_session.dart';
@@ -165,11 +166,7 @@ class DsShell extends ConsumerWidget {
                                                 HamburgerMenuEntry.action(
                                                   label: 'App settings',
                                                   onSelected: () =>
-                                                      showAppSettingsDialog(
-                                                        context,
-                                                        developerOptions:
-                                                            _developerOptions,
-                                                      ),
+                                                      _openAppSettings(context),
                                                 ),
                                               ],
                                             ),
@@ -286,6 +283,23 @@ class DsShell extends ConsumerWidget {
   }
 }
 
+/// Opens App settings with everything only the composition root can supply:
+/// the developer options, and the Knowledge Base panel, which belongs to a
+/// feature App settings is not allowed to import.
+void _openAppSettings(
+  BuildContext context, {
+  AppSettingsSection section = AppSettingsSection.general,
+}) {
+  unawaited(
+    showAppSettingsDialog(
+      context,
+      developerOptions: _developerOptions,
+      knowledgeBasePanel: const KnowledgeBaseSettingsPanel(),
+      initialSection: section,
+    ),
+  );
+}
+
 AppSettingsDeveloperOptions _developerOptions(WidgetRef ref) {
   final settings =
       ref.watch(developerSettingsProvider).valueOrNull ??
@@ -381,7 +395,15 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
                   SizedBox(
                     key: const Key('knowledge-base-pane'),
                     width: panelWidth,
-                    child: const KnowledgeBaseMenu(),
+                    child: KnowledgeBaseMenu(
+                      // The gear beside the Knowledge Base selector opens the
+                      // same App settings everything else does, on the section
+                      // that describes the Knowledge Base it sits next to.
+                      onOpenSettings: () => _openAppSettings(
+                        context,
+                        section: AppSettingsSection.knowledgeBase,
+                      ),
+                    ),
                   ),
                 ],
               ),
