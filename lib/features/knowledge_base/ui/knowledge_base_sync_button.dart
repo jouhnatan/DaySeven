@@ -15,7 +15,16 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart
 
 /// The compact sync control between the active Knowledge Base and its settings.
 class KnowledgeBaseSyncButton extends ConsumerStatefulWidget {
-  const KnowledgeBaseSyncButton({super.key});
+  const KnowledgeBaseSyncButton({
+    super.key,
+    this.variant = DsButtonVariant.secondary,
+  });
+
+  /// Beside the Knowledge Base selector this is one island in a row of them
+  /// and carries its edge. Inside a settings row there is no row of islands to
+  /// belong to, so it is passed [DsButtonVariant.quiet] and reads as the icon
+  /// alone until it is hovered.
+  final DsButtonVariant variant;
 
   @override
   ConsumerState<KnowledgeBaseSyncButton> createState() =>
@@ -61,6 +70,7 @@ class _KnowledgeBaseSyncButtonState
         dimension: kKnowledgeBaseControlHeight,
         child: DsButton(
           key: const Key('knowledge-base-sync-button'),
+          variant: widget.variant,
           onPressed: canSync && !_syncing ? () => _sync(role) : null,
           highlight: colors.selection,
           height: kKnowledgeBaseControlHeight,

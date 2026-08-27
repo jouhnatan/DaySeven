@@ -213,18 +213,8 @@ class _KnowledgeBaseSettingsPanelState
           },
         ),
         const SizedBox(height: 16),
-        Text(
-          'Sharing connects this on-disk Knowledge Base to Supabase for '
-          'invitations and reviewed collaboration. The local folder remains '
-          'the Knowledge Base you work in.',
-          style: uiTextStyle(size: 13, color: colors.muted),
-        ),
-        const SizedBox(height: 16),
         if (kbId != null && role != null && role != KbRole.local) ...[
-          _SyncStatusCard(
-            health: health,
-            onRetry: () => ref.invalidate(kbSyncHealthProvider(kbId)),
-          ),
+          _SyncStatusRow(health: health),
           const SizedBox(height: 16),
           _CollaboratorsCard(
             collaborators: collaborators,
@@ -283,11 +273,6 @@ class _KnowledgeBaseSettingsPanelState
                         'and Differences. Nothing is moved off this computer.',
               onPressed: _working ? null : _share,
             ),
-          if (role == KbRole.owner)
-            Text(
-              'This Knowledge Base is connected to Supabase and you are its owner.',
-              style: uiTextStyle(size: 13, color: colors.muted),
-            ),
           if (role == KbRole.local || role == KbRole.owner) ...[
             const SizedBox(height: 12),
             DsSettingRow(
@@ -320,11 +305,13 @@ class _KnowledgeBaseSettingsPanelState
   }
 }
 
-class _SyncStatusCard extends StatelessWidget {
-  const _SyncStatusCard({required this.health, required this.onRetry});
+/// Sync state and its one action. No card: a settings panel is already a
+/// surface, and boxing a two-line row inside it only draws a second edge
+/// around what the panel has already framed.
+class _SyncStatusRow extends StatelessWidget {
+  const _SyncStatusRow({required this.health});
 
   final SyncHealth health;
-  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -338,11 +325,10 @@ class _SyncStatusCard extends StatelessWidget {
       SyncHealth.error => 'Inactive · Error',
       SyncHealth.inactive => 'Inactive',
     };
-    return DsCard(
-      key: const Key('kb-sync-status-card'),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
+    return Padding(
+      key: const Key('kb-sync-status-row'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
           children: [
             Container(
               width: 9,
@@ -372,11 +358,8 @@ class _SyncStatusCard extends StatelessWidget {
                 ],
               ),
             ),
-            const KnowledgeBaseSyncButton(),
-            const SizedBox(width: 8),
-            TextButton(onPressed: onRetry, child: const Text('Retry')),
-          ],
-        ),
+            const KnowledgeBaseSyncButton(variant: DsButtonVariant.quiet),
+        ],
       ),
     );
   }
@@ -418,21 +401,9 @@ class _CollaboratorsCard extends StatelessWidget {
       key: const Key('kb-collaborators-card'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Collaborators',
-                style: uiTextStyle(
-                  size: 13,
-                  weight: 500,
-                  color: colors.text,
-                ),
-              ),
-            ),
-            if (onInvite != null)
-              TextButton(onPressed: onInvite, child: const Text('Invite')),
-          ],
+        Text(
+          'Collaborators',
+          style: uiTextStyle(size: 13, weight: 500, color: colors.text),
         ),
         const SizedBox(height: 8),
         collaborators.when(
@@ -543,6 +514,34 @@ class _CollaboratorsCard extends StatelessWidget {
             );
           },
         ),
+        if (onInvite != null) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: DsButton(
+              key: const Key('invite-collaborator-button'),
+              variant: DsButtonVariant.quiet,
+              semanticLabel: 'Invite a collaborator',
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 6,
+              ),
+              onPressed: onInvite,
+              child: Text(
+                'Invite',
+                style:
+                    uiTextStyle(
+                      size: 13,
+                      weight: 500,
+                      color: colors.link,
+                    ).copyWith(
+                      decoration: TextDecoration.underline,
+                      decorationColor: colors.link,
+                    ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -607,10 +606,9 @@ class _KbSwitcher extends ConsumerWidget {
         ? 'No Knowledge Base open'
         : p.basename(currentPath);
 
-    return DsCard(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
           children: [
             Expanded(
               child: Column(
@@ -691,8 +689,7 @@ class _KbSwitcher extends ConsumerWidget {
               ),
               error: (_, _) => const Icon(Icons.error_outline, size: 18),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
