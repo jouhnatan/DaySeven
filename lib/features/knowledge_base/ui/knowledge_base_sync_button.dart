@@ -90,7 +90,6 @@ class _KnowledgeBaseSyncButtonState
                 _syncing ? 'Syncing…' : 'Sync',
                 style: uiTextStyle(
                   size: 13,
-                  weight: 500,
                   color: canSync ? colors.text : colors.muted,
                 ),
               ),

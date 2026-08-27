@@ -774,6 +774,11 @@ void main() {
       expect(find.text('Invite'), findsOneWidget);
       expect(find.text('Retry'), findsNothing);
       expect(find.text('Sync this knowledge base'), findsOneWidget);
+      expect(find.text('Select a knowledge base'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Sync this knowledge base')).dy,
+        greaterThan(tester.getBottomLeft(find.text('Select a knowledge base')).dy),
+      );
       final syncTextRect = tester.getRect(
         find.text('Sync this knowledge base'),
       );
@@ -781,13 +786,15 @@ void main() {
         find.byKey(const Key('knowledge-base-sync-button')),
       );
       expect(syncTextRect.right, lessThan(syncButtonRect.left));
-      expect(
+      // "Sync" is only present on the button (not as a separate section header).
+      expect(find.text('Sync'), findsOneWidget);
+      final syncText = tester.widget<Text>(
         find.descendant(
           of: find.byKey(const Key('knowledge-base-sync-button')),
           matching: find.text('Sync'),
         ),
-        findsOneWidget,
       );
+      expect(syncText.style?.fontWeight, FontWeight.w400);
       expect(
         find.descendant(
           of: find.byKey(const Key('knowledge-base-sync-button')),

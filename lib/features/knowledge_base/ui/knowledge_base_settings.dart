@@ -208,14 +208,14 @@ class _KnowledgeBaseSettingsPanelState
       children: [
         _KbSwitcher(
           session: session,
+          showSync: kbId != null && role != null && role != KbRole.local,
+          health: health,
           onPick: (path) async {
             await ref.read(kbControllerProvider.notifier).openFolder(path);
           },
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         if (kbId != null && role != null && role != KbRole.local) ...[
-          _SyncStatusRow(health: health),
-          const SizedBox(height: 16),
           _CollaboratorsCard(
             collaborators: collaborators,
             currentRole: role,
@@ -232,7 +232,7 @@ class _KnowledgeBaseSettingsPanelState
                   }
                 : null,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
         ],
         if (!canManage)
           Text(
@@ -274,7 +274,7 @@ class _KnowledgeBaseSettingsPanelState
               onPressed: _working ? null : _share,
             ),
           if (role == KbRole.local || role == KbRole.owner) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             Text(
               'Danger Zone',
               style: uiTextStyle(size: 15, weight: 500, color: colors.text),
@@ -330,58 +330,44 @@ class _SyncStatusRow extends StatelessWidget {
       SyncHealth.error => 'Inactive · Error',
       SyncHealth.inactive => 'Inactive',
     };
-    return Column(
+    return Row(
       key: const Key('kb-sync-status-row'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Sync',
-          style: uiTextStyle(
-            size: 15,
-            weight: 500,
-            color: colors.text,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Sync this knowledge base',
+                style: uiTextStyle(
+                  size: 13,
+                  color: colors.text,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    'Sync this knowledge base',
-                    style: uiTextStyle(
-                      size: 13,
-                      color: colors.text,
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: active ? colors.pending : colors.muted,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: active ? colors.pending : colors.muted,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        label,
-                        style: uiTextStyle(size: 11, color: colors.muted),
-                      ),
-                    ],
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: uiTextStyle(size: 11, color: colors.muted),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 12),
-            const KnowledgeBaseSyncButton(showLabel: true),
-          ],
+            ],
+          ),
         ),
+        const SizedBox(width: 12),
+        const KnowledgeBaseSyncButton(showLabel: true),
       ],
     );
   }
@@ -607,10 +593,17 @@ class _SettingsAction extends StatelessWidget {
 }
 
 class _KbSwitcher extends ConsumerWidget {
-  const _KbSwitcher({required this.session, required this.onPick});
+  const _KbSwitcher({
+    required this.session,
+    required this.onPick,
+    this.health,
+    this.showSync = false,
+  });
 
   final KbSession? session;
   final ValueChanged<String> onPick;
+  final SyncHealth? health;
+  final bool showSync;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -702,6 +695,10 @@ class _KbSwitcher extends ConsumerWidget {
             ),
           ],
         ),
+        if (showSync && health != null) ...[
+          const SizedBox(height: 12),
+          _SyncStatusRow(health: health!),
+        ],
       ],
     );
   }
