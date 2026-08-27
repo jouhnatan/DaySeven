@@ -298,31 +298,25 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
         ),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: CF.hairline)),
-          ),
-          padding: const EdgeInsets.only(top: 12),
-          child: DsSettingRow(
-            label: 'Channel',
-            helper: 'Beta builds land about a week early',
-            trailing: DsSegmented<String>(
-              value: _channel,
-              onPick: (value) => setState(() => _channel = value),
-              options: const [
-                DsSegmentedOption(
-                  value: 'Stable',
-                  semanticLabel: 'Stable',
-                  child: Text('Stable'),
-                ),
-                DsSegmentedOption(
-                  value: 'Beta',
-                  semanticLabel: 'Beta',
-                  child: Text('Beta'),
-                ),
-              ],
-            ),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: DsSettingRow(
+          label: 'Channel',
+          helper: 'Beta builds land about a week early',
+          trailing: DsSegmented<String>(
+            value: _channel,
+            onPick: (value) => setState(() => _channel = value),
+            options: const [
+              DsSegmentedOption(
+                value: 'Stable',
+                semanticLabel: 'Stable',
+                child: Text('Stable'),
+              ),
+              DsSegmentedOption(
+                value: 'Beta',
+                semanticLabel: 'Beta',
+                child: Text('Beta'),
+              ),
+            ],
           ),
         ),
       ),

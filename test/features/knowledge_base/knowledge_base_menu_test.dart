@@ -693,9 +693,10 @@ void main() {
       expect(find.text('Collaborators'), findsOneWidget);
       expect(find.text('Invite'), findsOneWidget);
 
-      // Owner shows plain text, no DsSegmented.
+      // Owner shows name and username/role subtitle, but no standalone trailing tag or DsSegmented.
       expect(find.text('Owner User'), findsOneWidget);
-      expect(find.text('Owner'), findsOneWidget);
+      expect(find.text('@owner · Owner'), findsOneWidget);
+      expect(find.text('Owner'), findsNothing);
 
       // Non-owners show names and DsSegmented controls.
       expect(find.text('Bob Editor'), findsOneWidget);

@@ -506,8 +506,8 @@ class _CollaboratorsCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
                         if (_canManage(members[i])) ...[
+                          const SizedBox(width: 12),
                           DsSegmented<CollaborationRole>(
                             value: members[i].role,
                             cellHeight: 28,
@@ -539,14 +539,6 @@ class _CollaboratorsCard extends StatelessWidget {
                                 size: 16,
                                 color: colors.muted,
                               ),
-                            ),
-                          ),
-                        ] else ...[
-                          Text(
-                            members[i].role.label,
-                            style: uiTextStyle(
-                              size: 12,
-                              color: colors.muted,
                             ),
                           ),
                         ],
