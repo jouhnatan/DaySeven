@@ -610,28 +610,24 @@ class _KbSwitcher extends ConsumerWidget {
         ? 'No Knowledge Base open'
         : p.basename(currentPath);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Knowledge Base',
+          style: uiTextStyle(
+            size: 15,
+            weight: 500,
+            color: colors.text,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Knowledge Base',
-                    style: uiTextStyle(
-                      size: 15,
-                      weight: 500,
-                      color: colors.text,
-                    ),
-                  ),
-                  Text(
-                    currentName,
-                    overflow: TextOverflow.ellipsis,
-                    style: uiTextStyle(size: 11, color: colors.muted),
-                  ),
-                ],
+              child: Text(
+                'Select a knowledge base',
+                style: uiTextStyle(size: 13, color: colors.text),
               ),
             ),
             const SizedBox(width: 12),
@@ -693,8 +689,9 @@ class _KbSwitcher extends ConsumerWidget {
               ),
               error: (_, _) => const Icon(Icons.error_outline, size: 18),
             ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 }
