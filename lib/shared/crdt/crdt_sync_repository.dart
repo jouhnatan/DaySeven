@@ -26,6 +26,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:dayseven/shared/backend/supabase_client.dart' as backend;
 import 'package:dayseven/shared/crdt/workspace_policy.dart';
 
 /// How long a client accumulates local edits before writing them to Postgres.
@@ -296,14 +297,47 @@ class CrdtSyncRepository {
     required String kbId,
     required List<int> publicKey,
     required String signedDocument,
-  }) => client.rpc(
-    'publish_policy',
-    params: {
-      'p_kb_id': kbId,
-      'p_public_key': _toPostgresBytea(publicKey),
-      'p_document': signedDocument,
-    },
-  );
+    required PolicyRole actorRole,
+  }) async {
+    final values = <String, Object?>{
+      'policy_public_key': _toPostgresBytea(publicKey),
+      'policy_document': signedDocument,
+    };
+
+    if (actorRole == PolicyRole.owner) {
+      // Owners already have an owner-scoped UPDATE policy on this row. Writing
+      // both values in one statement keeps the trust root atomic and avoids a
+      // second SECURITY DEFINER hop that an owner does not need and that can
+      // fail independently of the row policy.
+      // Selecting the id makes a zero-row RLS result an error instead of a
+      // silent success.
+      final updated = await client
+          .from('knowledge_bases')
+          .update(values)
+          .eq('id', kbId)
+          .select('id')
+          .maybeSingle();
+      if (updated == null) {
+        throw const backend.SyncException(
+          'The policy was not published because the Knowledge Base owner row '
+          'was not updated.',
+        );
+      }
+      return;
+    }
+
+    // Co-owners intentionally cannot update the whole Knowledge Base row.
+    // Their narrow SECURITY DEFINER RPC authorizes only these two policy
+    // fields and remains the least-privilege path for that role.
+    await client.rpc(
+      'publish_policy',
+      params: {
+        'p_kb_id': kbId,
+        'p_public_key': values['policy_public_key'],
+        'p_document': values['policy_document'],
+      },
+    );
+  }
 
   /// What this Knowledge Base has published to verify `policy.json` against,
   /// and the signed copy itself.

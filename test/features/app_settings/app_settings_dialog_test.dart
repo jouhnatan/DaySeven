@@ -221,6 +221,55 @@ void main() {
     expect(republished, isTrue);
   });
 
+  testWidgets('a failed policy republish exposes a copyable error', (
+    tester,
+  ) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await openDialog(
+      tester,
+      RecordingController(),
+      developerOptions: AppSettingsDeveloperOptions(
+        showWorkspaceMetadata: true,
+        crdtCollaboration: true,
+        setShowWorkspaceMetadata: (_) async {},
+        setCrdtCollaboration: (_) async {},
+        collaborationHealth: AppSettingsCollaborationHealth.connected,
+        policyDetail: 'This device does not hold the published key.',
+        republishPolicy: () async => throw StateError('policy write refused'),
+      ),
+      section: AppSettingsSection.developer,
+    );
+
+    final republish = find.byKey(
+      const Key('app-settings-republish-policy'),
+    );
+    await tester.ensureVisible(republish);
+    await tester.tap(republish);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('policy write refused'), findsOneWidget);
+    final copy = find.byKey(const Key('copy-error-message'));
+    await tester.ensureVisible(copy);
+    await tester.pumpAndSettle();
+    await tester.tap(copy);
+    expect(copied, contains('policy write refused'));
+  });
+
   group('describeLastChecked', () {
     final now = DateTime(2026, 8, 27, 14, 30);
 

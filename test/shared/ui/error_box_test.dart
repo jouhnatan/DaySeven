@@ -2,6 +2,7 @@ import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -44,6 +45,32 @@ void main() {
 
     // Selecting the text is what makes copying possible; a plain Text cannot.
     expect(find.byType(SelectableText), findsOneWidget);
+  });
+
+  testWidgets('copies the complete error with one click', (tester) async {
+    const message = 'Database: permission denied · code 42501';
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.pumpWidget(harness(const DsErrorBox(message)));
+
+    await tester.tap(find.byKey(const Key('copy-error-message')));
+    await tester.pump();
+
+    expect(copied, message);
   });
 
   testWidgets('the message sits on its own rounded panel', (tester) async {

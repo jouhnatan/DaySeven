@@ -15,8 +15,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/platform/app_update.dart';
 import 'package:dayseven/shared/ui/controls.dart';
+import 'package:dayseven/shared/ui/error_box.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 typedef AppSettingsDeveloperOptionsBuilder =
@@ -461,7 +463,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     try {
       await change();
     } on Object catch (error) {
-      if (mounted) setState(() => _settingsError = '$error');
+      if (mounted) setState(() => _settingsError = describeError(error));
     } finally {
       if (mounted) setState(() => _workingSettings.remove(name));
     }
@@ -906,12 +908,20 @@ class _Alert extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                title ??
-                    (release == null
-                        ? "Couldn't check for updates"
-                        : "Couldn't install that update"),
-                style: DsType.bodyStrong(),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title ??
+                          (release == null
+                              ? "Couldn't check for updates"
+                              : "Couldn't install that update"),
+                      style: DsType.bodyStrong(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  DsCopyErrorButton(message: message),
+                ],
               ),
               const SizedBox(height: 12),
               DecoratedBox(

@@ -15,6 +15,7 @@ import 'package:dayseven/features/notifications/domain/format_notification_age.d
 import 'package:dayseven/shared/notifications/notification.dart';
 import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/controls.dart';
+import 'package:dayseven/shared/ui/error_box.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class NotificationsPanel extends ConsumerStatefulWidget {
@@ -172,6 +173,7 @@ class _NotificationRowState extends State<_NotificationRow> {
   Widget build(BuildContext context) {
     final colors = context.ds;
     final notification = widget.notification;
+    final detail = notification.detail ?? notification.message;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _expanded = !_expanded),
@@ -213,15 +215,30 @@ class _NotificationRowState extends State<_NotificationRow> {
               alignment: Alignment.topCenter,
               child: Padding(
                 padding: const EdgeInsets.only(left: 20, top: 2),
-                child: Text(
-                  notification.detail ?? notification.message,
-                  maxLines: _expanded ? null : 1,
-                  overflow: _expanded
-                      ? TextOverflow.visible
-                      : TextOverflow.ellipsis,
-                  softWrap: true,
-                  style: uiTextStyle(size: 10, color: colors.muted),
-                ),
+                child: notification.kind == DsNotificationKind.error
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: SelectableText(
+                              detail,
+                              maxLines: _expanded ? null : 1,
+                              style: uiTextStyle(size: 10, color: colors.muted),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          DsCopyErrorButton(message: detail, size: 24),
+                        ],
+                      )
+                    : Text(
+                        detail,
+                        maxLines: _expanded ? null : 1,
+                        overflow: _expanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
+                        softWrap: true,
+                        style: uiTextStyle(size: 10, color: colors.muted),
+                      ),
               ),
             ),
           ],

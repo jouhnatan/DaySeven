@@ -3,6 +3,7 @@ import 'package:dayseven/shared/notifications/notification.dart';
 import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -165,6 +166,38 @@ void main() {
     );
     expect(find.text('Something Went Wrong'), findsOneWidget);
     expect(find.text('the file went away'), findsOneWidget);
+  });
+
+  testWidgets('error details are selectable and copy in full', (tester) async {
+    final container = await pumpPanel(tester);
+    const message = 'Database: permission denied · code 42501';
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    container
+        .read(notificationStoreProvider.notifier)
+        .record(DsNotificationKind.error, message);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.byType(SelectableText), findsOneWidget);
+    await tester.tap(find.byKey(const Key('copy-error-message')));
+    await tester.pump();
+
+    expect(copied, message);
   });
 
   testWidgets('tapping a row lerps its subtext open and closed', (

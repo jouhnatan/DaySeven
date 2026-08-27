@@ -138,6 +138,7 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
   String? _boundKbId;
   SecurityLog? _log;
   final PolicyKeyStore _policyKeys = PolicyKeyStore();
+  Future<void>? _activePolicyRepublish;
 
   /// Re-reads the developer flag and rebuilds (or stops) the open session.
   Future<void> refresh() => _bind(_ref.read(kbSessionProvider), force: true);
@@ -338,13 +339,18 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
           file: policyFile,
           policy: snapshot,
           keypair: keypair,
+          actorRole: role!,
         );
         return _PreparedPolicy(
           policy: snapshot,
           signing: const PolicySigningState(health: PolicySigningHealth.ready),
         );
 
-      case PolicyReady(:final policy, :final documentToCache, :final needsRepublish):
+      case PolicyReady(
+        :final policy,
+        :final documentToCache,
+        :final needsRepublish,
+      ):
         // Cached so this member can open the workspace again offline. It is
         // written only after verifying, so what lands on disk is a copy of
         // something already checked, not something to be checked later.
@@ -378,7 +384,21 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
 
   /// Explicit recovery for a fresh install, lost Keychain item, or a policy
   /// currently signed by another owner device.
-  Future<void> republishPolicy() async {
+  Future<void> republishPolicy() {
+    final active = _activePolicyRepublish;
+    if (active != null) return active;
+
+    late final Future<void> operation;
+    operation = _republishPolicy().whenComplete(() {
+      if (identical(_activePolicyRepublish, operation)) {
+        _activePolicyRepublish = null;
+      }
+    });
+    _activePolicyRepublish = operation;
+    return operation;
+  }
+
+  Future<void> _republishPolicy() async {
     final kb = _ref.read(kbSessionProvider)?.kb;
     final user = _ref.read(currentUserProvider);
     if (kb == null || user == null) {
@@ -386,9 +406,15 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
         'Open a shared Knowledge Base and sign in before republishing.',
       );
     }
-    final profile = await _profileForPolicy(user);
+    final profile = await _republishStep(
+      'loading the signed-in profile',
+      () => _profileForPolicy(user),
+    );
     final repository = CrdtSyncRepository(supabase);
-    final snapshot = await repository.policySnapshot(kb.manifest.kbId);
+    final snapshot = await _republishStep(
+      'reading the current membership and protection rules',
+      () => repository.policySnapshot(kb.manifest.kbId),
+    );
     final role = snapshot.roleOf(user.id);
     if (role != PolicyRole.owner && role != PolicyRole.coOwner) {
       throw const WorkspacePolicyException(
@@ -396,15 +422,41 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
       );
     }
 
-    final keypair = await _policyKeys.loadOrCreate(profile.username);
-    await _publishSignedPolicy(
-      repository: repository,
-      kbId: kb.manifest.kbId,
-      file: _policyFile(kb),
-      policy: snapshot,
-      keypair: keypair,
+    final keypair = await _republishStep(
+      'loading this device\'s signing key',
+      () => _policyKeys.loadOrCreate(profile.username),
+    );
+    final document = await _republishStep(
+      'signing the current policy',
+      () => snapshot.signedJson(keypair.secretKey),
+    );
+    await _republishStep(
+      'publishing the signed policy',
+      () => repository.publishPolicy(
+        kbId: kb.manifest.kbId,
+        publicKey: keypair.publicKey,
+        signedDocument: document,
+        actorRole: role!,
+      ),
+    );
+    await _republishStep(
+      'saving the verified policy on this device',
+      () => _writePolicyDocument(_policyFile(kb), document),
     );
     await _bind(_ref.read(kbSessionProvider), force: true);
+  }
+
+  Future<T> _republishStep<T>(
+    String stage,
+    Future<T> Function() operation,
+  ) async {
+    try {
+      return await operation();
+    } on Object catch (error) {
+      throw SyncException(
+        'Couldn\'t republish while $stage.\n\n${describeError(error)}',
+      );
+    }
   }
 
   File _policyFile(KnowledgeBase kb) => File(
@@ -422,12 +474,14 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     required File file,
     required WorkspacePolicy policy,
     required policy_crypto.PolicyKeypair keypair,
+    required PolicyRole actorRole,
   }) async {
     final document = await policy.signedJson(keypair.secretKey);
     await repository.publishPolicy(
       kbId: kbId,
       publicKey: keypair.publicKey,
       signedDocument: document,
+      actorRole: actorRole,
     );
     await _writePolicyDocument(file, document);
   }

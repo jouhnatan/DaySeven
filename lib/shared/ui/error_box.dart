@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:dayseven/shared/ui/theme.dart';
 
@@ -29,14 +30,49 @@ class DsErrorBox extends StatelessWidget {
         borderRadius: const BorderRadius.all(DsRadius.menu),
         border: Border.all(color: colors.danger.withValues(alpha: 0.30)),
       ),
-      child: SelectableText(
-        message,
-        style: DsType.caption(color: colors.text),
-        cursorColor: colors.text,
-        // Right-click and the platform's own copy shortcut both work.
-        contextMenuBuilder: (context, state) =>
-            AdaptiveTextSelectionToolbar.editableText(editableTextState: state),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: SelectableText(
+              message,
+              style: DsType.caption(color: colors.text),
+              cursorColor: colors.text,
+              // Right-click and the platform's own copy shortcut both work.
+              contextMenuBuilder: (context, state) =>
+                  AdaptiveTextSelectionToolbar.editableText(
+                    editableTextState: state,
+                  ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          DsCopyErrorButton(message: message),
+        ],
       ),
     );
   }
+}
+
+/// A visible copy affordance for error text.
+///
+/// Selectable text still supports drag selection and Command/Ctrl+C. This
+/// button handles the common case where the useful thing is the whole error,
+/// including its database status and diagnostic code.
+class DsCopyErrorButton extends StatelessWidget {
+  const DsCopyErrorButton({super.key, required this.message, this.size = 28});
+
+  final String message;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    key: const Key('copy-error-message'),
+    tooltip: 'Copy error',
+    constraints: BoxConstraints.tightFor(width: size, height: size),
+    padding: EdgeInsets.zero,
+    iconSize: 15,
+    color: context.ds.muted,
+    onPressed: () => Clipboard.setData(ClipboardData(text: message)),
+    icon: const Icon(Icons.copy_outlined),
+  );
 }
