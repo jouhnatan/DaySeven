@@ -330,48 +330,59 @@ class _SyncStatusRow extends StatelessWidget {
       SyncHealth.error => 'Inactive · Error',
       SyncHealth.inactive => 'Inactive',
     };
-    return Padding(
+    return Column(
       key: const Key('kb-sync-status-row'),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          const KnowledgeBaseSyncButton(variant: DsButtonVariant.quiet),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Sync',
-                  style: uiTextStyle(
-                    size: 13,
-                    weight: 500,
-                    color: colors.text,
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: active ? colors.pending : colors.muted,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      label,
-                      style: uiTextStyle(size: 11, color: colors.muted),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Sync',
+          style: uiTextStyle(
+            size: 15,
+            weight: 500,
+            color: colors.text,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Sync this knowledge base',
+                    style: uiTextStyle(
+                      size: 13,
+                      color: colors.text,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: active ? colors.pending : colors.muted,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        style: uiTextStyle(size: 11, color: colors.muted),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            const KnowledgeBaseSyncButton(showLabel: true),
+          ],
+        ),
+      ],
     );
   }
 }

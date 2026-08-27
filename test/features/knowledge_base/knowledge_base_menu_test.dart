@@ -773,6 +773,28 @@ void main() {
       expect(find.text('Collaborators'), findsOneWidget);
       expect(find.text('Invite'), findsOneWidget);
       expect(find.text('Retry'), findsNothing);
+      expect(find.text('Sync this knowledge base'), findsOneWidget);
+      final syncTextRect = tester.getRect(
+        find.text('Sync this knowledge base'),
+      );
+      final syncButtonRect = tester.getRect(
+        find.byKey(const Key('knowledge-base-sync-button')),
+      );
+      expect(syncTextRect.right, lessThan(syncButtonRect.left));
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('knowledge-base-sync-button')),
+          matching: find.text('Sync'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('knowledge-base-sync-button')),
+          matching: find.byIcon(Icons.sync),
+        ),
+        findsOneWidget,
+      );
       expect(
         tester.getTopLeft(find.text('Invite')).dy,
         greaterThan(tester.getBottomLeft(find.text('Carol Reviewer')).dy),

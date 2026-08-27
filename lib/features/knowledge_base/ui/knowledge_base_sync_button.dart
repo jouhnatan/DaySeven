@@ -13,18 +13,20 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
 
-/// The compact sync control between the active Knowledge Base and its settings.
+/// The compact sync control between the active Knowledge Base and its settings,
+/// or a framed labeled button inside settings.
 class KnowledgeBaseSyncButton extends ConsumerStatefulWidget {
   const KnowledgeBaseSyncButton({
     super.key,
     this.variant = DsButtonVariant.secondary,
+    this.showLabel = false,
   });
 
   /// Beside the Knowledge Base selector this is one island in a row of them
-  /// and carries its edge. Inside a settings row there is no row of islands to
-  /// belong to, so it is passed [DsButtonVariant.quiet] and reads as the icon
-  /// alone until it is hovered.
+  /// and carries its edge. Inside a settings row it is framed and carries the
+  /// "Sync" label beside the icon.
   final DsButtonVariant variant;
+  final bool showLabel;
 
   @override
   ConsumerState<KnowledgeBaseSyncButton> createState() =>
@@ -64,33 +66,63 @@ class _KnowledgeBaseSyncButtonState
         role != KbRole.invited;
     final colors = context.ds;
 
-    return Tooltip(
-      message: _syncing ? 'Syncing Knowledge Base' : 'Sync Knowledge Base',
-      child: SizedBox.square(
-        dimension: kKnowledgeBaseControlHeight,
-        child: DsButton(
-          key: const Key('knowledge-base-sync-button'),
-          variant: widget.variant,
-          onPressed: canSync && !_syncing ? () => _sync(role) : null,
-          highlight: colors.selection,
-          height: kKnowledgeBaseControlHeight,
-          padding: EdgeInsets.zero,
-          borderRadius: const BorderRadius.all(DsRadius.island),
-          child: _syncing
-              ? SizedBox.square(
-                  dimension: 15,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.8,
-                    color: colors.muted,
-                  ),
-                )
-              : Icon(
-                  Icons.sync,
-                  size: 17,
+    final icon = _syncing
+        ? SizedBox.square(
+            dimension: widget.showLabel ? 14 : 15,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.8,
+              color: colors.muted,
+            ),
+          )
+        : Icon(
+            Icons.sync,
+            size: widget.showLabel ? 16 : 17,
+            color: canSync ? colors.text : colors.muted,
+          );
+
+    final child = widget.showLabel
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              icon,
+              const SizedBox(width: 6),
+              Text(
+                _syncing ? 'Syncing…' : 'Sync',
+                style: uiTextStyle(
+                  size: 13,
+                  weight: 500,
                   color: canSync ? colors.text : colors.muted,
                 ),
-        ),
+              ),
+            ],
+          )
+        : icon;
+
+    final button = DsButton(
+      key: const Key('knowledge-base-sync-button'),
+      variant: widget.variant,
+      onPressed: canSync && !_syncing ? () => _sync(role) : null,
+      highlight: colors.selection,
+      height: widget.showLabel
+          ? DsSize.smallControl
+          : kKnowledgeBaseControlHeight,
+      padding: widget.showLabel
+          ? const EdgeInsets.symmetric(horizontal: 12)
+          : EdgeInsets.zero,
+      borderRadius: BorderRadius.all(
+        widget.showLabel ? DsRadius.control : DsRadius.island,
       ),
+      child: child,
+    );
+
+    return Tooltip(
+      message: _syncing ? 'Syncing Knowledge Base' : 'Sync Knowledge Base',
+      child: widget.showLabel
+          ? button
+          : SizedBox.square(
+              dimension: kKnowledgeBaseControlHeight,
+              child: button,
+            ),
     );
   }
 }
