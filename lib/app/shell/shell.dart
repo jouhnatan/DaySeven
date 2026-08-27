@@ -164,7 +164,7 @@ class DsShell extends ConsumerWidget {
                                                 // there is nothing to check
                                                 // against.
                                                 HamburgerMenuEntry.action(
-                                                  label: 'App settings',
+                                                  label: 'Settings',
                                                   onSelected: () =>
                                                       _openAppSettings(context),
                                                 ),

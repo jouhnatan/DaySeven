@@ -614,3 +614,141 @@ class _DsSegmentedCellState<T> extends State<_DsSegmentedCell<T>> {
     );
   }
 }
+
+/// What a semantic mark means. The colour describes a state; it is never an
+/// accent, and it never fills a block larger than a chip.
+enum DsTone { neutral, success, warning, danger }
+
+extension _DsToneColor on DsTone {
+  Color of(DsColors colors) => switch (this) {
+    DsTone.neutral => colors.muted,
+    DsTone.success => colors.success,
+    DsTone.warning => colors.pending,
+    DsTone.danger => colors.danger,
+  };
+}
+
+/// The state of something, as a fact with a time.
+///
+/// A bare status word goes stale without saying so, which is why the sub-line
+/// is not optional: "Up to date" is only true as of when it was last checked,
+/// so it carries "Checked today at 9:14 AM" underneath it.
+class DsStatusBlock extends StatelessWidget {
+  const DsStatusBlock({
+    super.key,
+    required this.icon,
+    required this.headline,
+    required this.detail,
+    this.tone = DsTone.neutral,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String headline;
+
+  /// When this was last true. A state that can go stale says when it was
+  /// established.
+  final String detail;
+  final DsTone tone;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: colors.cardSurface,
+        borderRadius: const BorderRadius.all(DsRadius.menu),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 19, color: tone.of(colors)),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(headline, style: DsType.bodyStrong()),
+                Text(detail, style: DsType.caption(color: colors.muted)),
+              ],
+            ),
+          ),
+          if (trailing case final trailing?) ...[
+            const SizedBox(width: 12),
+            trailing,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A label, an optional one-line helper beneath it, and the control that
+/// changes it — the single most repeated composition in the product.
+///
+/// Labels left, values right. If the helper needs a second line, the label is
+/// wrong rather than the helper.
+class DsSettingRow extends StatelessWidget {
+  const DsSettingRow({
+    super.key,
+    required this.label,
+    required this.trailing,
+    this.helper,
+    this.first = false,
+  });
+
+  final String label;
+  final String? helper;
+  final Widget trailing;
+
+  /// The first row in a group draws no rule above it; the surface's own edge
+  /// is already there, and the system never doubles a line.
+  final bool first;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: first
+          ? null
+          : BoxDecoration(
+              border: Border(top: BorderSide(color: colors.border)),
+            ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: DsType.body()),
+                if (helper case final helper?)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text(
+                      helper,
+                      // Helper lines carry builds, counts, sizes and times
+                      // more often than not, and tabular figures change
+                      // nothing for a line with no digits in it.
+                      style: DsType.caption(
+                        color: colors.muted,
+                        tabular: true,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 18),
+          trailing,
+        ],
+      ),
+    );
+  }
+}

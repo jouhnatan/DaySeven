@@ -191,7 +191,13 @@ sealed class AppUpdateState {
 
 /// Nothing to do: either the check has not run, or it found nothing newer.
 class UpToDate extends AppUpdateState {
-  const UpToDate();
+  const UpToDate([this.checkedAt]);
+
+  /// When the feed last answered. "Up to date" is only true as of a moment,
+  /// and a state that can go stale has to say when it was established — so
+  /// this is null until a check has actually run, rather than defaulting to
+  /// now and claiming a freshness nothing verified.
+  final DateTime? checkedAt;
 }
 
 class CheckingForUpdate extends AppUpdateState {
@@ -285,7 +291,7 @@ class AppUpdateController extends StateNotifier<AppUpdateState> {
       final current = await _currentVersion;
 
       if (release == null || !release.isNewerThan(current)) {
-        state = const UpToDate();
+        state = UpToDate(DateTime.now());
         return;
       }
 

@@ -151,8 +151,10 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 44),
       child: ConstrainedBox(
         // A fixed size, so that moving between sections does not resize the
-        // window around the person reading it.
-        constraints: const BoxConstraints(maxWidth: 860, maxHeight: 620),
+        // window around the person reading it. Settings is a quiet surface a
+        // person reads a line at a time; it does not need the room a document
+        // does, and a smaller one is easier to take in at a glance.
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 470),
         child: DecoratedBox(
           decoration: const BoxDecoration(
             color: CF.paper,
@@ -285,29 +287,34 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       const _SectionHeading('Collaboration'),
       _CollaborationRow(options: developer),
       if (developer.policyDetail case final detail?)
-        _Row(
-          key: const Key('app-settings-policy-signing'),
-          plate: const _Plate(Icons.key_outlined, pale: true),
-          title: developer.republishPolicy == null
-              ? 'Policy signing ready'
-              : 'Policy signing needs attention',
-          subtitle: detail,
-          subtitleIsMeta: false,
-          trailing: developer.republishPolicy == null
-              ? null
-              : DsLabelButton(
-                  key: const Key('app-settings-republish-policy'),
-                  label: _workingSettings.contains('policy')
-                      ? 'Republishing…'
-                      : 'Republish',
-                  height: DsSize.control,
-                  onPressed: _workingSettings.contains('policy')
-                      ? null
-                      : () => _changeSetting(
-                          'policy',
-                          developer.republishPolicy!,
-                        ),
-                ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: DsStatusBlock(
+            key: const Key('app-settings-policy-signing'),
+            icon: Icons.key_outlined,
+            tone: developer.republishPolicy == null
+                ? DsTone.success
+                : DsTone.warning,
+            headline: developer.republishPolicy == null
+                ? 'Policy signing ready'
+                : 'Policy signing needs attention',
+            detail: detail,
+            trailing: developer.republishPolicy == null
+                ? null
+                : DsLabelButton(
+                    key: const Key('app-settings-republish-policy'),
+                    label: _workingSettings.contains('policy')
+                        ? 'Republishing…'
+                        : 'Republish',
+                    height: DsSize.control,
+                    onPressed: _workingSettings.contains('policy')
+                        ? null
+                        : () => _changeSetting(
+                            'policy',
+                            developer.republishPolicy!,
+                          ),
+                  ),
+          ),
         ),
       if (developer.refusalCount > 0)
         _Alert(
@@ -338,6 +345,49 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   }
 }
 
+/// Says when the update check last answered, in the words a person would use.
+///
+/// "Up to date" on its own is a claim with no shelf life. Naming the moment it
+/// was established is what lets somebody tell a fresh answer from a stale one.
+@visibleForTesting
+String describeLastChecked(DateTime? at, {DateTime? now}) {
+  if (at == null) return 'Not checked yet';
+
+  final today = now ?? DateTime.now();
+  final day = DateTime(at.year, at.month, at.day);
+  final difference = DateTime(
+    today.year,
+    today.month,
+    today.day,
+  ).difference(day).inDays;
+
+  final hour = at.hour % 12 == 0 ? 12 : at.hour % 12;
+  final minute = at.minute.toString().padLeft(2, '0');
+  final meridiem = at.hour < 12 ? 'AM' : 'PM';
+  final clock = '$hour:$minute $meridiem';
+
+  const months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  return switch (difference) {
+    0 => 'Checked today at $clock',
+    1 => 'Checked yesterday at $clock',
+    _ => 'Checked ${at.day} ${months[at.month - 1]} at $clock',
+  };
+}
+
 /// The rail: the sibling regions of App settings, and which one you are in.
 ///
 /// The selected item is a solid block of the accent rather than a bolder
@@ -356,8 +406,10 @@ class _SectionRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 200,
-    color: CF.inset,
+    width: 172,
+    // Grouped by whitespace and a single rule rather than by a tinted block.
+    // The rule to its right is the only thing separating it from the section
+    // it is navigating.
     padding: const EdgeInsets.all(DsSpace.s),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -372,7 +424,7 @@ class _SectionRail extends StatelessWidget {
               onTap: () => onSelect(section),
               padding: const EdgeInsets.symmetric(horizontal: 11),
               child: SizedBox(
-                height: 34,
+                height: 32,
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -415,14 +467,15 @@ class _DeveloperToggleRow extends StatelessWidget {
   final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) => _Row(
-    plate: _Plate(icon, pale: true),
-    title: title,
-    subtitle: subtitle,
-    subtitleIsMeta: false,
-    // A boolean setting is a toggle, and the theme already states how one
-    // looks; restating it here is how the two drift apart.
-    trailing: Switch(value: value, onChanged: working ? null : onChanged),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    // A boolean setting is a toggle on the right of its row, and the theme
+    // already states how one looks; restating it here is how the two drift.
+    child: DsSettingRow(
+      label: title,
+      helper: subtitle,
+      trailing: Switch(value: value, onChanged: working ? null : onChanged),
+    ),
   );
 }
 
@@ -459,18 +512,27 @@ class _CollaborationRow extends StatelessWidget {
             'Local editing remains available.',
         };
 
-    return _Row(
-      key: const Key('app-settings-collaboration-state'),
-      plate: _Plate(switch (options.collaborationHealth) {
-        AppSettingsCollaborationHealth.connected => Icons.cloud_done_outlined,
-        AppSettingsCollaborationHealth.connecting => Icons.sync,
-        AppSettingsCollaborationHealth.degraded ||
-        AppSettingsCollaborationHealth.unavailable => Icons.cloud_off_outlined,
-        AppSettingsCollaborationHealth.off => Icons.hub_outlined,
-      }),
-      title: title,
-      subtitle: detail,
-      subtitleIsMeta: false,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: DsStatusBlock(
+        key: const Key('app-settings-collaboration-state'),
+        icon: switch (options.collaborationHealth) {
+          AppSettingsCollaborationHealth.connected => Icons.cloud_done_outlined,
+          AppSettingsCollaborationHealth.connecting => Icons.sync,
+          AppSettingsCollaborationHealth.degraded ||
+          AppSettingsCollaborationHealth.unavailable =>
+            Icons.cloud_off_outlined,
+          AppSettingsCollaborationHealth.off => Icons.hub_outlined,
+        },
+        tone: switch (options.collaborationHealth) {
+          AppSettingsCollaborationHealth.connected => DsTone.success,
+          AppSettingsCollaborationHealth.degraded => DsTone.warning,
+          AppSettingsCollaborationHealth.unavailable => DsTone.danger,
+          _ => DsTone.neutral,
+        },
+        headline: title,
+        detail: detail,
+      ),
     );
   }
 }
@@ -480,21 +542,20 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A title bar in cream. It used to be a charcoal block, which was the one
-    // piece of dark chrome left in the product.
+    // Paper, with a rule under it. A filled bar would be a tinted block put
+    // behind a title to group it, which is the thing hairlines exist to avoid.
     return DecoratedBox(
       decoration: const BoxDecoration(
-        color: CF.bar,
         border: Border(bottom: BorderSide(color: CF.hairline)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 14, 14),
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
         child: Row(
           children: [
             Expanded(
               child: Text(
-                'App settings',
-                style: uiHeaderTextStyle(size: 22, height: 28 / 22),
+                'Settings',
+                style: uiHeaderTextStyle(size: 16, height: 22 / 16),
               ),
             ),
             DsButton(
@@ -525,7 +586,7 @@ class _SectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 26, 20, 12),
+    padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
     child: Text(
       label,
       // Solway labels the region. It is not spending the accent to do it:
@@ -535,114 +596,29 @@ class _SectionHeading extends StatelessWidget {
   );
 }
 
-/// A flat row: solid fill, no shadow, no radius games.
-class _Row extends StatelessWidget {
-  const _Row({
-    required this.plate,
-    required this.title,
-    required this.subtitle,
-    this.subtitleIsMeta = true,
-    this.trailing,
-    super.key,
-  });
-
-  final Widget plate;
-  final String title;
-  final String subtitle;
-
-  /// A short status or version, rather than a sentence. Both are set in the
-  /// body face; the design separates them only by grey.
-  final bool subtitleIsMeta;
-
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-    child: DecoratedBox(
-      decoration: const BoxDecoration(
-        color: CF.inset,
-        borderRadius: BorderRadius.all(DsRadius.menu),
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        constraints: const BoxConstraints(minHeight: 66),
-        child: Row(
-          children: [
-            plate,
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // A row title is a value — a version, a state — so it is
-                  // set in the sans. Solway labels regions and nothing else.
-                  Text(title, style: DsType.bodyStrong(tabular: true)),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: DsType.caption(
-                      color: subtitleIsMeta ? CF.muted : CF.muted,
-                      tabular: subtitleIsMeta,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (trailing case final trailing?) ...[
-              const SizedBox(width: 14),
-              trailing,
-            ],
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-/// A square flat icon plate.
-class _Plate extends StatelessWidget {
-  const _Plate(this.icon, {this.pale = false});
-
-  final IconData icon;
-  final bool pale;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 42,
-    height: 42,
-    // Decorative, so it takes the decorative colour rather than the accent.
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        color: pale ? CF.paper : CF.sage,
-        borderRadius: const BorderRadius.all(DsRadius.menu),
-        border: Border.all(color: pale ? CF.line : CF.sage),
-      ),
-      child: Center(
-        child: Icon(icon, size: 20, color: pale ? CF.muted : CF.onSage),
-      ),
-    ),
-  );
-}
-
 class _VersionRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final version = ref.watch(currentVersionProvider);
 
-    return _Row(
+    // Label left, value right — and the value is tabular, because it is a
+    // number somebody reads off against the one a release note names.
+    return Padding(
       key: const Key('app-settings-version'),
-      plate: const _Plate(Icons.tag, pale: true),
-      title: switch (version) {
-        AsyncData(:final value) => 'DaySeven ${value.name}',
-        _ => 'DaySeven',
-      },
-      subtitle: switch (version) {
-        AsyncData(:final value) => 'Build ${value.build}',
-        AsyncError() => 'Version unavailable',
-        _ => 'Reading…',
-      },
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: DsSettingRow(
+        first: true,
+        label: 'DaySeven',
+        helper: switch (version) {
+          AsyncData(:final value) => 'Build ${value.build}',
+          AsyncError() => 'Version unavailable',
+          _ => 'Reading…',
+        },
+        trailing: Text(switch (version) {
+          AsyncData(:final value) => value.name,
+          _ => '—',
+        }, style: DsType.bodyStrong(tabular: true)),
+      ),
     );
   }
 }
@@ -656,13 +632,15 @@ class _UpdateRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!enabled) {
-      return _Row(
-        plate: const _Plate(Icons.cloud_off, pale: true),
-        title: 'No server configured',
-        subtitle:
-            'Updates are published to Supabase, and this build has no '
-            'connection details for it.',
-        subtitleIsMeta: false,
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16),
+        child: DsStatusBlock(
+          icon: Icons.cloud_off_outlined,
+          headline: 'No server configured',
+          detail:
+              'Updates are published to Supabase, and this build has no '
+              'connection details for it.',
+        ),
       );
     }
 
@@ -672,54 +650,67 @@ class _UpdateRow extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _Row(
-          plate: _Plate(switch (state) {
-            UpdateAvailable() => Icons.arrow_downward,
-            UpdateCheckFailed() || UpdateFailed() => Icons.error_outline,
-            _ => Icons.refresh,
-          }),
-          title: switch (state) {
-            UpdateAvailable(:final release) =>
-              'Version ${release.version.name}',
-            DownloadingUpdate() => 'Downloading',
-            InstallingUpdate() => 'Installing',
-            _ => 'Up to date',
-          },
-          subtitle: switch (state) {
-            UpdateAvailable(:final release) => 'Build ${release.version.build}',
-            CheckingForUpdate() => 'Checking…',
-            DownloadingUpdate(:final release) =>
-              '${(release.sizeBytes / 1048576).toStringAsFixed(1)} MB',
-            _ => 'Nothing newer published',
-          },
-          // The action that commits, so it is the one fern-filled control on
-          // this surface. Its label names what will happen.
-          trailing: DsLabelButton(
-            key: const Key('app-settings-run-updates'),
-            label: switch (state) {
-              DownloadingUpdate() => 'Downloading…',
-              InstallingUpdate() => 'Installing…',
-              UpdateAvailable(:final release) =>
-                'Install ${release.version.name}',
-              _ => 'Run updates',
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: DsStatusBlock(
+            key: const Key('app-settings-update-status'),
+            icon: switch (state) {
+              UpdateAvailable() => Icons.arrow_circle_down_outlined,
+              UpdateCheckFailed() || UpdateFailed() => Icons.error_outline,
+              CheckingForUpdate() => Icons.sync,
+              _ => Icons.check_circle_outline,
             },
-            variant: DsButtonVariant.primary,
-            height: DsSize.control,
-            horizontalPadding: 17,
-            onPressed: busy
-                ? null
-                : () => switch (state) {
-                    UpdateAvailable(:final release) => controller.download(
-                      release,
-                    ),
-                    // Already current, or the last check failed: ask again.
-                    _ => controller.check(),
-                  },
+            tone: switch (state) {
+              UpdateAvailable() => DsTone.warning,
+              UpdateCheckFailed() || UpdateFailed() => DsTone.danger,
+              CheckingForUpdate() => DsTone.neutral,
+              _ => DsTone.success,
+            },
+            headline: switch (state) {
+              UpdateAvailable(:final release) =>
+                'Version ${release.version.name}',
+              DownloadingUpdate() => 'Downloading',
+              InstallingUpdate() => 'Installing',
+              _ => 'Up to date',
+            },
+            detail: switch (state) {
+              UpdateAvailable(:final release) =>
+                'Build ${release.version.build}',
+              CheckingForUpdate() => 'Checking…',
+              DownloadingUpdate(:final release) =>
+                '${(release.sizeBytes / 1048576).toStringAsFixed(1)} MB',
+              UpToDate(:final checkedAt) => describeLastChecked(checkedAt),
+              _ => 'Nothing newer published',
+            },
+            // The action that commits, so it is the one fern-filled control on
+            // this surface. Its label names what will happen.
+            trailing: DsLabelButton(
+              key: const Key('app-settings-run-updates'),
+              label: switch (state) {
+                DownloadingUpdate() => 'Downloading…',
+                InstallingUpdate() => 'Installing…',
+                UpdateAvailable(:final release) =>
+                  'Install ${release.version.name}',
+                _ => 'Run updates',
+              },
+              variant: DsButtonVariant.primary,
+              height: DsSize.control,
+              horizontalPadding: 17,
+              onPressed: busy
+                  ? null
+                  : () => switch (state) {
+                      UpdateAvailable(:final release) => controller.download(
+                        release,
+                      ),
+                      // Already current, or the last check failed: ask again.
+                      _ => controller.check(),
+                    },
+            ),
           ),
         ),
         if (state case DownloadingUpdate(:final fraction))
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             // Linear, framed, and filled with fern. Progress is one of the
             // few places a large fern surface is earned: it is the action the
             // person asked for, still running.
@@ -826,11 +817,10 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: const BoxDecoration(
-      color: CF.bar,
       border: Border(top: BorderSide(color: CF.hairline)),
     ),
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [

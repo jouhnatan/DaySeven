@@ -71,7 +71,7 @@ so that every version anyone runs corresponds to a build that exists.
   had to persist across every build forever, which is not worth it for two
   users. This was tried and removed.
 - **Do not add a launch-time update check.** The check runs when somebody opens
-  Menu → App settings, and the install when they press Run updates. Nothing
+  Menu → Settings, and the install when they press Run updates. Nothing
   updates on its own.
 - **The interface follows one design system, written out in
   `docs/design-system.md`.** Read it before changing how anything looks. The
@@ -84,14 +84,14 @@ so that every version anyone runs corresponds to a build that exists.
   rule of the system rather than an omission, and the native title bar is
   driven from the colour `app.dart` hands the window chrome — sending a dark
   one is what would turn the Windows caption dark.
-- **Settings live in one place.** App settings owns every settings region
+- **Settings live in one place.** Settings owns every settings region
   behind a left-hand rail, including the Knowledge Base's sharing and
   collaborators. It cannot import them: features do not import each other, so
   the composition root in `app/shell/shell.dart` passes the Knowledge Base
   panel in and the gear beside the tree calls back up to open it. Add a new
   region by extending `AppSettingsSection`, and inject its body the same way
   if it belongs to a feature.
-- **App settings is no longer special.** It used to carry a second design
+- **Settings is no longer special.** It used to carry a second design
   system of its own — a separate palette, three private typefaces and a film
   grain. That existed because the app theme was not something a settings
   surface wanted to look like, which is no longer true. Do not reintroduce it.

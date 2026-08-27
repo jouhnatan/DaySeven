@@ -229,7 +229,7 @@ void main() {
     await tester.tap(find.byKey(const Key('hamburger-menu-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('App settings'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Run updates'), findsNothing);
 
     // The two toggles are addressed by index elsewhere in this file, so the

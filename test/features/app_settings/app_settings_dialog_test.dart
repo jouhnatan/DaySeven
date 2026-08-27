@@ -125,7 +125,9 @@ void main() {
   testWidgets('shows the running version and build', (tester) async {
     await openDialog(tester, RecordingController());
 
-    expect(find.text('DaySeven 1.3.2'), findsOneWidget);
+    // Label left, value right: the name of the thing, then what it is set to.
+    expect(find.text('DaySeven'), findsOneWidget);
+    expect(find.text('1.3.2'), findsOneWidget);
     expect(find.text('Build 7'), findsOneWidget);
   });
 
@@ -208,6 +210,54 @@ void main() {
     await tester.tap(republish);
     await tester.pumpAndSettle();
     expect(republished, isTrue);
+  });
+
+  group('describeLastChecked', () {
+    final now = DateTime(2026, 8, 27, 14, 30);
+
+    test('says nothing has been checked before the first check runs', () {
+      // Not "checked today at midnight": the state defaults to no timestamp
+      // rather than to a freshness nothing established.
+      expect(describeLastChecked(null, now: now), 'Not checked yet');
+    });
+
+    test('names today, yesterday, and the date before that', () {
+      expect(
+        describeLastChecked(DateTime(2026, 8, 27, 9, 14), now: now),
+        'Checked today at 9:14 AM',
+      );
+      expect(
+        describeLastChecked(DateTime(2026, 8, 26, 18, 5), now: now),
+        'Checked yesterday at 6:05 PM',
+      );
+      expect(
+        describeLastChecked(DateTime(2026, 8, 20, 11, 0), now: now),
+        'Checked 20 August at 11:00 AM',
+      );
+    });
+
+    test('reads midnight and noon the way a clock does', () {
+      expect(
+        describeLastChecked(DateTime(2026, 8, 27, 0, 7), now: now),
+        'Checked today at 12:07 AM',
+      );
+      expect(
+        describeLastChecked(DateTime(2026, 8, 27, 12, 0), now: now),
+        'Checked today at 12:00 PM',
+      );
+    });
+
+    test('counts calendar days, not elapsed hours', () {
+      // 23:50 last night to 00:10 this morning is twenty minutes, but it is
+      // still yesterday, and saying "today" would be wrong.
+      expect(
+        describeLastChecked(
+          DateTime(2026, 8, 26, 23, 50),
+          now: DateTime(2026, 8, 27, 0, 10),
+        ),
+        'Checked yesterday at 11:50 PM',
+      );
+    });
   });
 
   testWidgets('the rail lists only the regions this build actually has', (
@@ -316,15 +366,15 @@ void main() {
     await openDialog(tester, RecordingController());
 
     for (final label in [
-      'DaySeven 1.3.2',
+      'DaySeven',
+      '1.3.2',
       'Build 7',
-      'Nothing newer published',
     ]) {
       final style = tester.widget<Text>(find.text(label)).style;
       expect(style?.fontFamily, kUiFontFamily, reason: '"$label" is not sans');
     }
 
-    for (final label in ['DaySeven 1.3.2', 'Build 7']) {
+    for (final label in ['1.3.2', 'Build 7']) {
       expect(
         tester.widget<Text>(find.text(label)).style?.fontFeatures,
         contains(const FontFeature.tabularFigures()),
@@ -334,7 +384,7 @@ void main() {
 
     // The dialog title is the one thing here that names a region.
     expect(
-      tester.widget<Text>(find.text('App settings')).style?.fontFamily,
+      tester.widget<Text>(find.text('Settings')).style?.fontFamily,
       kUiHeaderFontFamily,
     );
   });
@@ -365,7 +415,9 @@ void main() {
     await openDialog(tester, RecordingController(releases: FakeReleases(same)));
 
     expect(find.text('Up to date'), findsOneWidget);
-    expect(find.text('Nothing newer published'), findsOneWidget);
+    // A state that can go stale carries the moment it was established, so
+    // that a fresh answer can be told from one sitting there since yesterday.
+    expect(find.textContaining('Checked today at'), findsOneWidget);
     expect(find.text('Run updates'), findsOneWidget);
   });
 
@@ -462,7 +514,7 @@ void main() {
     expect(find.text('No server configured'), findsOneWidget);
     expect(find.textContaining('published to Supabase'), findsOneWidget);
     // The version is still worth seeing without one.
-    expect(find.text('DaySeven 1.3.2'), findsOneWidget);
+    expect(find.text('1.3.2'), findsOneWidget);
   });
 
   testWidgets('Done closes the dialog', (tester) async {
@@ -496,7 +548,7 @@ void main() {
   // The dialog follows a design of its own, so the only real check on it is
   // what it renders.
   testWidgets('looks the way it is meant to', (tester) async {
-    tester.view.physicalSize = const Size(1000, 800);
+    tester.view.physicalSize = const Size(800, 620);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -530,6 +582,9 @@ void main() {
     for (final text in tester.widgetList<Text>(find.byType(Text))) {
       final data = text.data;
       if (data == null || data.trim().isEmpty) continue;
+      // A version or a build number is all digits, and reads as its own
+      // uppercase. Only text with letters in it can be shouting.
+      if (!data.contains(RegExp('[A-Za-z]'))) continue;
       expect(
         data,
         isNot(equals(data.toUpperCase())),

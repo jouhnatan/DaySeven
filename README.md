@@ -286,7 +286,7 @@ server-authored.
   matching as you type.
 - **Right** — a Solway *Knowledge Base* heading, a rounded control naming
   the open folder, a manual Sync button that pulls before publishing or
-  proposing local changes, a gear that opens App settings on the Knowledge
+  proposing local changes, a gear that opens Settings on the Knowledge
   Base section, and a separate hierarchy island beneath it. The
   tree shows folder and document icons, and a hairline running down from each
   folder that turns in to meet its children. The selected row is a solid fern
@@ -380,7 +380,7 @@ Both platforms install by unpacking an archive, once:
   info**, then **Run anyway**.
 
 That is the only manual download. Everything after it goes through **Menu ->
-App settings -> Run updates**.
+Settings -> Run updates**.
 
 ## Releasing
 
@@ -417,7 +417,7 @@ There is no installer and no code signing certificate on either platform.
 DaySeven is a folder of files — an `.app` bundle on macOS, a directory of
 executables on Windows — and updating is replacing that folder.
 
-**Menu -> App settings** is the one place settings live. A rail down its left
+**Menu -> Settings** is the one place settings live. A rail down its left
 side lists the regions this build actually has: *General*, which is the version
 and updates; *Knowledge Base*, which is sharing and collaborators for the open
 folder; and *Developer*, when a build has developer options. The gear beside
@@ -437,7 +437,7 @@ app to exit, replaces the files, and reopens it. On macOS the old bundle is
 moved aside first, so a failure leaves a working app rather than nothing.
 
 Nothing checks for updates on its own, and nothing updates in the background:
-the check runs when App settings is opened, and the install when it is asked
+the check runs when Settings is opened, and the install when it is asked
 for. An old build keeps working until somebody asks it not to.
 
 ### The release feed
