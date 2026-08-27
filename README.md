@@ -2,16 +2,9 @@
 
 A world-building knowledge base editor for macOS and Windows 11.
 
-Your content is a **Knowledge Base**: an ordinary folder, in a location you
-choose, holding a folder-and-file tree of documents. Your folders sit directly
-in it — a `Characters/` folder is just `Characters/`. The app keeps its own
-files in `.settings/`, out of the way. Nothing is encoded: the manifest is
-readable JSON, the documents are files, and `.settings/.index/` is derived and
-safe to delete.
+Your content is a "Knowledge Base": an ordinary folder, in a location you choose, and a tree of documents. Your folders sit directly in it. For example, a `Characters/` folder is just `Characters/`. The app keeps its own files in `.settings/`, out of the way. Nothing is encoded: the manifest is readable JSON, the documents are files, and `.settings/.index/` is derived and safe to delete.
 
-Collaboration is **reviewed**, not simultaneous. A collaborator's edit becomes a
-pending proposal; you see it as a split diff and decide. Nothing touches your
-file until you approve it.
+Collaboration can be both reviewed or simultaneous--protect the documents either by editor permission levels or by collaborator. A collaborator's edit becomes a pending proposal, which you see it as a split diff and decide. 
 
 ## Running it
 
