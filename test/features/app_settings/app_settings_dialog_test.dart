@@ -205,6 +205,13 @@ void main() {
     expect(find.text('Policy signing needs attention'), findsOneWidget);
     expect(find.text('An incoming update was refused'), findsOneWidget);
 
+    final collabState = find.byKey(const Key('app-settings-collaboration-state'));
+    final policyBlock = find.byKey(const Key('app-settings-policy-signing'));
+    expect(
+      tester.getTopLeft(policyBlock).dy - tester.getBottomLeft(collabState).dy,
+      12.0,
+    );
+
     final republish = find.byKey(const Key('app-settings-republish-policy'));
     await tester.ensureVisible(republish);
     await tester.pumpAndSettle();

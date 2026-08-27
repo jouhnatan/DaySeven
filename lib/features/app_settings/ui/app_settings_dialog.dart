@@ -411,7 +411,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       ),
       const _SectionHeading('Collaboration'),
       _CollaborationRow(options: developer),
-      if (developer.policyDetail case final detail?)
+      if (developer.policyDetail case final detail?) ...[
+        const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: DsStatusBlock(
@@ -441,6 +442,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                   ),
           ),
         ),
+      ],
       if (developer.refusalCount > 0)
         _Alert(
           title: 'An incoming update was refused',
