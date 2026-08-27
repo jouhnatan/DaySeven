@@ -296,20 +296,12 @@ class _KnowledgeBaseSettingsPanelState
                   'Deletes only the Supabase copy and collaboration history. '
                   'The on-disk Knowledge Base is not deleted or changed, and '
                   'you can share it again later.',
-              trailing: DsButton(
+              trailing: DsLabelButton(
+                label: 'Delete',
                 variant: DsButtonVariant.danger,
                 height: DsSize.smallControl,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                semanticLabel: 'Delete Knowledge Base',
+                horizontalPadding: 14,
                 onPressed: _working ? null : _deleteShared,
-                child: Text(
-                  'Delete',
-                  style: uiTextStyle(
-                    size: 13,
-                    weight: 500,
-                    color: _working ? CF.faint : CF.danger,
-                  ),
-                ),
               ),
             ),
           ],

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dayseven/features/app_settings/ui/app_settings_dialog.dart';
 import 'package:dayseven/shared/platform/app_update.dart';
+import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 import '../../support/test_fonts.dart';
@@ -446,6 +447,22 @@ void main() {
     // that a fresh answer can be told from one sitting there since yesterday.
     expect(find.textContaining('Checked today at'), findsOneWidget);
     expect(find.text('Check now'), findsOneWidget);
+  });
+
+  testWidgets('update rows do not duplicate the status card separator', (
+    tester,
+  ) async {
+    await openDialog(tester, RecordingController());
+    await selectSection(tester, AppSettingsSection.updates);
+
+    for (final label in ['Install updates automatically', 'Channel']) {
+      final row = find.ancestor(
+        of: find.text(label),
+        matching: find.byType(DsSettingRow),
+      );
+      expect(row, findsOneWidget);
+      expect(tester.widget<DsSettingRow>(row).first, isTrue);
+    }
   });
 
   testWidgets('checks on open and names a newer version', (tester) async {

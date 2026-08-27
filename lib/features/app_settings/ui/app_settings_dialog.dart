@@ -289,6 +289,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: DsSettingRow(
+          first: true,
           label: 'Install updates automatically',
           helper: 'Applies on next launch',
           trailing: Switch(

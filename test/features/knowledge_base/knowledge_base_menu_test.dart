@@ -598,6 +598,16 @@ void main() {
       );
       expect(danger.style?.color, DsColors.cream.danger);
 
+      final deleteButton = find.descendant(
+        of: find.byKey(const Key('delete-shared-knowledge-base-setting')),
+        matching: find.byType(DsLabelButton),
+      );
+      expect(deleteButton, findsOneWidget);
+      expect(
+        tester.getRect(find.text('Delete')).center.dy,
+        closeTo(tester.getRect(deleteButton).center.dy, 0.5),
+      );
+
       await tester.tap(
         find.descendant(
           of: find.byKey(const Key('delete-shared-knowledge-base-setting')),
