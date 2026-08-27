@@ -17,7 +17,7 @@ void main() {
             child: HamburgerMenuButton(
               entries: [
                 HamburgerMenuEntry(
-                  label: 'Background grain…',
+                  label: 'Example action…',
                   onSelected: () => selected = true,
                 ),
               ],
@@ -35,9 +35,9 @@ void main() {
 
     await tester.tap(find.byTooltip('Menu'));
     await tester.pumpAndSettle();
-    expect(find.text('Background grain…'), findsOneWidget);
+    expect(find.text('Example action…'), findsOneWidget);
 
-    await tester.tap(find.text('Background grain…'));
+    await tester.tap(find.text('Example action…'));
     await tester.pumpAndSettle();
     expect(selected, isTrue);
   });

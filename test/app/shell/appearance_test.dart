@@ -12,91 +12,31 @@ import 'dart:io';
 import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/shell/pane_visibility.dart';
 import 'package:dayseven/app/view.dart';
-import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
-import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/app/shell/shell.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../support/test_fonts.dart';
+import '../../support/kb_harness.dart';
+import '../../support/test_fonts.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory temp;
-  late Directory support;
 
   setUpAll(loadTestFonts);
 
   setUp(() async {
-    temp = await Directory.systemTemp.createTemp('dayseven_look');
-    support = await Directory.systemTemp.createTemp('dayseven_look_support');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          const MethodChannel('plugins.flutter.io/path_provider'),
-          (call) async => call.method == 'getApplicationSupportDirectory'
-              ? support.path
-              : null,
-        );
+    final dirs = await createTempDirs('dayseven_look');
+    temp = dirs.temp;
   });
 
-  tearDown(() async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          const MethodChannel('plugins.flutter.io/path_provider'),
-          null,
-        );
-    if (await temp.exists()) await temp.delete(recursive: true);
-    if (await support.exists()) await support.delete(recursive: true);
-  });
-
-  Future<ProviderContainer> seededKb(WidgetTester tester) async {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-
-    await tester.runAsync(() async {
-      await container
-          .read(kbControllerProvider.notifier)
-          .openFolder(temp.path, createWithName: 'MyWorld');
-      final kb = container.read(kbSessionProvider)!.kb;
-
-      await kb.createFolder('Characters');
-      await kb.createFolder('Characters/Houses');
-      await kb.createFolder('Places');
-      await kb.createDocument(
-        title: 'Aldric',
-        folderRelativePath: 'Characters',
-      );
-      await kb.createDocument(
-        title: 'House Vane',
-        folderRelativePath: 'Characters/Houses',
-      );
-      await kb.createDocument(title: 'Aldenmoor', folderRelativePath: 'Places');
-      final timeline = await kb.createDocument(title: 'Timeline');
-      await kb.writeDocument(
-        timeline,
-        BlockDocument(
-          id: 'timeline',
-          title: 'Timeline',
-          blocks: [
-            ParagraphBlock(
-              id: 'opening',
-              spans: const [TextSpanNode(text: 'The first age began here.')],
-            ),
-          ],
-        ),
-      );
-
-      await container.read(kbControllerProvider.notifier).refreshTree();
-    });
-
-    return container;
-  }
+  Future<ProviderContainer> seededKb(WidgetTester tester) =>
+      seededKbContainer(tester, temp);
 
   Future<ProviderContainer> renderShell(
     WidgetTester tester, {

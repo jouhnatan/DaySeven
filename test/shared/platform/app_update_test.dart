@@ -222,6 +222,44 @@ void main() {
       expect(releases.calls, 0);
       expect(controller.current, isA<UpdateCheckFailed>());
     });
+
+    test('UpToDate is null before any check', () {
+      final controller = controllerFor(FakeReleases(null));
+      expect((controller.current as UpToDate).checkedAt, isNull);
+    });
+
+    test('UpToDate carries the moment it was verified', () async {
+      final releases = FakeReleases(
+        AppRelease.fromRow(row(version: '1.3.0', build: 5)),
+      );
+      final controller = controllerFor(releases);
+      final before = DateTime.now();
+
+      await controller.check();
+
+      final checkedAt = (controller.current as UpToDate).checkedAt!;
+      expect(checkedAt.isAfter(before.subtract(const Duration(seconds: 1))), isTrue);
+      expect(checkedAt.isBefore(DateTime.now().add(const Duration(seconds: 1))), isTrue);
+    });
+
+    test('a newer release does not set UpToDate', () async {
+      final releases = FakeReleases(AppRelease.fromRow(row()));
+      final controller = controllerFor(releases);
+
+      await controller.check();
+
+      expect(controller.current, isA<UpdateAvailable>());
+    });
+
+    test('a failed check does not claim UpToDate', () async {
+      final releases = FakeReleases(null)..error = Exception('offline');
+      final controller = controllerFor(releases);
+
+      await controller.check();
+
+      expect(controller.current, isA<UpdateCheckFailed>());
+      expect(controller.current, isNot(isA<UpToDate>()));
+    });
   });
 
   group('DownloadingUpdate', () {

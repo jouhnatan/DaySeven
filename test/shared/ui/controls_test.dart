@@ -261,4 +261,119 @@ void main() {
       reason: 'ink on a fern block is unreadable; it must invert to cream',
     );
   });
+
+  group('DsStatusBlock', () {
+    Widget block({
+      DsTone tone = DsTone.neutral,
+      Widget? trailing,
+      String detail = 'Checked today at 9:14 AM',
+    }) => app(
+      DsStatusBlock(
+        icon: Icons.check_circle,
+        headline: 'Up to date',
+        detail: detail,
+        tone: tone,
+        trailing: trailing,
+      ),
+    );
+
+    testWidgets('renders headline and timestamp', (tester) async {
+      await tester.pumpWidget(block());
+      expect(find.text('Up to date'), findsOneWidget);
+      expect(find.text('Checked today at 9:14 AM'), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    });
+
+    testWidgets('paints the semantic colour on the icon', (tester) async {
+      await tester.pumpWidget(block(tone: DsTone.danger));
+      final icon = tester.widget<Icon>(find.byIcon(Icons.check_circle));
+      expect(icon.color, DsColors.cream.danger);
+
+      await tester.pumpWidget(block(tone: DsTone.success));
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.check_circle)).color,
+        DsColors.cream.success,
+      );
+
+      await tester.pumpWidget(block(tone: DsTone.neutral));
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.check_circle)).color,
+        DsColors.cream.muted,
+      );
+    });
+
+    testWidgets('lays out trailing beside the text', (tester) async {
+      await tester.pumpWidget(
+        block(trailing: DsButton(onPressed: () {}, child: const Text('Run'))),
+      );
+      expect(find.text('Run'), findsOneWidget);
+      // Headline + trailing both present means row did not overflow.
+      expect(find.text('Up to date'), findsOneWidget);
+    });
+
+    testWidgets('surfaces as a bordered card', (tester) async {
+      await tester.pumpWidget(block());
+      final container = tester.widget<Container>(
+        find
+            .descendant(of: find.byType(DsStatusBlock), matching: find.byType(Container))
+            .first,
+      );
+      final decoration = container.decoration! as BoxDecoration;
+      expect(decoration.color, DsColors.cream.cardSurface);
+      expect(decoration.border, isA<Border>());
+    });
+  });
+
+  group('DsSettingRow', () {
+    testWidgets('places label left and control right', (tester) async {
+      await tester.pumpWidget(
+        app(
+          const DsSettingRow(
+            label: 'Developer tools',
+            trailing: Text('Control'),
+          ),
+        ),
+      );
+      expect(find.text('Developer tools'), findsOneWidget);
+      expect(find.text('Control'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Developer tools')).dx,
+        lessThan(tester.getTopLeft(find.text('Control')).dx),
+      );
+    });
+
+    testWidgets('shows helper beneath the label', (tester) async {
+      await tester.pumpWidget(
+        app(
+          DsSettingRow(
+            label: 'Window chrome',
+            helper: 'Build 29',
+            trailing: Switch(value: true, onChanged: (_) {}),
+          ),
+        ),
+      );
+      expect(find.text('Build 29'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Build 29')).dy,
+        greaterThan(tester.getTopLeft(find.text('Window chrome')).dy),
+      );
+    });
+
+    testWidgets('first row draws no top border', (tester) async {
+      await tester.pumpWidget(
+        app(const DsSettingRow(label: 'First', trailing: Text('A'), first: true)),
+      );
+      final firstDecoration = tester
+          .widget<Container>(find.byType(Container).first)
+          .decoration;
+      expect(firstDecoration, isNull);
+
+      await tester.pumpWidget(
+        app(const DsSettingRow(label: 'Second', trailing: Text('B'), first: false)),
+      );
+      final secondDecoration =
+          tester.widget<Container>(find.byType(Container).first).decoration! as BoxDecoration;
+      expect(secondDecoration.border, isNotNull);
+    });
+  });
 }
