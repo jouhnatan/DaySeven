@@ -607,6 +607,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Share Knowledge Base'), findsOneWidget);
+      expect(find.text('Danger Zone'), findsOneWidget);
       expect(find.text('Delete Knowledge Base'), findsOneWidget);
       expect(
         find.textContaining(
@@ -767,18 +768,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Header is present with Invite right-aligned in the header row.
-      // Sync keeps its own control; Retry is gone.
+      // Header is present, and Invite sits under the last collaborator as an
+      // underscored link. Sync keeps its own control; Retry is gone.
       expect(find.text('Collaborators'), findsOneWidget);
       expect(find.text('Invite'), findsOneWidget);
       expect(find.text('Retry'), findsNothing);
       expect(
         tester.getTopLeft(find.text('Invite')).dy,
-        lessThan(tester.getTopLeft(find.text('Owner User')).dy),
-      );
-      expect(
-        tester.getTopLeft(find.text('Invite')).dx,
-        greaterThan(tester.getTopLeft(find.text('Collaborators')).dx),
+        greaterThan(tester.getBottomLeft(find.text('Carol Reviewer')).dy),
       );
 
       // Owner shows name and username/role subtitle, but no standalone trailing tag or DsSegmented.

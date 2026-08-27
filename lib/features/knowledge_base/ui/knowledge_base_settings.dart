@@ -274,9 +274,15 @@ class _KnowledgeBaseSettingsPanelState
               onPressed: _working ? null : _share,
             ),
           if (role == KbRole.local || role == KbRole.owner) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            Text(
+              'Danger Zone',
+              style: uiTextStyle(size: 15, weight: 500, color: colors.text),
+            ),
+            const SizedBox(height: 8),
             DsSettingRow(
               key: const Key('delete-shared-knowledge-base-setting'),
+              first: true,
               label: 'Delete Knowledge Base',
               helper:
                   'Deletes the Supabase copy and collaboration history, '
@@ -406,23 +412,9 @@ class _CollaboratorsCard extends StatelessWidget {
       key: const Key('kb-collaborators-card'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Collaborators',
-                style: uiTextStyle(size: 13, weight: 500, color: colors.text),
-              ),
-            ),
-            if (onInvite != null)
-              DsLabelButton(
-                key: const Key('invite-collaborator-button'),
-                label: 'Invite',
-                height: DsSize.smallControl,
-                horizontalPadding: 14,
-                onPressed: onInvite,
-              ),
-          ],
+        Text(
+          'Collaborators',
+          style: uiTextStyle(size: 15, weight: 500, color: colors.text),
         ),
         const SizedBox(height: 8),
         collaborators.when(
@@ -441,11 +433,9 @@ class _CollaboratorsCard extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (var i = 0; i < members.length; i++) ...[
-                  if (i > 0)
-                    Divider(height: 1, thickness: 1, color: colors.border),
+                for (var i = 0; i < members.length; i++)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
                       children: [
                         CircleAvatar(
@@ -528,11 +518,34 @@ class _CollaboratorsCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                ],
               ],
             );
           },
         ),
+        if (onInvite != null) ...[
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                key: const Key('invite-collaborator-button'),
+                onTap: onInvite,
+                child: Text(
+                  'Invite',
+                  style: uiTextStyle(
+                    size: 13,
+                    weight: 500,
+                    color: colors.link,
+                  ).copyWith(
+                    decoration: TextDecoration.underline,
+                    decorationColor: colors.link,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -608,7 +621,7 @@ class _KbSwitcher extends ConsumerWidget {
                   Text(
                     'Knowledge Base',
                     style: uiTextStyle(
-                      size: 13,
+                      size: 15,
                       weight: 500,
                       color: colors.text,
                     ),
