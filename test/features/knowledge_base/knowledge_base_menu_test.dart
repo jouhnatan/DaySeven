@@ -5,6 +5,7 @@ import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/sync_ledger.dart';
+import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
@@ -100,6 +101,36 @@ class _SyncDocumentRepository extends DocumentRepository {
 
   @override
   Future<List<Map<String, Object?>>> documentsIn(String kbId) async => const [];
+}
+
+class _CollaboratorKbRepository extends KbRepository {
+  _CollaboratorKbRepository({required this.members});
+
+  final List<KbCollaborator> members;
+  String? lastSetRoleUserId;
+  CollaborationRole? lastSetRoleRole;
+  String? lastRemovedUserId;
+
+  @override
+  Future<List<KbCollaborator>> collaborators(String kbId) async => members;
+
+  @override
+  Future<void> setRole({
+    required String kbId,
+    required String userId,
+    required CollaborationRole role,
+  }) async {
+    lastSetRoleUserId = userId;
+    lastSetRoleRole = role;
+  }
+
+  @override
+  Future<void> removeMember({
+    required String kbId,
+    required String userId,
+  }) async {
+    lastRemovedUserId = userId;
+  }
 }
 
 void main() {
@@ -591,6 +622,105 @@ void main() {
       await tester.pumpAndSettle();
       expect(Directory(temp.path).existsSync(), isTrue);
       expect(File(kb.absolutePathFor(originalPath)).existsSync(), isTrue);
+    },
+  );
+
+  testWidgets(
+    'the settings panel displays DsSegmented for non-owner collaborators and plain text for owner',
+    (tester) async {
+      tester.view.physicalSize = const Size(700, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      const ownerMember = KbCollaborator(
+        userId: '466839ae-d51e-4e44-a8cb-a4d966f14918',
+        username: 'owner',
+        displayName: 'Owner User',
+        role: CollaborationRole.owner,
+        accepted: true,
+      );
+      const editorMember = KbCollaborator(
+        userId: 'user-editor',
+        username: 'bob',
+        displayName: 'Bob Editor',
+        role: CollaborationRole.editor,
+        accepted: true,
+      );
+      const reviewerMember = KbCollaborator(
+        userId: 'user-reviewer',
+        username: 'carol',
+        displayName: 'Carol Reviewer',
+        role: CollaborationRole.reviewer,
+        accepted: true,
+      );
+
+      final kbRepo = _CollaboratorKbRepository(
+        members: [ownerMember, editorMember, reviewerMember],
+      );
+
+      await tester.runAsync(() async {
+        container.dispose();
+        container = ProviderContainer(
+          overrides: [
+            currentUserProvider.overrideWithValue(_signedInUser()),
+            kbRoleProvider.overrideWith((ref) async => KbRole.owner),
+            recentKbPathsProvider.overrideWith((ref) async => const []),
+            kbRepositoryProvider.overrideWithValue(kbRepo),
+            kbSyncHealthProvider.overrideWith((ref, kbId) async => SyncHealth.active),
+          ],
+        );
+        await container
+            .read(kbControllerProvider.notifier)
+            .openFolder(temp.path);
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: dsTheme(),
+            home: const Scaffold(
+              body: SingleChildScrollView(
+                child: KnowledgeBaseSettingsPanel(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Header is present with Invite button.
+      expect(find.text('Collaborators'), findsOneWidget);
+      expect(find.text('Invite'), findsOneWidget);
+
+      // Owner shows plain text, no DsSegmented.
+      expect(find.text('Owner User'), findsOneWidget);
+      expect(find.text('Owner'), findsOneWidget);
+
+      // Non-owners show names and DsSegmented controls.
+      expect(find.text('Bob Editor'), findsOneWidget);
+      expect(find.text('Carol Reviewer'), findsOneWidget);
+      expect(find.byType(DsSegmented<CollaborationRole>), findsNWidgets(2));
+
+      // Change Bob's role using DsSegmented.
+      final bobSegmented = find.byType(DsSegmented<CollaborationRole>).first;
+      await tester.tap(
+        find.descendant(of: bobSegmented, matching: find.text('Reviewer')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(kbRepo.lastSetRoleUserId, 'user-editor');
+      expect(kbRepo.lastSetRoleRole, CollaborationRole.reviewer);
+
+      // Remove Bob using the quiet remove button.
+      final removeBob = find.byTooltip('Remove Bob Editor');
+      expect(removeBob, findsOneWidget);
+      await tester.tap(removeBob);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(kbRepo.lastRemovedUserId, 'user-editor');
     },
   );
 

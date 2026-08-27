@@ -413,154 +413,152 @@ class _CollaboratorsCard extends StatelessWidget {
   };
 
   List<CollaborationRole> _rolesFor(KbCollaborator member) => [
-    if (currentRole == KbRole.owner) CollaborationRole.coOwner,
     CollaborationRole.editor,
     CollaborationRole.reviewer,
+    if (currentRole == KbRole.owner) CollaborationRole.coOwner,
   ];
 
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    return DsCard(
+    return Column(
       key: const Key('kb-collaborators-card'),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Collaborators',
-                    style: uiTextStyle(
-                      size: 13,
-                      weight: 500,
-                      color: colors.text,
-                    ),
-                  ),
-                ),
-                if (onInvite != null)
-                  TextButton(onPressed: onInvite, child: const Text('Invite')),
-              ],
-            ),
-            const SizedBox(height: 8),
-            collaborators.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (error, _) => DsErrorBox(describeError(error)),
-              data: (members) => LayoutBuilder(
-                builder: (context, constraints) => Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final member in members)
-                      SizedBox(
-                        width: constraints.maxWidth >= 560
-                            ? (constraints.maxWidth - 8) / 2
-                            : constraints.maxWidth,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: colors.selection,
-                            borderRadius: const BorderRadius.all(
-                              DsRadius.control,
-                            ),
-                            border: Border.all(color: colors.border),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 15,
-                                  backgroundColor: colors.sage,
-                                  child: Text(
-                                    member.displayName.isEmpty
-                                        ? '?'
-                                        : member.displayName[0].toUpperCase(),
-                                    style: uiTextStyle(
-                                      size: 12,
-                                      weight: 500,
-                                      color: colors.text,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 9),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        member.displayName,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: uiTextStyle(
-                                          size: 12,
-                                          weight: 500,
-                                          color: colors.text,
-                                        ),
-                                      ),
-                                      Text(
-                                        '@${member.username} · '
-                                        '${member.accepted ? member.role.label : 'Invited ${member.role.label}'}',
-                                        overflow: TextOverflow.ellipsis,
-                                        style: uiTextStyle(
-                                          size: 10,
-                                          color: colors.muted,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (_canManage(member) &&
-                                    (member.role ==
-                                            CollaborationRole.editor ||
-                                        member.role ==
-                                            CollaborationRole.reviewer))
-                                  Switch(
-                                    value: member.role ==
-                                        CollaborationRole.editor,
-                                    onChanged: (value) => onSetRole(
-                                      member.userId,
-                                      value
-                                          ? CollaborationRole.editor
-                                          : CollaborationRole.reviewer,
-                                    ),
-                                  ),
-                                if (_canManage(member))
-                                  PopupMenuButton<Object>(
-                                    tooltip: 'Manage collaborator',
-                                    itemBuilder: (_) => [
-                                      for (final role in _rolesFor(member))
-                                        PopupMenuItem<Object>(
-                                          value: role,
-                                          child: Text(role.label),
-                                        ),
-                                      const PopupMenuDivider(),
-                                      const PopupMenuItem<Object>(
-                                        value: 'remove',
-                                        child: Text('Remove'),
-                                      ),
-                                    ],
-                                    onSelected: (value) {
-                                      if (value == 'remove') {
-                                        onRemove(member.userId);
-                                      } else if (value is CollaborationRole) {
-                                        onSetRole(member.userId, value);
-                                      }
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
+            Expanded(
+              child: Text(
+                'Collaborators',
+                style: uiTextStyle(
+                  size: 13,
+                  weight: 500,
+                  color: colors.text,
                 ),
               ),
             ),
+            if (onInvite != null)
+              TextButton(onPressed: onInvite, child: const Text('Invite')),
           ],
         ),
-      ),
+        const SizedBox(height: 8),
+        collaborators.when(
+          loading: () => const LinearProgressIndicator(),
+          error: (error, _) => DsErrorBox(describeError(error)),
+          data: (members) {
+            if (members.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'No collaborators yet.',
+                  style: uiTextStyle(size: 13, color: colors.muted),
+                ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < members.length; i++) ...[
+                  if (i > 0)
+                    Divider(height: 1, thickness: 1, color: colors.border),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: colors.sage,
+                          child: Text(
+                            members[i].displayName.isEmpty
+                                ? '?'
+                                : members[i].displayName[0].toUpperCase(),
+                            style: uiTextStyle(
+                              size: 12,
+                              weight: 500,
+                              color: colors.text,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                members[i].displayName,
+                                overflow: TextOverflow.ellipsis,
+                                style: uiTextStyle(
+                                  size: 13,
+                                  weight: 500,
+                                  color: colors.text,
+                                ),
+                              ),
+                              Text(
+                                '@${members[i].username} · '
+                                '${members[i].accepted ? members[i].role.label : 'Invited ${members[i].role.label}'}',
+                                overflow: TextOverflow.ellipsis,
+                                style: uiTextStyle(
+                                  size: 11,
+                                  color: colors.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        if (_canManage(members[i])) ...[
+                          DsSegmented<CollaborationRole>(
+                            value: members[i].role,
+                            cellHeight: 28,
+                            onPick: (role) =>
+                                onSetRole(members[i].userId, role),
+                            options: [
+                              for (final role in _rolesFor(members[i]))
+                                DsSegmentedOption(
+                                  value: role,
+                                  semanticLabel: role.label,
+                                  child: Text(role.label),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(width: 6),
+                          Tooltip(
+                            message: 'Remove ${members[i].displayName}',
+                            child: DsButton(
+                              variant: DsButtonVariant.quiet,
+                              height: 28,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
+                              semanticLabel:
+                                  'Remove ${members[i].displayName}',
+                              onPressed: () => onRemove(members[i].userId),
+                              child: Icon(
+                                Icons.close,
+                                size: 16,
+                                color: colors.muted,
+                              ),
+                            ),
+                          ),
+                        ] else ...[
+                          Text(
+                            members[i].role.label,
+                            style: uiTextStyle(
+                              size: 12,
+                              color: colors.muted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }
