@@ -300,6 +300,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: DsSettingRow(
+          first: true,
           label: 'Channel',
           helper: 'Beta builds land about a week early',
           trailing: DsSegmented<String>(
