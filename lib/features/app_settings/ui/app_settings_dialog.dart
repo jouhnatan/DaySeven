@@ -64,9 +64,8 @@ class AppSettingsDeveloperOptions {
   final Future<void> Function()? republishPolicy;
 }
 
-/// The sibling regions of App settings, in the order the rail lists them.
+/// The sibling regions of App settings, in the order the switcher lists them.
 enum AppSettingsSection {
-  general('General'),
   appearance('Appearance'),
   updates('Updates'),
   knowledgeBase('Knowledge Base'),
@@ -83,7 +82,7 @@ Future<void> showAppSettingsDialog(
   BuildContext context, {
   AppSettingsDeveloperOptionsBuilder? developerOptions,
   Widget? knowledgeBasePanel,
-  AppSettingsSection initialSection = AppSettingsSection.general,
+  AppSettingsSection initialSection = AppSettingsSection.appearance,
 }) => showDialog<void>(
   context: context,
   builder: (context) => Consumer(
@@ -100,7 +99,7 @@ class AppSettingsDialog extends ConsumerStatefulWidget {
     super.key,
     this.developerOptions,
     this.knowledgeBasePanel,
-    this.initialSection = AppSettingsSection.general,
+    this.initialSection = AppSettingsSection.appearance,
   });
 
   final AppSettingsDeveloperOptions? developerOptions;
@@ -126,7 +125,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   /// are absent in an ordinary build, and there is no Knowledge Base section
   /// until one is open.
   List<AppSettingsSection> get _sections => [
-    AppSettingsSection.general,
     AppSettingsSection.appearance,
     AppSettingsSection.updates,
     if (widget.knowledgeBasePanel != null) AppSettingsSection.knowledgeBase,
@@ -137,9 +135,9 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   @override
   void initState() {
     super.initState();
-    // Deep-linking to a section the build does not have would leave the rail
-    // with nothing selected.
-    if (!_sections.contains(_section)) _section = AppSettingsSection.general;
+    // Deep-linking to a section the build does not have would leave the
+    // switcher with nothing selected.
+    if (!_sections.contains(_section)) _section = AppSettingsSection.appearance;
     // Check on open, so the hero is answering rather than guessing. Without a
     // server there is no feed and nothing to ask; the controller already knows
     // whether there is one, so that is where the question goes.
@@ -178,59 +176,47 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _Header(),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // With one section there is nowhere to navigate to, and
-                      // a rail of one item would be chrome describing itself.
-                      if (sections.length > 1) ...[
-                        _SectionRail(
+                _Header(
+                  // With one section there is nowhere to navigate to, and a
+                  // switcher of one cell would be chrome describing itself.
+                  switcher: sections.length > 1
+                      ? _SectionSwitcher(
                           sections: sections,
                           selected: _section,
                           onSelect: (section) =>
                               setState(() => _section = section),
-                        ),
-                        const VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: CF.hairline,
-                        ),
-                      ],
-                      Expanded(
-                        child: SingleChildScrollView(
-                          // Each section starts at its own top rather than
-                          // inheriting the last one's scroll position.
-                          key: ValueKey(_section),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              const SizedBox(height: 4),
-                              ...switch (_section) {
-                                AppSettingsSection.general => _generalSection(),
-                                AppSettingsSection.appearance =>
-                                  _appearanceSection(),
-                                AppSettingsSection.updates =>
-                                  _updatesSection(),
-                                AppSettingsSection.knowledgeBase =>
-                                  _knowledgeBaseSection(),
-                                AppSettingsSection.about => _aboutSection(),
-                                AppSettingsSection.developer =>
-                                  _developerSection(),
-                              },
-                              if (_settingsError case final message?)
-                                _Alert(
-                                  title: "Couldn't change that setting",
-                                  message: message,
-                                ),
-                              const SizedBox(height: 14),
-                            ],
+                        )
+                      : null,
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    // Each section starts at its own top rather than
+                    // inheriting the last one's scroll position.
+                    key: ValueKey(_section),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // The switcher above already names the section, so the
+                        // body opens on its first setting rather than repeating
+                        // the heading underneath the cell it was chosen from.
+                        const SizedBox(height: 18),
+                        ...switch (_section) {
+                          AppSettingsSection.appearance => _appearanceSection(),
+                          AppSettingsSection.updates => _updatesSection(),
+                          AppSettingsSection.knowledgeBase =>
+                            _knowledgeBaseSection(),
+                          AppSettingsSection.about => _aboutSection(),
+                          AppSettingsSection.developer => _developerSection(),
+                        },
+                        if (_settingsError case final message?)
+                          _Alert(
+                            title: "Couldn't change that setting",
+                            message: message,
                           ),
-                        ),
-                      ),
-                    ],
+                        const SizedBox(height: 14),
+                      ],
+                    ),
                   ),
                 ),
                 const _Footer(),
@@ -242,23 +228,11 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     );
   }
 
-  List<Widget> _generalSection() => [
-    const _SectionHeading('General'),
-    Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Text(
-        'DaySeven is a workspace for building worlds. '
-        'Choose a section on the left to adjust its settings.',
-        style: uiTextStyle(size: 13, color: CF.muted),
-      ),
-    ),
-  ];
-
   List<Widget> _appearanceSection() => [
-    const _SectionHeading('Appearance'),
     Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: DsSettingRow(
+        first: true,
         label: 'Gradient background',
         helper: 'Soft pools behind Home and other views',
         trailing: Switch(
@@ -282,8 +256,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     final enabled = ref.read(appUpdateProvider.notifier).enabled;
 
     return [
-      const _SectionHeading('Updates'),
-      _UpdateStatusBlock(state: state, enabled: enabled),
+        _UpdateStatusBlock(state: state, enabled: enabled),
       if (state case UpdateCheckFailed(:final message))
         _Alert(message: message),
       if (state case UpdateFailed(:final message, :final release))
@@ -354,7 +327,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   }
 
   List<Widget> _aboutSection() => [
-    const _SectionHeading('About'),
     _VersionRow(),
     Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -368,7 +340,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
 
   List<Widget> _knowledgeBaseSection() => [
     Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: widget.knowledgeBasePanel ?? const SizedBox.shrink(),
     ),
   ];
@@ -378,8 +350,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     if (developer == null) return const [];
 
     return [
-      const _SectionHeading('Developer'),
-      _DeveloperToggleRow(
+        _DeveloperToggleRow(
+        first: true,
         key: const Key('app-settings-crdt-toggle'),
         icon: Icons.hub_outlined,
         title: 'CRDT collaboration',
@@ -512,13 +484,14 @@ String describeLastChecked(DateTime? at, {DateTime? now}) {
   };
 }
 
-/// The rail: the sibling regions of App settings, and which one you are in.
+/// The switcher: the sibling regions of App settings, and which one you are
+/// in.
 ///
-/// The selected item is a solid block of the accent rather than a bolder
-/// label, because position is shown by fill. It is one of the two things fern
-/// is spent on in this dialog; the other is the update button.
-class _SectionRail extends StatelessWidget {
-  const _SectionRail({
+/// A segmented strip centred under the title, so the regions read as one row
+/// of peers rather than a column down the side. Selection is the strip's own
+/// raised cell rather than fern: the accent is spent on what commits.
+class _SectionSwitcher extends StatelessWidget {
+  const _SectionSwitcher({
     required this.sections,
     required this.selected,
     required this.onSelect,
@@ -529,41 +502,25 @@ class _SectionRail extends StatelessWidget {
   final ValueChanged<AppSettingsSection> onSelect;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 172,
-    color: CF.inset,
-    padding: const EdgeInsets.all(DsSpace.s),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final section in sections)
-          Padding(
-            padding: const EdgeInsets.only(bottom: DsSpace.xxs),
-            child: DsHoverRow(
-              key: Key('app-settings-section-${section.name}'),
-              selected: section == selected,
-              semanticLabel: section.label,
-              onTap: () => onSelect(section),
-              padding: const EdgeInsets.symmetric(horizontal: 11),
-              child: SizedBox(
-                height: 32,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    section.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: DsType.label(
-                      color: section == selected ? CF.onFern : CF.muted,
-                      weight: section == selected ? 500 : 400,
-                    ),
-                  ),
-                ),
-              ),
+  Widget build(BuildContext context) => DsSegmented<AppSettingsSection>(
+    value: selected,
+    onPick: onSelect,
+    options: [
+      for (final section in sections)
+        DsSegmentedOption(
+          value: section,
+          semanticLabel: section.label,
+          child: KeyedSubtree(
+            key: Key('app-settings-section-${section.name}'),
+            child: Text(
+              section.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: DsType.label(weight: section == selected ? 500 : 400),
             ),
           ),
-      ],
-    ),
+        ),
+    ],
   );
 }
 
@@ -575,6 +532,7 @@ class _DeveloperToggleRow extends StatelessWidget {
     required this.value,
     required this.working,
     required this.onChanged,
+    this.first = false,
     super.key,
   });
 
@@ -584,6 +542,7 @@ class _DeveloperToggleRow extends StatelessWidget {
   final bool value;
   final bool working;
   final ValueChanged<bool> onChanged;
+  final bool first;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -591,6 +550,7 @@ class _DeveloperToggleRow extends StatelessWidget {
     // A boolean setting is a toggle on the right of its row, and the theme
     // already states how one looks; restating it here is how the two drift.
     child: DsSettingRow(
+      first: first,
       label: title,
       helper: subtitle,
       trailing: Switch(value: value, onChanged: working ? null : onChanged),
@@ -657,7 +617,11 @@ class _CollaborationRow extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header();
+  const _Header({this.switcher});
+
+  /// The section switcher, centred on its own line under the title. It is
+  /// absent when the build has only one section to show.
+  final Widget? switcher;
 
   @override
   Widget build(BuildContext context) {
@@ -668,29 +632,40 @@ class _Header extends StatelessWidget {
         border: Border(bottom: BorderSide(color: CF.hairline)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-        child: Row(
+        padding: EdgeInsets.fromLTRB(16, 12, 12, switcher == null ? 12 : 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: Text(
-                'Settings',
-                style: uiHeaderTextStyle(size: 16, height: 22 / 16),
-              ),
-            ),
-            DsButton(
-              variant: DsButtonVariant.quiet,
-              semanticLabel: 'Close',
-              height: DsSize.smallControl,
-              padding: EdgeInsets.zero,
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Tooltip(
-                message: 'Close',
-                child: SizedBox(
-                  width: DsSize.smallControl,
-                  child: Icon(Icons.close, size: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Settings',
+                    style: uiHeaderTextStyle(size: 16, height: 22 / 16),
+                  ),
                 ),
-              ),
+                DsButton(
+                  variant: DsButtonVariant.quiet,
+                  semanticLabel: 'Close',
+                  height: DsSize.smallControl,
+                  padding: EdgeInsets.zero,
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Tooltip(
+                    message: 'Close',
+                    child: SizedBox(
+                      width: DsSize.smallControl,
+                      child: Icon(Icons.close, size: 18),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            if (switcher case final switcher?) ...[
+              const SizedBox(height: 10),
+              // Centred under the title: the regions are peers, so no one of
+              // them sits closer to the edge than the rest.
+              Center(child: switcher),
+            ],
           ],
         ),
       ),
@@ -698,6 +673,8 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// A heading inside a section, for a group of settings the section holds more
+/// than one of. The section's own name is on its cell in the switcher.
 class _SectionHeading extends StatelessWidget {
   const _SectionHeading(this.label);
 

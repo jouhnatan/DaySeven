@@ -75,7 +75,7 @@ Future<void> openDialog(
   AppUpdateController controller, {
   AppSettingsDeveloperOptions? developerOptions,
   Widget? knowledgeBasePanel,
-  AppSettingsSection section = AppSettingsSection.general,
+  AppSettingsSection section = AppSettingsSection.appearance,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -95,7 +95,7 @@ Future<void> openDialog(
   await tester.pumpAndSettle();
 }
 
-/// Moves to a section the way a person does, through the rail.
+/// Moves to a section the way a person does, through the switcher.
 Future<void> selectSection(
   WidgetTester tester,
   AppSettingsSection section,
@@ -148,7 +148,7 @@ void main() {
       ),
     );
 
-    // Developer options are a region of their own, reached from the rail.
+    // Developer options are a region of their own, reached from the switcher.
     expect(find.text('CRDT collaboration'), findsNothing);
     await selectSection(tester, AppSettingsSection.developer);
 
@@ -318,15 +318,11 @@ void main() {
     });
   });
 
-  testWidgets('the rail lists only the regions this build actually has', (
+  testWidgets('the switcher lists only the regions this build actually has', (
     tester,
   ) async {
     await openDialog(tester, RecordingController());
 
-    expect(
-      find.byKey(const Key('app-settings-section-general')),
-      findsOneWidget,
-    );
     expect(
       find.byKey(const Key('app-settings-section-appearance')),
       findsOneWidget,
@@ -351,10 +347,6 @@ void main() {
     );
 
     expect(
-      find.byKey(const Key('app-settings-section-general')),
-      findsOneWidget,
-    );
-    expect(
       find.byKey(const Key('app-settings-section-knowledgeBase')),
       findsOneWidget,
     );
@@ -365,7 +357,7 @@ void main() {
     );
   });
 
-  testWidgets('the rail moves between sections and shows where you are', (
+  testWidgets('the switcher moves between sections and shows where you are', (
     tester,
   ) async {
     await openDialog(
@@ -375,32 +367,23 @@ void main() {
     );
 
     expect(find.text('kb panel'), findsNothing);
-    expect(find.textContaining('DaySeven is a workspace'), findsOneWidget);
+    expect(find.text('Gradient background'), findsOneWidget);
 
     await selectSection(tester, AppSettingsSection.knowledgeBase);
 
     expect(find.text('kb panel'), findsOneWidget);
-    expect(find.textContaining('DaySeven is a workspace'), findsNothing);
+    expect(find.text('Gradient background'), findsNothing);
 
-    // Position is shown by fill: the section you are in is a solid block of
-    // the accent, and the others are not.
-    Color railFill(AppSettingsSection section) => (tester
-                .widget<AnimatedContainer>(
-                  find
-                      .descendant(
-                        of: find.byKey(
-                          Key('app-settings-section-${section.name}'),
-                        ),
-                        matching: find.byType(AnimatedContainer),
-                      )
-                      .first,
-                )
-                .decoration!
-            as BoxDecoration)
-        .color!;
-
-    expect(railFill(AppSettingsSection.knowledgeBase), CF.fern);
-    expect(railFill(AppSettingsSection.general), isNot(CF.fern));
+    // The strip itself holds the answer to "where am I": its raised cell is
+    // the section on screen.
+    expect(
+      tester
+          .widget<DsSegmented<AppSettingsSection>>(
+            find.byType(DsSegmented<AppSettingsSection>),
+          )
+          .value,
+      AppSettingsSection.knowledgeBase,
+    );
   });
 
   testWidgets('opens straight onto the section it was asked for', (
@@ -418,7 +401,7 @@ void main() {
     expect(find.text('kb panel'), findsOneWidget);
   });
 
-  testWidgets('falls back to General when a section is not in this build', (
+  testWidgets('falls back to Appearance when a section is not in this build', (
     tester,
   ) async {
     await openDialog(
@@ -428,8 +411,8 @@ void main() {
     );
 
     // Nothing supplied a Knowledge Base panel, so that section does not exist
-    // and the rail would otherwise have had nothing selected.
-    expect(find.textContaining('DaySeven is a workspace'), findsOneWidget);
+    // and the switcher would otherwise have had nothing selected.
+    expect(find.text('Gradient background'), findsOneWidget);
   });
 
   // Solway labels regions; it never carries a value. A version and a build
@@ -653,8 +636,8 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    // Photographed with everything it can show: the rail needs more than one
-    // region before it is a rail at all.
+    // Photographed with everything it can show: the switcher needs more than
+    // one region before it is a switcher at all.
     await openDialog(
       tester,
       RecordingController(releases: FakeReleases(newer)),
