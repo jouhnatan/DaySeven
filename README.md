@@ -1,6 +1,6 @@
 # DaySeven
 
-A world-building knowledge base editor for macOS and Windows 11.
+A text editor tailored for writing and world-building, for macOS and Windows 11.
 
 Your content is a "Knowledge Base": an ordinary folder, in a location you choose, and a tree of documents. The design is intuitive: for example, a `Characters/` folder is just `Characters/` with a list of markdown files. The app keeps its own files in `.settings/`, out of the way. Nothing is encoded: the manifest is readable JSON, the documents are files, and `.settings/.index/` is derived and safe to delete.
 
