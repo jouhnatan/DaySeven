@@ -279,9 +279,8 @@ class _KnowledgeBaseSettingsPanelState
               key: const Key('delete-shared-knowledge-base-setting'),
               label: 'Delete Knowledge Base',
               helper:
-                  'Deletes only the Supabase copy and collaboration history. '
-                  'The on-disk Knowledge Base is not deleted or changed, and '
-                  'you can share it again later.',
+                  'Deletes the Supabase copy and collaboration history, '
+                  'but not your local files.',
               trailing: DsLabelButton(
                 label: 'Delete',
                 variant: DsButtonVariant.danger,
@@ -329,36 +328,42 @@ class _SyncStatusRow extends StatelessWidget {
       key: const Key('kb-sync-status-row'),
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-          children: [
-            Container(
-              width: 9,
-              height: 9,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: active ? colors.pending : colors.muted,
-              ),
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Sync',
-                    style: uiTextStyle(
-                      size: 13,
-                      weight: 500,
-                      color: colors.text,
+        children: [
+          const KnowledgeBaseSyncButton(variant: DsButtonVariant.quiet),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sync',
+                  style: uiTextStyle(
+                    size: 13,
+                    weight: 500,
+                    color: colors.text,
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: active ? colors.pending : colors.muted,
+                      ),
                     ),
-                  ),
-                  Text(
-                    label,
-                    style: uiTextStyle(size: 11, color: colors.muted),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
+                      style: uiTextStyle(size: 11, color: colors.muted),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const KnowledgeBaseSyncButton(variant: DsButtonVariant.quiet),
+          ),
         ],
       ),
     );
@@ -401,9 +406,23 @@ class _CollaboratorsCard extends StatelessWidget {
       key: const Key('kb-collaborators-card'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Collaborators',
-          style: uiTextStyle(size: 13, weight: 500, color: colors.text),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Collaborators',
+                style: uiTextStyle(size: 13, weight: 500, color: colors.text),
+              ),
+            ),
+            if (onInvite != null)
+              DsLabelButton(
+                key: const Key('invite-collaborator-button'),
+                label: 'Invite',
+                height: DsSize.smallControl,
+                horizontalPadding: 14,
+                onPressed: onInvite,
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         collaborators.when(
@@ -514,34 +533,6 @@ class _CollaboratorsCard extends StatelessWidget {
             );
           },
         ),
-        if (onInvite != null) ...[
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: DsButton(
-              key: const Key('invite-collaborator-button'),
-              variant: DsButtonVariant.quiet,
-              semanticLabel: 'Invite a collaborator',
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 6,
-              ),
-              onPressed: onInvite,
-              child: Text(
-                'Invite',
-                style:
-                    uiTextStyle(
-                      size: 13,
-                      weight: 500,
-                      color: colors.link,
-                    ).copyWith(
-                      decoration: TextDecoration.underline,
-                      decorationColor: colors.link,
-                    ),
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }

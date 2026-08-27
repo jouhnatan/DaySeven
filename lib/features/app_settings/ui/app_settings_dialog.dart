@@ -367,9 +367,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   ];
 
   List<Widget> _knowledgeBaseSection() => [
-    const _SectionHeading('Knowledge Base'),
     Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
       child: widget.knowledgeBasePanel ?? const SizedBox.shrink(),
     ),
   ];

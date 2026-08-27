@@ -609,7 +609,9 @@ void main() {
       expect(find.text('Share Knowledge Base'), findsOneWidget);
       expect(find.text('Delete Knowledge Base'), findsOneWidget);
       expect(
-        find.textContaining('on-disk Knowledge Base is not deleted or changed'),
+        find.textContaining(
+          'Deletes the Supabase copy and collaboration history, but not your local files.',
+        ),
         findsOneWidget,
       );
 
@@ -765,14 +767,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Header is present, and Invite sits under the last collaborator rather
-      // than beside the heading. Sync keeps its own control; Retry is gone.
+      // Header is present with Invite right-aligned in the header row.
+      // Sync keeps its own control; Retry is gone.
       expect(find.text('Collaborators'), findsOneWidget);
       expect(find.text('Invite'), findsOneWidget);
       expect(find.text('Retry'), findsNothing);
       expect(
         tester.getTopLeft(find.text('Invite')).dy,
-        greaterThan(tester.getBottomLeft(find.text('Carol Reviewer')).dy),
+        lessThan(tester.getTopLeft(find.text('Owner User')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Invite')).dx,
+        greaterThan(tester.getTopLeft(find.text('Collaborators')).dx),
       );
 
       // Owner shows name and username/role subtitle, but no standalone trailing tag or DsSegmented.
