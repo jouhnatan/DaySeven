@@ -26,6 +26,7 @@ import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/app/workspace/sync_results.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/shared/backend/asset_repository.dart';
+import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
@@ -422,12 +423,23 @@ class KbHierarchyReplicator {
       }
 
       await assets.uploadReferenced(kb: kb, document: document);
-      final receipt = await documents.publishChange(
-        kbId: kbId,
-        relativePath: path,
-        document: document,
-        expectedCurrentRevisionId: snapshot?.revisionId,
-      );
+      final DocumentPublishReceipt receipt;
+      try {
+        receipt = await documents.publishChange(
+          kbId: kbId,
+          relativePath: path,
+          document: document,
+          expectedCurrentRevisionId: snapshot?.revisionId,
+        );
+      } on Object catch (error) {
+        // A peer can publish between the snapshot above and this call. That is
+        // one document losing a race, and it belongs in the conflict count
+        // beside every other divergence this loop leaves untouched -- not as
+        // an exception that abandons the documents still queued behind it.
+        if (!isPublishConflict(error)) rethrow;
+        conflicts++;
+        continue;
+      }
       if (receipt.wasPublished) {
         await ledger.record(
           document: document,

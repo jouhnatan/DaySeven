@@ -128,6 +128,22 @@ void main() {
       expect(described, contains('Choose another username.'));
     });
 
+    test('an overtaken publish is described, not dumped', () {
+      final described = describeError(
+        const PostgrestException(
+          message: 'document moved on; refresh before publishing',
+          code: '40001',
+          details: 'Conflict',
+          hint: 'Refresh the canonical revision before publishing again. '
+              'Republishing the same expected revision cannot succeed.',
+        ),
+      );
+
+      expect(described, contains('published a newer revision'));
+      expect(described, isNot(contains('40001')));
+      expect(described, isNot(contains('Conflict')));
+    });
+
     test("our own messages are shown as written", () {
       expect(
         describeError(const SyncException('Sign in to propose a change.')),

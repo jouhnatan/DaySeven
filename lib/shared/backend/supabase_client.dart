@@ -101,6 +101,13 @@ String describeError(Object error) {
           'the newest revision, then publish again.'
           '${error.hint == null ? '' : '\n\n${error.hint}'}';
     }
+    // An optimistic-lock conflict is ordinary collaboration: someone else's
+    // revision landed first. The raw errcode, details and hint are for the
+    // log, not for the person holding the file.
+    if (isPublishConflict(error)) {
+      return 'A collaborator published a newer revision of this document. '
+          'Sync the Knowledge Base to pick it up, then publish again.';
+    }
     final parts = <String>[
       error.message,
       if (error.code != null) 'code ${error.code}',
@@ -134,6 +141,12 @@ String describeError(Object error) {
 /// against fresh state, this is worth none at all.
 bool isRateLimited(Object error) =>
     error is PostgrestException && error.code == 'PT429';
+
+/// The canonical document moved past the revision this call was written
+/// against. Worth one considered retry from fresh state, and worth counting as
+/// a conflict rather than aborting a whole sync when it happens mid-loop.
+bool isPublishConflict(Object error) =>
+    error is PostgrestException && error.code == '40001';
 
 class SyncException implements Exception {
   const SyncException(this.message);

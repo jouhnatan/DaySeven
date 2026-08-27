@@ -5,7 +5,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 export 'package:dayseven/app/workspace/kb_role.dart';
 
 import 'package:dayseven/app/security_log.dart';
@@ -538,8 +537,7 @@ class SharingController {
   /// protection-aware action.
   Future<SyncOutcome> publishOpenDocumentDirectly() => publishOpenDocument();
 
-  bool _isOptimisticMove(Object error) =>
-      error is PostgrestException && error.code == '40001';
+  bool _isOptimisticMove(Object error) => isPublishConflict(error);
 
   Future<DocumentProtection?> setDocumentProtection({
     required String documentId,

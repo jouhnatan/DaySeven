@@ -64,4 +64,28 @@ void main() {
       reason: 'direct publish may withdraw only the publisher\'s own draft',
     );
   });
+
+  test('publishing revives a document whose canonical row was deleted', () async {
+    final sql = await File(
+      'supabase/migrations/20260827193153_publish_revives_deleted_document.sql',
+    ).readAsString();
+
+    // The tombstone branch has to be reached before `create` decides it lost a
+    // race, and it may only revive for a caller who could publish directly.
+    expect(sql, contains('v_doc.deleted_at is not null'));
+    expect(sql, contains('set deleted_at = null'));
+    expect(sql, contains('private.publish_role_rank(v_doc.minimum_publish_role)'));
+    expect(sql, contains('private.publish_conflict(p_document_id, v_uid)'));
+    expect(sql, contains('perform private.publish_gate_assert'));
+    expect(sql, contains('perform private.publish_gate_clear'));
+    expect(sql, contains('for update'));
+    expect(sql, contains("set search_path = ''"));
+    expect(sql, isNot(contains('grant all')));
+    expect(sql, isNot(contains('service_role')));
+    expect(
+      sql,
+      contains('and author_id = v_uid'),
+      reason: 'direct publish may withdraw only the publisher\'s own draft',
+    );
+  });
 }

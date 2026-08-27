@@ -15,6 +15,7 @@ import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/blocks/search_index.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class FakeAssetRepository extends AssetRepository {
   @override
@@ -78,6 +79,36 @@ class FakeDocuments extends DocumentRepository {
 
   @override
   Future<List<Map<String, Object?>>> documentsIn(String kbId) async => [];
+}
+
+/// Answers one path the way the server answers a caller whose revision was
+/// overtaken, and publishes everything else normally.
+class ConflictingDocuments extends FakeDocuments {
+  ConflictingDocuments({required this.conflictingPath, super.snapshots});
+  final String conflictingPath;
+
+  @override
+  Future<DocumentPublishReceipt> publishChange({
+    required String kbId,
+    required String relativePath,
+    required BlockDocument document,
+    required String? expectedCurrentRevisionId,
+  }) async {
+    if (relativePath == conflictingPath) {
+      throw const PostgrestException(
+        message: 'document moved on; refresh before publishing',
+        code: '40001',
+        details: 'Conflict',
+        hint: 'Refresh the canonical revision before publishing again.',
+      );
+    }
+    return super.publishChange(
+      kbId: kbId,
+      relativePath: relativePath,
+      document: document,
+      expectedCurrentRevisionId: expectedCurrentRevisionId,
+    );
+  }
 }
 
 void main() {
@@ -351,6 +382,34 @@ void main() {
         // Ledger now reflects published
         final ledgerA = await SyncLedger.open(kbA);
         expect(ledgerA.document(docA.id)?.path, 'Awayside/Untitled.md');
+      },
+    );
+
+    test(
+      'ensureRemoteMatchesLocal counts a publish conflict and keeps going',
+      () async {
+        // Two local documents, neither canonical yet. The first one the server
+        // refuses must not take the second one down with it.
+        await kbA.createFolder('Awayside');
+        final blockedPath = await kbA.createDocument(
+          title: 'Blocked',
+          folderRelativePath: 'Awayside',
+        );
+        final otherPath = await kbA.createDocument(title: 'Other');
+        final otherDoc = await kbA.readDocument(otherPath);
+        final docs = ConflictingDocuments(conflictingPath: blockedPath);
+
+        final containerA = await makeContainer(kbA, indexA, docs);
+        addTearDown(containerA.dispose);
+        final replicator = containerA.read(kbHierarchyReplicatorProvider);
+        final push = await replicator.ensureRemoteMatchesLocal();
+
+        expect(push.conflicts, 1);
+        expect(push.published, 1);
+        expect(docs.published.single.document.id, otherDoc.id);
+        final ledgerA = await SyncLedger.open(kbA);
+        expect(ledgerA.document(otherDoc.id), isNotNull);
+        expect(await File(kbA.absolutePathFor(blockedPath)).exists(), isTrue);
       },
     );
 
