@@ -4,6 +4,21 @@ Read `README.md` first — it describes the architecture, the document model,
 and the release mechanism in full. This file covers only what an agent needs
 to get right that the code does not enforce on its own.
 
+## Committing
+
+**Commit every change.** When a piece of work is finished and the checks below
+pass, commit it without being asked. Do not leave finished work sitting in the
+working tree waiting for permission, and do not batch several unrelated changes
+into one commit — one commit per change, with a message that says what it does
+and why.
+
+"Finished" means `flutter analyze`, `flutter test` and `./scripts/check_layers.sh`
+all pass. A commit that does not build is worse than no commit.
+
+A commit on its own does not bump the version and does not tag. That is the
+release step, and it is not optional either: committing is the first half of
+finishing a change, and **Shipping a change** below is the second.
+
 ## Shipping a change
 
 DaySeven updates itself from a Supabase release feed. Two people run this app
