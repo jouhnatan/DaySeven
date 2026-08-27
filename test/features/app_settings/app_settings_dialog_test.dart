@@ -657,6 +657,22 @@ void main() {
     );
   });
 
+  testWidgets('pads the settings content area from the left and right sides', (
+    tester,
+  ) async {
+    await openDialog(tester, RecordingController());
+
+    final scroll = tester.widget<SingleChildScrollView>(
+      find.byType(SingleChildScrollView),
+    );
+    expect(
+      scroll.padding,
+      const EdgeInsets.symmetric(horizontal: DsSpace.xl),
+      reason:
+          'the settings view area must have comfortable horizontal breathing room',
+    );
+  });
+
   testWidgets('does not shout at anybody', (tester) async {
     await openDialog(
       tester,

@@ -193,6 +193,9 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                     // Each section starts at its own top rather than
                     // inheriting the last one's scroll position.
                     key: ValueKey(_section),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DsSpace.xl,
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -229,25 +232,19 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   }
 
   List<Widget> _appearanceSection() => [
-    Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: DsSettingRow(
-        first: true,
-        label: 'Gradient background',
-        helper: 'Soft pools behind Home and other views',
-        trailing: Switch(
-          value: true,
-          onChanged: (_) {},
-        ),
+    DsSettingRow(
+      first: true,
+      label: 'Gradient background',
+      helper: 'Soft pools behind Home and other views',
+      trailing: Switch(
+        value: true,
+        onChanged: (_) {},
       ),
     ),
-    Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: DsSettingRow(
-        label: 'Window chrome',
-        helper: 'Uses the system theme for the title bar',
-        trailing: Switch(value: true, onChanged: null),
-      ),
+    DsSettingRow(
+      label: 'Window chrome',
+      helper: 'Uses the system theme for the title bar',
+      trailing: Switch(value: true, onChanged: null),
     ),
   ];
 
@@ -256,49 +253,43 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     final enabled = ref.read(appUpdateProvider.notifier).enabled;
 
     return [
-        _UpdateStatusBlock(state: state, enabled: enabled),
+      _UpdateStatusBlock(state: state, enabled: enabled),
       if (state case UpdateCheckFailed(:final message))
         _Alert(message: message),
       if (state case UpdateFailed(:final message, :final release))
         _Alert(message: message, release: release),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: DsSettingRow(
-          first: true,
-          label: 'Install updates automatically',
-          helper: 'Applies on next launch',
-          trailing: Switch(
-            value: _autoUpdate,
-            onChanged: (value) => setState(() => _autoUpdate = value),
-          ),
+      DsSettingRow(
+        first: true,
+        label: 'Install updates automatically',
+        helper: 'Applies on next launch',
+        trailing: Switch(
+          value: _autoUpdate,
+          onChanged: (value) => setState(() => _autoUpdate = value),
+        ),
+      ),
+      DsSettingRow(
+        first: true,
+        label: 'Channel',
+        helper: 'Beta builds land about a week early',
+        trailing: DsSegmented<String>(
+          value: _channel,
+          onPick: (value) => setState(() => _channel = value),
+          options: const [
+            DsSegmentedOption(
+              value: 'Stable',
+              semanticLabel: 'Stable',
+              child: Text('Stable'),
+            ),
+            DsSegmentedOption(
+              value: 'Beta',
+              semanticLabel: 'Beta',
+              child: Text('Beta'),
+            ),
+          ],
         ),
       ),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: DsSettingRow(
-          first: true,
-          label: 'Channel',
-          helper: 'Beta builds land about a week early',
-          trailing: DsSegmented<String>(
-            value: _channel,
-            onPick: (value) => setState(() => _channel = value),
-            options: const [
-              DsSegmentedOption(
-                value: 'Stable',
-                semanticLabel: 'Stable',
-                child: Text('Stable'),
-              ),
-              DsSegmentedOption(
-                value: 'Beta',
-                semanticLabel: 'Beta',
-                child: Text('Beta'),
-              ),
-            ],
-          ),
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        padding: const EdgeInsets.only(top: 14),
         child: Row(
           children: [
             GestureDetector(
@@ -316,12 +307,9 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
         ),
       ),
       const SizedBox(height: 6),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Container(
-          height: 1,
-          color: CF.hairline,
-        ),
+      Container(
+        height: 1,
+        color: CF.hairline,
       ),
     ];
   }
@@ -329,7 +317,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   List<Widget> _aboutSection() => [
     _VersionRow(),
     Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.only(top: 8),
       child: Text(
         'A world-building knowledge base editor. '
         'Updates are published from the release feed and installed on next launch.',
@@ -340,7 +328,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
 
   List<Widget> _knowledgeBaseSection() => [
     Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.only(bottom: 8),
       child: widget.knowledgeBasePanel ?? const SizedBox.shrink(),
     ),
   ];
@@ -350,7 +338,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     if (developer == null) return const [];
 
     return [
-        _DeveloperToggleRow(
+      _DeveloperToggleRow(
         first: true,
         key: const Key('app-settings-crdt-toggle'),
         icon: Icons.hub_outlined,
@@ -382,34 +370,31 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       _CollaborationRow(options: developer),
       if (developer.policyDetail case final detail?) ...[
         const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: DsStatusBlock(
-            key: const Key('app-settings-policy-signing'),
-            icon: Icons.key_outlined,
-            tone: developer.republishPolicy == null
-                ? DsTone.success
-                : DsTone.warning,
-            headline: developer.republishPolicy == null
-                ? 'Policy signing ready'
-                : 'Policy signing needs attention',
-            detail: detail,
-            trailing: developer.republishPolicy == null
-                ? null
-                : DsLabelButton(
-                    key: const Key('app-settings-republish-policy'),
-                    label: _workingSettings.contains('policy')
-                        ? 'Republishing…'
-                        : 'Republish',
-                    height: DsSize.control,
-                    onPressed: _workingSettings.contains('policy')
-                        ? null
-                        : () => _changeSetting(
-                            'policy',
-                            developer.republishPolicy!,
-                          ),
-                  ),
-          ),
+        DsStatusBlock(
+          key: const Key('app-settings-policy-signing'),
+          icon: Icons.key_outlined,
+          tone: developer.republishPolicy == null
+              ? DsTone.success
+              : DsTone.warning,
+          headline: developer.republishPolicy == null
+              ? 'Policy signing ready'
+              : 'Policy signing needs attention',
+          detail: detail,
+          trailing: developer.republishPolicy == null
+              ? null
+              : DsLabelButton(
+                  key: const Key('app-settings-republish-policy'),
+                  label: _workingSettings.contains('policy')
+                      ? 'Republishing…'
+                      : 'Republish',
+                  height: DsSize.control,
+                  onPressed: _workingSettings.contains('policy')
+                      ? null
+                      : () => _changeSetting(
+                          'policy',
+                          developer.republishPolicy!,
+                        ),
+                ),
         ),
       ],
       if (developer.refusalCount > 0)
@@ -545,16 +530,11 @@ class _DeveloperToggleRow extends StatelessWidget {
   final bool first;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    // A boolean setting is a toggle on the right of its row, and the theme
-    // already states how one looks; restating it here is how the two drift.
-    child: DsSettingRow(
-      first: first,
-      label: title,
-      helper: subtitle,
-      trailing: Switch(value: value, onChanged: working ? null : onChanged),
-    ),
+  Widget build(BuildContext context) => DsSettingRow(
+    first: first,
+    label: title,
+    helper: subtitle,
+    trailing: Switch(value: value, onChanged: working ? null : onChanged),
   );
 }
 
@@ -591,27 +571,24 @@ class _CollaborationRow extends StatelessWidget {
             'Local editing remains available.',
         };
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: DsStatusBlock(
-        key: const Key('app-settings-collaboration-state'),
-        icon: switch (options.collaborationHealth) {
-          AppSettingsCollaborationHealth.connected => Icons.cloud_done_outlined,
-          AppSettingsCollaborationHealth.connecting => Icons.sync,
-          AppSettingsCollaborationHealth.degraded ||
-          AppSettingsCollaborationHealth.unavailable =>
-            Icons.cloud_off_outlined,
-          AppSettingsCollaborationHealth.off => Icons.hub_outlined,
-        },
-        tone: switch (options.collaborationHealth) {
-          AppSettingsCollaborationHealth.connected => DsTone.success,
-          AppSettingsCollaborationHealth.degraded => DsTone.warning,
-          AppSettingsCollaborationHealth.unavailable => DsTone.danger,
-          _ => DsTone.neutral,
-        },
-        headline: title,
-        detail: detail,
-      ),
+    return DsStatusBlock(
+      key: const Key('app-settings-collaboration-state'),
+      icon: switch (options.collaborationHealth) {
+        AppSettingsCollaborationHealth.connected => Icons.cloud_done_outlined,
+        AppSettingsCollaborationHealth.connecting => Icons.sync,
+        AppSettingsCollaborationHealth.degraded ||
+        AppSettingsCollaborationHealth.unavailable =>
+          Icons.cloud_off_outlined,
+        AppSettingsCollaborationHealth.off => Icons.hub_outlined,
+      },
+      tone: switch (options.collaborationHealth) {
+        AppSettingsCollaborationHealth.connected => DsTone.success,
+        AppSettingsCollaborationHealth.degraded => DsTone.warning,
+        AppSettingsCollaborationHealth.unavailable => DsTone.danger,
+        _ => DsTone.neutral,
+      },
+      headline: title,
+      detail: detail,
     );
   }
 }
@@ -682,7 +659,7 @@ class _SectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+    padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
     child: Text(
       label,
       // Solway labels the region. It is not spending the accent to do it:
@@ -699,22 +676,19 @@ class _VersionRow extends ConsumerWidget {
 
     // Label left, value right — and the value is tabular, because it is a
     // number somebody reads off against the one a release note names.
-    return Padding(
+    return DsSettingRow(
       key: const Key('app-settings-version'),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: DsSettingRow(
-        first: true,
-        label: 'DaySeven',
-        helper: switch (version) {
-          AsyncData(:final value) => 'Build ${value.build}',
-          AsyncError() => 'Version unavailable',
-          _ => 'Reading…',
-        },
-        trailing: Text(switch (version) {
-          AsyncData(:final value) => value.name,
-          _ => '—',
-        }, style: DsType.bodyStrong(tabular: true)),
-      ),
+      first: true,
+      label: 'DaySeven',
+      helper: switch (version) {
+        AsyncData(:final value) => 'Build ${value.build}',
+        AsyncError() => 'Version unavailable',
+        _ => 'Reading…',
+      },
+      trailing: Text(switch (version) {
+        AsyncData(:final value) => value.name,
+        _ => '—',
+      }, style: DsType.bodyStrong(tabular: true)),
     );
   }
 }
@@ -728,15 +702,12 @@ class _UpdateStatusBlock extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!enabled) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16),
-        child: DsStatusBlock(
-          icon: Icons.cloud_off_outlined,
-          headline: 'No server configured',
-          detail:
-              'Updates are published to Supabase, and this build has no '
-              'connection details for it.',
-        ),
+      return const DsStatusBlock(
+        icon: Icons.cloud_off_outlined,
+        headline: 'No server configured',
+        detail:
+            'Updates are published to Supabase, and this build has no '
+            'connection details for it.',
       );
     }
 
@@ -747,90 +718,87 @@ class _UpdateStatusBlock extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: DsStatusBlock(
-            key: const Key('app-settings-update-status'),
-            icon: switch (state) {
-              UpdateAvailable() => Icons.arrow_circle_down_outlined,
-              UpdateCheckFailed() || UpdateFailed() => Icons.error_outline,
-              CheckingForUpdate() => Icons.sync,
-              _ => Icons.check_circle_outline,
-            },
-            tone: switch (state) {
-              UpdateAvailable() => DsTone.warning,
-              UpdateCheckFailed() || UpdateFailed() => DsTone.danger,
-              CheckingForUpdate() => DsTone.neutral,
-              _ => DsTone.success,
-            },
-            headline: switch (state) {
-              UpdateAvailable(:final release) =>
-                'Version ${release.version.name}',
-              DownloadingUpdate() => 'Downloading',
-              InstallingUpdate() => 'Installing',
-              _ => 'Up to date',
-            },
-            detail: switch (state) {
-              UpdateAvailable(:final release) =>
-                'Build ${release.version.build}',
-              CheckingForUpdate() => 'Checking…',
-              DownloadingUpdate(:final release) =>
-                '${(release.sizeBytes / 1048576).toStringAsFixed(1)} MB',
-              UpToDate(:final checkedAt) => describeLastChecked(checkedAt),
-              _ => 'Nothing newer published',
-            },
-            trailing: isCheckAction
-                ? DsButton(
-                    key: const Key('app-settings-run-updates'),
-                    height: DsSize.smallControl,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    onPressed: busy
-                        ? null
-                        : () => switch (state) {
-                            UpdateAvailable(:final release) =>
-                              controller.download(release),
-                            _ => controller.check(),
-                          },
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.sync, size: 14),
-                        const SizedBox(width: 6),
-                        Text(
-                          switch (state) {
-                            CheckingForUpdate() => 'Checking…',
-                            DownloadingUpdate() => 'Downloading…',
-                            InstallingUpdate() => 'Installing…',
-                            _ => 'Check now',
-                          },
-                          style: uiTextStyle(size: 13, weight: 500),
-                        ),
-                      ],
-                    ),
-                  )
-                : DsLabelButton(
-                    key: const Key('app-settings-run-updates'),
-                    label: switch (state) {
-                      DownloadingUpdate() => 'Downloading…',
-                      InstallingUpdate() => 'Installing…',
-                      UpdateAvailable(:final release) =>
-                        'Install ${release.version.name}',
-                      _ => 'Check now',
-                    },
-                    height: DsSize.control,
-                    horizontalPadding: 17,
-                    variant: DsButtonVariant.primary,
-                    onPressed: busy
-                        ? null
-                        : () => controller.download(
-                            (state as UpdateAvailable).release,
-                          ),
+        DsStatusBlock(
+          key: const Key('app-settings-update-status'),
+          icon: switch (state) {
+            UpdateAvailable() => Icons.arrow_circle_down_outlined,
+            UpdateCheckFailed() || UpdateFailed() => Icons.error_outline,
+            CheckingForUpdate() => Icons.sync,
+            _ => Icons.check_circle_outline,
+          },
+          tone: switch (state) {
+            UpdateAvailable() => DsTone.warning,
+            UpdateCheckFailed() || UpdateFailed() => DsTone.danger,
+            CheckingForUpdate() => DsTone.neutral,
+            _ => DsTone.success,
+          },
+          headline: switch (state) {
+            UpdateAvailable(:final release) =>
+              'Version ${release.version.name}',
+            DownloadingUpdate() => 'Downloading',
+            InstallingUpdate() => 'Installing',
+            _ => 'Up to date',
+          },
+          detail: switch (state) {
+            UpdateAvailable(:final release) =>
+              'Build ${release.version.build}',
+            CheckingForUpdate() => 'Checking…',
+            DownloadingUpdate(:final release) =>
+              '${(release.sizeBytes / 1048576).toStringAsFixed(1)} MB',
+            UpToDate(:final checkedAt) => describeLastChecked(checkedAt),
+            _ => 'Nothing newer published',
+          },
+          trailing: isCheckAction
+              ? DsButton(
+                  key: const Key('app-settings-run-updates'),
+                  height: DsSize.smallControl,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  onPressed: busy
+                      ? null
+                      : () => switch (state) {
+                          UpdateAvailable(:final release) =>
+                            controller.download(release),
+                          _ => controller.check(),
+                        },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.sync, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        switch (state) {
+                          CheckingForUpdate() => 'Checking…',
+                          DownloadingUpdate() => 'Downloading…',
+                          InstallingUpdate() => 'Installing…',
+                          _ => 'Check now',
+                        },
+                        style: uiTextStyle(size: 13, weight: 500),
+                      ),
+                    ],
                   ),
-          ),
+                )
+              : DsLabelButton(
+                  key: const Key('app-settings-run-updates'),
+                  label: switch (state) {
+                    DownloadingUpdate() => 'Downloading…',
+                    InstallingUpdate() => 'Installing…',
+                    UpdateAvailable(:final release) =>
+                      'Install ${release.version.name}',
+                    _ => 'Check now',
+                  },
+                  height: DsSize.control,
+                  horizontalPadding: 17,
+                  variant: DsButtonVariant.primary,
+                  onPressed: busy
+                      ? null
+                      : () => controller.download(
+                          (state as UpdateAvailable).release,
+                        ),
+                ),
         ),
         if (state case DownloadingUpdate(:final fraction))
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: const EdgeInsets.only(top: 8),
             child: Container(
               height: 16,
               padding: const EdgeInsets.all(2),
@@ -871,7 +839,7 @@ class _Alert extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 22, 12, 12),
+      padding: const EdgeInsets.only(top: 22, bottom: 12),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: CF.dangerWash,
