@@ -12,7 +12,16 @@ import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 
 class AssetRepository {
+  AssetRepository({
+    this.clientOverride,
+    this.requestTimeout = kSupabaseStorageRequestTimeout,
+  });
+
   static const _bucket = 'kb-assets';
+  final SupabaseClient? clientOverride;
+  final Duration requestTimeout;
+
+  SupabaseClient get client => clientOverride ?? supabase;
 
   Iterable<String> referencedBy(BlockDocument document) => document.blocks
       .whereType<ImageBlock>()
@@ -30,13 +39,14 @@ class AssetRepository {
         throw KbException('The image asset "$assetId" is missing.');
       }
       try {
-        await supabase.storage
+        await client.storage
             .from(_bucket)
             .upload(
               '${kb.manifest.kbId}/$assetId',
               file,
               fileOptions: FileOptions(contentType: _mimeType(assetId)),
-            );
+            )
+            .timeout(requestTimeout);
       } on StorageException catch (error) {
         // Asset IDs are immutable UUID filenames. A conflict means this exact
         // asset was already uploaded by an earlier revision.
@@ -52,9 +62,10 @@ class AssetRepository {
     for (final assetId in referencedBy(document)) {
       final file = File(kb.assetPathFor(assetId));
       if (await file.exists()) continue;
-      final bytes = await supabase.storage
+      final bytes = await client.storage
           .from(_bucket)
-          .download('${kb.manifest.kbId}/$assetId');
+          .download('${kb.manifest.kbId}/$assetId')
+          .timeout(requestTimeout);
       await file.parent.create(recursive: true);
       final temporary = File('${file.path}.tmp');
       await temporary.writeAsBytes(bytes, flush: true);

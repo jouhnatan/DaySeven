@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dayseven/shared/crdt/generated/frb_generated.dart';
@@ -10,15 +11,18 @@ class MemorySecureStorage implements PolicySecureStorage {
   final Map<String, String> values = {};
   bool unavailable = false;
   bool forgetWrites = false;
+  bool hangs = false;
 
   @override
   Future<String?> read(String key) async {
+    if (hangs) return Completer<String?>().future;
     if (unavailable) throw StateError('secure storage unavailable');
     return values[key];
   }
 
   @override
   Future<void> write(String key, String value) async {
+    if (hangs) return Completer<void>().future;
     if (unavailable) throw StateError('secure storage unavailable');
     if (!forgetWrites) values[key] = value;
   }
@@ -52,9 +56,13 @@ void main() {
     support.deleteSync(recursive: true);
   });
 
-  PolicyKeyStore store(MemorySecureStorage secure) => PolicyKeyStore(
+  PolicyKeyStore store(
+    MemorySecureStorage secure, {
+    Duration timeout = kPolicySecureStorageTimeout,
+  }) => PolicyKeyStore(
     secureStorage: secure,
     applicationSupportDirectory: () async => support,
+    secureStorageTimeout: timeout,
   );
 
   test(
@@ -113,6 +121,27 @@ void main() {
       isTrue,
     );
   });
+
+  test(
+    'a secure store that never answers falls back instead of hanging',
+    () async {
+      final secure = MemorySecureStorage()..hangs = true;
+      final keys = store(secure, timeout: const Duration(milliseconds: 10));
+
+      final created = await keys
+          .loadOrCreate('owner_3')
+          .timeout(const Duration(seconds: 1));
+      final loaded = await keys
+          .loadOrCreate('owner_3')
+          .timeout(const Duration(seconds: 1));
+
+      expect(loaded.secretKey, created.secretKey);
+      expect(
+        File('${support.path}/policy-signing-keys/owner_3.key').existsSync(),
+        isTrue,
+      );
+    },
+  );
 
   test('refuses an invalid username index', () async {
     expect(

@@ -215,27 +215,22 @@ class SharingController {
           name: session.kb.manifest.name,
         );
 
-    final documents = _ref.read(documentRepositoryProvider);
-    final assets = _ref.read(assetRepositoryProvider);
-    final ledger = await SyncLedger.open(session.kb);
-    // Never `includeMetadata`: this uploads assets for documents, and
-    // `metadata/` is the workspace's bookkeeping, not content to publish.
-    final tree = await session.kb.readTree();
-    for (final path in documentPathsIn(tree)) {
-      final document = await session.kb.readDocument(path);
-      await assets.uploadReferenced(kb: session.kb, document: document);
-      final revisionId = await documents.publish(
-        kbId: session.kb.manifest.kbId,
-        relativePath: path,
-        document: document,
-      );
-      await ledger.record(
-        document: document,
-        revisionId: revisionId,
-        path: path,
-      );
-    }
+    // The connection is already real at this point. Publish that fact before
+    // the bulk upload so a slow or failed asset cannot leave Settings offering
+    // Share again for a Knowledge Base that is now owned remotely.
     _ref.invalidate(kbRoleProvider);
+    _ref.invalidate(kbSyncHealthProvider(session.kb.manifest.kbId));
+    _ref.invalidate(kbCollaboratorsProvider(session.kb.manifest.kbId));
+
+    // Use the same idempotent path as manual Sync. If this initial upload is
+    // interrupted, Sync resumes missing documents without creating duplicate
+    // revisions for documents that already arrived.
+    await _ref
+        .read(kbHierarchyReplicatorProvider)
+        .ensureRemoteMatchesLocal(
+          sessionOverride: session,
+          roleOverride: KbRole.owner,
+        );
   }
 
   Future<void> invite(String username, CollaborationRole role) async {

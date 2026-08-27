@@ -16,6 +16,7 @@ const String kSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const String kSupabasePublishableKey = String.fromEnvironment(
   'SUPABASE_PUBLISHABLE_KEY',
 );
+
 /// Just above the server's `statement_timeout`, which is 8s for the
 /// `authenticated` role (verified on the live project, 2026-08-26).
 ///
@@ -27,6 +28,11 @@ const String kSupabasePublishableKey = String.fromEnvironment(
 /// seven-second window where the request was already dead and the client was
 /// still holding it open.
 const Duration kSupabaseRequestTimeout = Duration(seconds: 10);
+
+/// Storage does not inherit PostgREST's request timeout. Give image transfers
+/// enough time for an ordinary connection while still returning control to the
+/// person who pressed Share or Sync when a socket stops making progress.
+const Duration kSupabaseStorageRequestTimeout = Duration(seconds: 30);
 
 /// True when the app was built with Supabase credentials. Without them the
 /// application still runs entirely locally — a Knowledge Base is a folder, and

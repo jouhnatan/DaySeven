@@ -276,10 +276,11 @@ class _KnowledgeBaseSettingsPanelState
           if (role == KbRole.local)
             _SettingsAction(
               key: const Key('share-knowledge-base-setting'),
-              label: 'Share Knowledge Base',
-              description:
-                  'Creates the Supabase copy used for invitations, revisions '
-                  'and Differences. Nothing is moved off this computer.',
+              label: _working ? 'Sharing…' : 'Share Knowledge Base',
+              description: _working
+                  ? 'Connecting to Supabase and publishing this Knowledge Base.'
+                  : 'Creates the Supabase copy used for invitations, revisions '
+                        'and Differences. Nothing is moved off this computer.',
               onPressed: _working ? null : _share,
             ),
           if (role == KbRole.owner)

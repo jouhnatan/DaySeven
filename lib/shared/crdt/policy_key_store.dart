@@ -18,6 +18,7 @@ import 'package:dayseven/shared/crdt/generated/api/policy.dart';
 
 const String _secureKeyPrefix = 'dayseven.policy-signing.v1.';
 const String _fallbackDirectoryName = 'policy-signing-keys';
+const Duration kPolicySecureStorageTimeout = Duration(seconds: 5);
 
 class PolicyKeyStoreException implements Exception {
   const PolicyKeyStoreException(this.message);
@@ -37,7 +38,16 @@ abstract interface class PolicySecureStorage {
 
 class FlutterPolicySecureStorage implements PolicySecureStorage {
   FlutterPolicySecureStorage([FlutterSecureStorage? storage])
-    : _storage = storage ?? const FlutterSecureStorage();
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(
+            // Data-protection Keychain queries require the Keychain Sharing
+            // entitlement on macOS. DaySeven is distributed without an Apple
+            // provisioning profile, so use the standard login Keychain there.
+            // It remains encrypted by macOS and avoids a SecItem query that can
+            // wait forever when the entitlement is absent.
+            mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+          );
 
   final FlutterSecureStorage _storage;
 
@@ -68,6 +78,7 @@ class PolicyKeyStore {
     PolicySecureStorage? secureStorage,
     ApplicationSupportDirectory? applicationSupportDirectory,
     RestrictPolicyKeyPath? restrictPath,
+    this.secureStorageTimeout = kPolicySecureStorageTimeout,
   }) : _secureStorage = secureStorage ?? FlutterPolicySecureStorage(),
        _applicationSupportDirectory =
            applicationSupportDirectory ?? _defaultApplicationSupportDirectory,
@@ -76,6 +87,7 @@ class PolicyKeyStore {
   final PolicySecureStorage _secureStorage;
   final ApplicationSupportDirectory _applicationSupportDirectory;
   final RestrictPolicyKeyPath _restrictPath;
+  final Duration secureStorageTimeout;
   final Map<String, Future<PolicyKeypair>> _activeCreations = {};
 
   /// Returns the locally held seed, or null on a fresh install/device-user.
@@ -131,8 +143,12 @@ class PolicyKeyStore {
   Future<void> _store(String index, Uint8List secret) async {
     final encoded = base64Encode(secret);
     try {
-      await _secureStorage.write(_secureKey(index), encoded);
-      final readBack = await _secureStorage.read(_secureKey(index));
+      await _secureStorage
+          .write(_secureKey(index), encoded)
+          .timeout(secureStorageTimeout);
+      final readBack = await _secureStorage
+          .read(_secureKey(index))
+          .timeout(secureStorageTimeout);
       if (_decodeSecret(readBack) case final stored?
           when _sameBytes(stored, secret)) {
         return;
@@ -147,7 +163,11 @@ class PolicyKeyStore {
 
   Future<Uint8List?> _readSecure(String index) async {
     try {
-      return _decodeSecret(await _secureStorage.read(_secureKey(index)));
+      return _decodeSecret(
+        await _secureStorage
+            .read(_secureKey(index))
+            .timeout(secureStorageTimeout),
+      );
     } on Object {
       return null;
     }

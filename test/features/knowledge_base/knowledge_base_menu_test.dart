@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dayseven/app/app_store.dart';
@@ -130,6 +131,30 @@ class _CollaboratorKbRepository extends KbRepository {
     required String userId,
   }) async {
     lastRemovedUserId = userId;
+  }
+}
+
+class _ShareKbRepository extends KbRepository {
+  bool shared = false;
+
+  @override
+  Future<void> createRemote({
+    required String kbId,
+    required String name,
+  }) async {
+    shared = true;
+  }
+}
+
+class _PausedSnapshotDocumentRepository extends _SyncDocumentRepository {
+  _PausedSnapshotDocumentRepository(this.gate);
+
+  final Completer<void> gate;
+
+  @override
+  Future<List<RemoteDocumentSnapshot>> snapshot(String kbId) async {
+    await gate.future;
+    return super.snapshot(kbId);
   }
 }
 
@@ -632,6 +657,47 @@ void main() {
       await tester.pumpAndSettle();
       expect(Directory(temp.path).existsSync(), isTrue);
       expect(File(kb.absolutePathFor(originalPath)).existsSync(), isTrue);
+    },
+  );
+
+  test(
+    'sharing exposes the remote owner state before document upload finishes',
+    () async {
+      container.dispose();
+      final kbRepository = _ShareKbRepository();
+      final snapshotGate = Completer<void>();
+      final documents = _PausedSnapshotDocumentRepository(snapshotGate);
+      container = ProviderContainer(
+        overrides: [
+          currentUserProvider.overrideWithValue(_signedInUser()),
+          kbRoleProvider.overrideWith(
+            (ref) async => kbRepository.shared ? KbRole.owner : KbRole.local,
+          ),
+          recentKbPathsProvider.overrideWith((ref) async => const []),
+          kbRepositoryProvider.overrideWithValue(kbRepository),
+          documentRepositoryProvider.overrideWithValue(documents),
+          assetRepositoryProvider.overrideWithValue(_SyncAssetRepository()),
+        ],
+      );
+      await container.read(kbControllerProvider.notifier).openFolder(temp.path);
+      expect(await container.read(kbRoleProvider.future), KbRole.local);
+
+      var finished = false;
+      final sharing = container
+          .read(sharingControllerProvider)
+          .shareOpenKb()
+          .whenComplete(() => finished = true);
+      while (!kbRepository.shared) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      await Future<void>.delayed(Duration.zero);
+
+      expect(await container.read(kbRoleProvider.future), KbRole.owner);
+      expect(finished, isFalse);
+
+      snapshotGate.complete();
+      await sharing;
+      expect(documents.publishCalls, 1);
     },
   );
 
