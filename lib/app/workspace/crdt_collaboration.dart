@@ -33,6 +33,7 @@ import 'package:dayseven/shared/crdt/generated/api/policy.dart'
     as policy_crypto;
 import 'package:dayseven/shared/crdt/crdt_session.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_repository.dart';
+import 'package:dayseven/shared/crdt/policy_bootstrap.dart';
 import 'package:dayseven/shared/crdt/policy_key_store.dart';
 import 'package:dayseven/shared/crdt/workspace_policy.dart';
 import 'package:dayseven/shared/crdt/workspace_store.dart';
@@ -296,7 +297,7 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     required CrdtSyncRepository repository,
   }) async {
     final policyFile = _policyFile(kb);
-    final remoteKey = await repository.policyPublicKey(kbId);
+    final trust = await repository.policyTrustRoot(kbId);
     final snapshot = await repository.policySnapshot(kbId);
     final role = snapshot.roleOf(userId);
     final maySign = role == PolicyRole.owner || role == PolicyRole.coOwner;
@@ -305,84 +306,74 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
         ? null
         : await policy_crypto.policyPublicKey(secretKey: secret);
     final keyMatches =
-        remoteKey != null &&
+        trust.publicKey != null &&
         localPublic != null &&
-        _sameBytes(remoteKey, localPublic);
+        _sameBytes(trust.publicKey!, localPublic);
 
-    if (remoteKey == null) {
-      if (!maySign) {
-        if (await policyFile.exists()) {
-          throw const WorkspacePolicyException(
-            'This Knowledge Base has a policy file but no published signing '
-            'key. Ask an owner or co-owner to republish the policy.',
-          );
-        }
-        return const _PreparedPolicy(policy: null);
-      }
-
-      final keypair = await _policyKeys.loadOrCreate(username);
-      await repository.setPolicyPublicKey(
-        kbId: kbId,
-        publicKey: keypair.publicKey,
-      );
-      await _writeSignedPolicy(policyFile, snapshot, keypair.secretKey);
-      return _PreparedPolicy(
-        policy: snapshot,
-        signing: const PolicySigningState(health: PolicySigningHealth.ready),
-      );
-    }
-
-    WorkspacePolicy? verified;
-    Object? verificationError;
-    if (await policyFile.exists()) {
-      try {
-        verified = await WorkspacePolicy.verified(
-          await policyFile.readAsString(),
-          ownerPublicKey: remoteKey,
-          expectedKbId: kbId,
-        );
-      } on Object catch (error) {
-        verificationError = error;
-      }
-    }
-
-    if (maySign && keyMatches) {
-      if (verified == null || !verified.hasSameRulesAs(snapshot)) {
-        await _writeSignedPolicy(policyFile, snapshot, secret!);
-        verified = snapshot;
-      }
-      return _PreparedPolicy(
-        policy: verified,
-        signing: const PolicySigningState(health: PolicySigningHealth.ready),
-      );
-    }
-
-    if (verified == null) {
-      final reason = verificationError == null
-          ? 'The signed policy file is missing.'
-          : 'The signed policy file cannot be verified.';
-      if (maySign) {
-        throw _PolicySigningRequired(
-          '$reason Republish the policy from this device to create a new '
-          'trusted signing root.',
-        );
-      }
-      throw WorkspacePolicyException(
-        '$reason Ask an owner or co-owner to republish it.',
-      );
-    }
-
-    return _PreparedPolicy(
-      policy: verified,
-      signing: maySign
-          ? const PolicySigningState(
-              health: PolicySigningHealth.needsRepublish,
-              detail:
-                  'This device does not hold the key matching the published '
-                  'policy. Republish before changing membership or protection.',
-            )
-          : const PolicySigningState(),
+    final plan = await resolvePolicy(
+      kbId: kbId,
+      snapshot: snapshot,
+      publishedKey: trust.publicKey,
+      publishedDocument: trust.document,
+      localDocument: await policyFile.exists()
+          ? await policyFile.readAsString()
+          : null,
+      maySign: maySign,
+      keyMatches: keyMatches,
     );
+
+    switch (plan) {
+      case PolicyAbsent():
+        return const _PreparedPolicy(policy: null);
+
+      case PolicyNeedsPublishing():
+        // loadOrCreate, not the secret read above: this branch is also reached
+        // on a fresh install, where there is nothing to read and establishing
+        // the key is the point. When a seed is already stored it is returned
+        // unchanged, so re-signing under the published key stays re-signing.
+        final keypair = await _policyKeys.loadOrCreate(username);
+        await _publishSignedPolicy(
+          repository: repository,
+          kbId: kbId,
+          file: policyFile,
+          policy: snapshot,
+          keypair: keypair,
+        );
+        return _PreparedPolicy(
+          policy: snapshot,
+          signing: const PolicySigningState(health: PolicySigningHealth.ready),
+        );
+
+      case PolicyReady(:final policy, :final documentToCache, :final needsRepublish):
+        // Cached so this member can open the workspace again offline. It is
+        // written only after verifying, so what lands on disk is a copy of
+        // something already checked, not something to be checked later.
+        if (documentToCache != null) {
+          try {
+            await _writePolicyDocument(policyFile, documentToCache);
+          } on Object {
+            // An unwritable metadata directory is not a reason to refuse a
+            // policy that verified. It only costs the offline copy.
+          }
+        }
+        return _PreparedPolicy(
+          policy: policy,
+          signing: switch (needsRepublish) {
+            final detail? => PolicySigningState(
+              health: PolicySigningHealth.needsRepublish,
+              detail: detail,
+            ),
+            // Signing health is not this member's concern to read, and
+            // "ready" would tell them they hold a key they do not have.
+            _ when !maySign => const PolicySigningState(),
+            _ => const PolicySigningState(health: PolicySigningHealth.ready),
+          },
+        );
+
+      case PolicyBlocked(:final message, :final thisDeviceCanFixIt):
+        if (thisDeviceCanFixIt) throw _PolicySigningRequired(message);
+        throw WorkspacePolicyException(message);
+    }
   }
 
   /// Explicit recovery for a fresh install, lost Keychain item, or a policy
@@ -406,11 +397,13 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     }
 
     final keypair = await _policyKeys.loadOrCreate(profile.username);
-    await repository.setPolicyPublicKey(
+    await _publishSignedPolicy(
+      repository: repository,
       kbId: kb.manifest.kbId,
-      publicKey: keypair.publicKey,
+      file: _policyFile(kb),
+      policy: snapshot,
+      keypair: keypair,
     );
-    await _writeSignedPolicy(_policyFile(kb), snapshot, keypair.secretKey);
     await _bind(_ref.read(kbSessionProvider), force: true);
   }
 
@@ -418,14 +411,31 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     p.join(kb.rootPath, kMetadataDirName, kYjsSubdirName, kPolicyFileName),
   );
 
-  Future<void> _writeSignedPolicy(
-    File file,
-    WorkspacePolicy policy,
-    List<int> secret,
-  ) async {
+  /// Signs [policy], publishes it, and writes it out.
+  ///
+  /// The upload happens first. A local `policy.json` signed by a key the
+  /// server never accepted would verify on this machine and nowhere else,
+  /// which looks like working collaboration to the one person who cannot tell.
+  Future<void> _publishSignedPolicy({
+    required CrdtSyncRepository repository,
+    required String kbId,
+    required File file,
+    required WorkspacePolicy policy,
+    required policy_crypto.PolicyKeypair keypair,
+  }) async {
+    final document = await policy.signedJson(keypair.secretKey);
+    await repository.publishPolicy(
+      kbId: kbId,
+      publicKey: keypair.publicKey,
+      signedDocument: document,
+    );
+    await _writePolicyDocument(file, document);
+  }
+
+  Future<void> _writePolicyDocument(File file, String document) async {
     await file.parent.create(recursive: true);
     final temporary = File('${file.path}.tmp');
-    await temporary.writeAsString(await policy.signedJson(secret), flush: true);
+    await temporary.writeAsString(document, flush: true);
     await temporary.rename(file.path);
   }
 

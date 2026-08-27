@@ -176,6 +176,15 @@ class CrdtProposalOutcome {
   }
 }
 
+/// The signing key a Knowledge Base has published, and the signed policy it
+/// verifies. Either may be absent on a Knowledge Base nobody has signed for.
+class PolicyTrustRoot {
+  const PolicyTrustRoot({this.publicKey, this.document});
+
+  final Uint8List? publicKey;
+  final String? document;
+}
+
 class CrdtSyncRepository {
   CrdtSyncRepository(this.client);
 
@@ -277,26 +286,45 @@ class CrdtSyncRepository {
     return CrdtProposalOutcome.fromRpc(Map<String, Object?>.from(value as Map));
   }
 
-  /// Publishes the Ed25519 key that `policy.json` must verify against. Owners
-  /// and co-owners only, enforced server-side.
-  Future<void> setPolicyPublicKey({
+  /// Publishes the signing key and the document it verifies, together.
+  ///
+  /// Owners and co-owners only, enforced server-side. The two are one call
+  /// because they are one fact: a key published without its document leaves
+  /// every member who cannot sign looking at a policy they can neither find
+  /// nor create, which is not a state any of them can leave.
+  Future<void> publishPolicy({
     required String kbId,
     required List<int> publicKey,
+    required String signedDocument,
   }) => client.rpc(
-    'set_policy_public_key',
-    params: {'p_kb_id': kbId, 'p_public_key': _toPostgresBytea(publicKey)},
+    'publish_policy',
+    params: {
+      'p_kb_id': kbId,
+      'p_public_key': _toPostgresBytea(publicKey),
+      'p_document': signedDocument,
+    },
   );
 
-  /// The key to verify `policy.json` against, or null when the Knowledge Base
-  /// has never published one.
-  Future<Uint8List?> policyPublicKey(String kbId) async {
+  /// What this Knowledge Base has published to verify `policy.json` against,
+  /// and the signed copy itself.
+  ///
+  /// Both are read in one round trip because a client that acted on one
+  /// without the other would be deciding from half a fact.
+  Future<PolicyTrustRoot> policyTrustRoot(String kbId) async {
     final row = await client
         .from('knowledge_bases')
-        .select('policy_public_key')
+        .select('policy_public_key, policy_document')
         .eq('id', kbId)
         .maybeSingle();
-    final value = row?['policy_public_key'];
-    // PostgREST renders bytea as a hex string with a leading backslash-x.
+    final document = row?['policy_document'];
+    return PolicyTrustRoot(
+      publicKey: _parseBytea(row?['policy_public_key']),
+      document: document is String && document.isNotEmpty ? document : null,
+    );
+  }
+
+  /// PostgREST renders `bytea` as a hex string with a leading backslash-x.
+  static Uint8List? _parseBytea(Object? value) {
     if (value is! String || !value.startsWith(r'\x')) return null;
     final hex = value.substring(2);
     return Uint8List.fromList([

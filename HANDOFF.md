@@ -129,27 +129,38 @@ Knowledge Base open but can only be set by editing the JSON in the app support
 directory. App settings needs toggles — and note `AGENTS.md`: App settings
 follows its own design deliberately, so match what is there.
 
-### 4.6 No one has ever signed a policy
+### 4.6 Policy signing, and getting the policy to the other person
 
-`WorkspacePolicy.signedJson` and `set_policy_public_key` work and are tested,
-but no code path generates an owner keypair, writes `policy.json`, or
-publishes the key. Until this exists, every Knowledge Base runs with
-`policy: null`, which means nothing is protected on the CRDT path and only the
-server's own checks apply.
+Signing is **done**, along the lines decided below. `CrdtCollaborationController`
+generates a per-device-user Ed25519 keypair on first need, stores the secret
+through `PolicyKeyStore` (keychain, else a 0600 file), and signs
+`metadata/yjs/policy.json` from the database's own view of membership and
+protection. App settings → Collaboration shows signing health and offers
+**Republish**, which is the repair for a fresh install or a lost key.
 
-**Key storage is decided: the keypair is generated per device-user and stored
-locally, indexed by username.** Usernames are immutable in this app, so they
-are a stable handle for a key that has to outlive password changes.
+**Distribution was the missing half, and it is why collaboration never worked
+for the second person.** `metadata/` is excluded from sharing and is not part
+of the CRDT document, so a signed `policy.json` never left the machine that
+signed it. Only the public key was published, which left every member who
+cannot sign looking at a key, no file, and "the signed policy file is missing"
+— with no action available to them, and no action on the owner's machine that
+would help. The owner's own client looked healthy throughout, because its file
+verified against its own key.
 
-Build it exactly this way:
+The signed document is now published alongside the key, atomically, through
+`publish_policy` (`knowledge_bases.policy_document`, migration
+`20260827012720`). A member without a local copy fetches it, verifies the
+signature and the embedded `kb_id`, runs with it, and caches it to disk so the
+workspace still opens offline. **The server is transport, not an authority**:
+nothing published is believed unverified, so a tampered row fails exactly the
+way a tampered file does. `lib/shared/crdt/policy_bootstrap.dart` holds that
+decision as pure logic, which is what makes the awkward combinations testable
+without two machines — see `test/shared/crdt/policy_bootstrap_test.dart`.
 
-1. On first need, call `policyGenerateKeypair()`. Store the **secret** in the
-   OS keychain if you can reach one, otherwise in a file in the application
-   support directory with restrictive permissions. Key the entry by username.
-2. Publish the **public** half through `set_policy_public_key` (owner or
-   co-owner only, enforced server-side).
-3. Sign `policy.json` with `WorkspacePolicy.signedJson` and write it to
-   `metadata/yjs/policy.json`.
+Key storage, decided earlier and unchanged: the keypair is generated per
+device-user from OS entropy and indexed by username. Usernames are immutable
+here, so they are a stable handle for a key that has to outlive password
+changes.
 
 > **The username is an index, not key material.** It identifies which stored
 > key to load. It is public — presence broadcasts it, `profiles` exposes it —
@@ -159,11 +170,10 @@ Build it exactly this way:
 > what `policy_generate_keypair` already does. Never send the secret to the
 > server and never write it to the security log.
 
-Consequences to handle, not to discover later: a fresh install has no key, so
-an owner on a new machine must republish and re-sign rather than silently
-losing the ability to sign; and a lost key means the owner can no longer sign,
-so the recovery path is republishing a new public key, which every member's
-client must then accept.
+Consequences already handled, not to rediscover: an owner on a new machine
+republishes rather than silently losing the ability to sign; a lost key is
+recovered by republishing a new public key, which re-signs and re-publishes
+the document in the same step, so members pick the new root up on next open.
 
 ### 4.7 The cutover
 
@@ -174,12 +184,9 @@ Removing `lib/features/differences/` and the three-way merge in
 
 Not arbitrary. Each of these makes the next one testable.
 
-1. **§4.6, policy signing.** Everything in phase 7 is inert without it, so
-   proving sync before it exists proves the easy half. Decide where the
-   owner's secret lives first — that is a question for the user, not a
-   detail to pick.
-2. **§4.5, the settings toggles.** You cannot ask somebody to test §4.1 if
-   turning the feature on means hand-editing JSON.
+1. ~~**§4.6, policy signing.**~~ **Done**, signing and distribution both.
+   Phase 7 is no longer inert.
+2. ~~**§4.5, the settings toggles.**~~ **Done**: App settings → Collaboration.
 3. **§4.3, link state in the UI.** Do this before §4.1, not after: without it,
    a failed sync during testing is indistinguishable from nothing happening,
    and you will not know which you are looking at.
