@@ -27,7 +27,6 @@ Future<(ProviderContainer, KnowledgeBase, String)> openEditor(
   WidgetTester tester,
   Directory temp, {
   BlockDocument? seed,
-  Brightness brightness = Brightness.dark,
 }) async {
   final container = ProviderContainer();
   addTearDown(container.dispose);
@@ -56,7 +55,7 @@ Future<(ProviderContainer, KnowledgeBase, String)> openEditor(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
-        theme: dsTheme(brightness),
+        theme: dsTheme(),
         home: const Scaffold(body: EditorScreen()),
       ),
     ),
@@ -403,7 +402,7 @@ void main() {
   testWidgets('the title divider is inset and leaves the canvas unchanged', (
     tester,
   ) async {
-    await openEditor(tester, temp, brightness: Brightness.light);
+    await openEditor(tester, temp);
 
     final editor = tester.getRect(find.byType(EditorScreen));
     final title = tester.getRect(find.byType(DocumentTitleField));
@@ -415,12 +414,12 @@ void main() {
     expect(divider.left, greaterThan(editor.left));
     expect(divider.right, lessThan(editor.right));
     expect(divider.height, 1);
-    expect(line.color, DsColors.light.border);
+    expect(line.color, DsColors.cream.border);
     expect(
       Theme.of(tester.element(find.byType(EditorScreen)))
           .extension<DsColors>()!
           .editorSurface,
-      DsColors.light.editorSurface,
+      DsColors.cream.editorSurface,
       reason: 'the title separator does not introduce another surface fill',
     );
   });
@@ -429,7 +428,7 @@ void main() {
     String? requested;
     await tester.pumpWidget(
       MaterialApp(
-        theme: dsTheme(Brightness.dark),
+        theme: dsTheme(),
         home: Scaffold(
           body: Column(
             children: [

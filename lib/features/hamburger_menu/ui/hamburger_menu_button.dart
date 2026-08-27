@@ -17,8 +17,9 @@ class HamburgerMenuEntry {
     required this.onSelected,
   }) : checked = null;
 
-  /// A reusable boolean menu item. Its label uses the menu's normal left edge
-  /// while its checkmark occupies a trailing slot on the right.
+  /// A reusable boolean menu item. A checked item carries its mark in the
+  /// leading slot, and its label does not change weight — the mark is what
+  /// says the item is on.
   const HamburgerMenuEntry.toggle({
     required this.label,
     required this.checked,
@@ -48,14 +49,6 @@ class HamburgerMenuButton extends StatelessWidget {
               height: kDsMenuItemHeight,
               child: Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      entries[index].label,
-                      textAlign: TextAlign.left,
-                      style: uiTextStyle(size: 13, color: colors.text),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
                   SizedBox(
                     key: Key('hamburger-menu-toggle-indicator-$index'),
                     width: 16,
@@ -63,10 +56,18 @@ class HamburgerMenuButton extends StatelessWidget {
                         ? Icon(
                             Icons.check,
                             key: Key('hamburger-menu-toggle-check-$index'),
-                            size: 16,
-                            color: colors.text,
+                            size: 14,
+                            color: colors.fern,
                           )
                         : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      entries[index].label,
+                      textAlign: TextAlign.left,
+                      style: DsType.label(color: colors.text),
+                    ),
                   ),
                 ],
               ),
@@ -75,9 +76,18 @@ class HamburgerMenuButton extends StatelessWidget {
             DsMenuItem<int>(
               value: index,
               height: kDsMenuItemHeight,
-              child: Text(
-                entries[index].label,
-                style: uiTextStyle(size: 13, color: colors.text),
+              // An unchecked item keeps the same leading slot, so labels line
+              // up down the menu whether or not anything is checked.
+              child: Row(
+                children: [
+                  const SizedBox(width: 16 + 8),
+                  Expanded(
+                    child: Text(
+                      entries[index].label,
+                      style: DsType.label(color: colors.text),
+                    ),
+                  ),
+                ],
               ),
             ),
       ],
@@ -98,6 +108,7 @@ class HamburgerMenuButton extends StatelessWidget {
           height: 34,
           highlight: context.ds.selection,
           onPressed: entries.isEmpty ? null : () => _show(context),
+          semanticLabel: 'Menu',
           child: Icon(Icons.menu, size: 18, color: context.ds.text),
         ),
       ),

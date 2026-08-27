@@ -162,7 +162,7 @@ void main() {
         container: container,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: dsTheme(Brightness.light),
+          theme: dsTheme(),
           home: const DsShell(),
         ),
       ),
@@ -566,13 +566,15 @@ void main() {
     expect(firstSpan.bold, isTrue);
 
     // Alignment acts on the block, so it stays available.
-    final left = tester.widget<DsButton>(
-      find.ancestor(
-        of: find.byIcon(Icons.format_align_left),
-        matching: find.byType(DsButton),
-      ),
+    expect(find.byType(DsSegmented<BlockAlign>), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.format_align_center));
+    await tester.pumpAndSettle();
+    expect(
+      (container.read(documentControllerProvider)!.document.blocks.first
+              as ParagraphBlock)
+          .align,
+      BlockAlign.center,
     );
-    expect(left.onPressed, isNotNull);
 
     await settle(tester, container);
   });

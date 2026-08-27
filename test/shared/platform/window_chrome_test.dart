@@ -32,20 +32,20 @@ void main() {
       Widget app(Color color) =>
           WindowChromeSync(backgroundColor: color, child: const SizedBox());
 
-      await tester.pumpWidget(app(const Color(0xFFE8E9EC)));
-      await tester.pumpWidget(app(const Color(0xFF121317)));
+      await tester.pumpWidget(app(CF.inset));
+      await tester.pumpWidget(app(CF.paper));
 
       expect(calls, hasLength(2));
       expect(calls[0].method, 'setBackgroundColor');
-      expect(calls[0].arguments, {'argb': 0xFFE8E9EC});
-      expect(calls[1].arguments, {'argb': 0xFF121317});
+      expect(calls[0].arguments, {'argb': CF.inset.toARGB32()});
+      expect(calls[1].arguments, {'argb': CF.paper.toARGB32()});
     });
   });
 
   testWidgets('does not resend an unchanged background', (tester) async {
     await _withPlatform(TargetPlatform.macOS, () async {
       const widget = WindowChromeSync(
-        backgroundColor: Color(0xFFE8E9EC),
+        backgroundColor: CF.inset,
         child: SizedBox(),
       );
 
@@ -56,7 +56,7 @@ void main() {
     });
   });
 
-  testWidgets('follows live MaterialApp system brightness changes', (
+  testWidgets('keeps the native chrome light when the system turns dark', (
     tester,
   ) async {
     await _withPlatform(TargetPlatform.macOS, () async {
@@ -65,15 +65,7 @@ void main() {
             Brightness.light;
         await tester.pumpWidget(
           MaterialApp(
-            theme: ThemeData(
-              brightness: Brightness.light,
-              extensions: const [DsColors.light],
-            ),
-            darkTheme: ThemeData(
-              brightness: Brightness.dark,
-              extensions: const [DsColors.dark],
-            ),
-            themeMode: ThemeMode.system,
+            theme: dsTheme(),
             builder: (context, child) => WindowChromeSync(
               backgroundColor: context.ds.appBackground,
               child: child ?? const SizedBox.shrink(),
@@ -85,9 +77,13 @@ void main() {
         tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
         await tester.pumpAndSettle();
 
-        expect(calls, hasLength(2));
-        expect(calls[0].arguments, {'argb': 0xFFE8E9EC});
-        expect(calls[1].arguments, {'argb': 0xFF121317});
+        // The interface has one palette, so the title bar the platform is
+        // handed does not change when the system does. A dark title bar is not
+        // something this application has, and the Windows runner decides
+        // whether to use dark caption glyphs from this colour's luminance —
+        // so sending a dark colour here is what would turn the chrome dark.
+        expect(calls, hasLength(1));
+        expect(calls.single.arguments, {'argb': CF.inset.toARGB32()});
       } finally {
         tester.platformDispatcher.clearPlatformBrightnessTestValue();
       }

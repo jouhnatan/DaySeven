@@ -1,20 +1,27 @@
 /// The optional full-window radial background used by the Home experience.
+///
+/// This is a deliberate, documented departure from the design system, which
+/// otherwise forbids gradients. It is kept quiet so that it reads as
+/// atmosphere rather than as a coloured hero: the ground is the same recessed
+/// cream the rest of the application stands on, the washes are drawn only from
+/// the palette's decorative colours, and nothing on top of it changes.
+///
+/// It is light, like everything else here. There is no dark variant.
 library;
 
 import 'package:flutter/material.dart';
 
-const kGradientShellBackgroundLight = Color(0xFFDCEFE2);
-const kGradientShellBackgroundDark = Color(0xFF081A11);
+import 'package:dayseven/shared/ui/theme.dart';
 
-Color gradientShellBackground(Brightness brightness) =>
-    brightness == Brightness.dark
-    ? kGradientShellBackgroundDark
-    : kGradientShellBackgroundLight;
+/// The window colour behind the gradient. It matches the ordinary application
+/// ground, so islands separate from it the same way in either mode and the
+/// native title bar is handed one colour.
+const kGradientShellBackground = CF.inset;
+
+Color gradientShellBackground() => kGradientShellBackground;
 
 class GradientBackground extends StatelessWidget {
-  const GradientBackground({required this.isDark, super.key});
-
-  final bool isDark;
+  const GradientBackground({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -23,25 +30,20 @@ class GradientBackground extends StatelessWidget {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
         final unit = constraints.biggest.shortestSide;
-        final colors = isDark
-            ? const [
-                Color(0xFF188A57),
-                Color(0xFF6F942D),
-                Color(0xFF087A6B),
-                Color(0xFF145B38),
-                Color(0xFF39A86D),
-              ]
-            : const [
-                Color(0xFF78DFA5),
-                Color(0xFFCBEA72),
-                Color(0xFF54CEB0),
-                Color(0xFFB2F0C6),
-                Color(0xFF38BE7A),
-              ];
+        // Decorative palette colours only: sage for the fern note, and the
+        // warm creams for everything else. No hue enters here that is not
+        // already somewhere else in the interface.
+        const colors = [
+          CF.sage,
+          CF.warningWash,
+          CF.fernWash,
+          CF.sage,
+          CF.bar,
+        ];
 
         return ColoredBox(
           key: const Key('gradient-background-base'),
-          color: isDark ? const Color(0xFF0A2117) : const Color(0xFFF7FCF8),
+          color: kGradientShellBackground,
           child: Stack(
             clipBehavior: Clip.hardEdge,
             children: [
@@ -52,7 +54,7 @@ class GradientBackground extends StatelessWidget {
                   blobKey: const Key('gradient-background-blob-0'),
                   size: unit * 0.78,
                   color: colors[0],
-                  opacity: isDark ? 0.72 : 0.82,
+                  opacity: 0.55,
                 ),
               ),
               Positioned(
@@ -62,7 +64,7 @@ class GradientBackground extends StatelessWidget {
                   blobKey: const Key('gradient-background-blob-1'),
                   size: unit * 0.68,
                   color: colors[1],
-                  opacity: isDark ? 0.56 : 0.76,
+                  opacity: 0.42,
                 ),
               ),
               Positioned(
@@ -72,7 +74,7 @@ class GradientBackground extends StatelessWidget {
                   blobKey: const Key('gradient-background-blob-2'),
                   size: unit * 0.50,
                   color: colors[2],
-                  opacity: isDark ? 0.54 : 0.66,
+                  opacity: 0.38,
                 ),
               ),
               Positioned(
@@ -82,7 +84,7 @@ class GradientBackground extends StatelessWidget {
                   blobKey: const Key('gradient-background-blob-3'),
                   size: unit * 0.72,
                   color: colors[3],
-                  opacity: isDark ? 0.70 : 0.82,
+                  opacity: 0.50,
                 ),
               ),
               Positioned(
@@ -92,7 +94,7 @@ class GradientBackground extends StatelessWidget {
                   blobKey: const Key('gradient-background-blob-4'),
                   size: unit * 0.82,
                   color: colors[4],
-                  opacity: isDark ? 0.54 : 0.62,
+                  opacity: 0.40,
                 ),
               ),
             ],

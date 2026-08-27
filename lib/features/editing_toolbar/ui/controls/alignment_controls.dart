@@ -1,11 +1,16 @@
 /// Block-alignment controls.
+///
+/// Three exclusive options, all worth showing, so they are one framed strip
+/// rather than three buttons that happen to be mutually exclusive. It also
+/// keeps the toolbar from carrying a permanently fern-filled control: a block
+/// always has an alignment, so a toggled-on button here would never be off.
 library;
 
 import 'package:flutter/material.dart';
 
 import 'package:dayseven/features/editing_toolbar/ui/controls/toolbar_icon_button.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
-import 'package:dayseven/shared/ui/theme.dart';
+import 'package:dayseven/shared/ui/controls.dart';
 
 class AlignmentControls extends StatelessWidget {
   const AlignmentControls({
@@ -18,22 +23,28 @@ class AlignmentControls extends StatelessWidget {
   final ValueChanged<BlockAlign> onPick;
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      for (final (value, icon) in const [
-        (BlockAlign.left, Icons.format_align_left),
-        (BlockAlign.center, Icons.format_align_center),
-        (BlockAlign.right, Icons.format_align_right),
-      ]) ...[
-        ToolbarIconButton(
-          icon: icon,
-          active: align == value,
-          onPressed: () => onPick(value),
-        ),
-        if (value != BlockAlign.right)
-          const SizedBox(width: DsSpace.controlGap),
-      ],
+  Widget build(BuildContext context) => DsSegmented<BlockAlign>(
+    value: align,
+    onPick: onPick,
+    // Sized so the strip stands exactly as tall as the framed buttons on
+    // either side of it.
+    cellHeight: 28,
+    options: const [
+      DsSegmentedOption(
+        value: BlockAlign.left,
+        semanticLabel: 'Align left',
+        child: Icon(Icons.format_align_left, size: kEditingToolbarIconSize),
+      ),
+      DsSegmentedOption(
+        value: BlockAlign.center,
+        semanticLabel: 'Align centre',
+        child: Icon(Icons.format_align_center, size: kEditingToolbarIconSize),
+      ),
+      DsSegmentedOption(
+        value: BlockAlign.right,
+        semanticLabel: 'Align right',
+        child: Icon(Icons.format_align_right, size: kEditingToolbarIconSize),
+      ),
     ],
   );
 }

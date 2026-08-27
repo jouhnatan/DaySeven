@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 
 import 'package:dayseven/shared/ui/theme.dart';
 
-const double kDsMenuItemHeight = 34;
-const double kDsCompactMenuItemHeight = 32;
+const double kDsMenuItemHeight = DsSize.menuItem;
+const double kDsCompactMenuItemHeight = DsSize.menuItem;
 const double kDsMenuHeaderHeight = 30;
 const double kDsMenuDividerSpacing = 7;
 const double kDsMenuDividerHeight = kDsMenuDividerSpacing * 2 + 1;
@@ -127,7 +127,7 @@ class _DsMenuItemState<T> extends PopupMenuItemState<T, DsMenuItem<T>> {
               if (states.contains(WidgetState.hovered) ||
                   states.contains(WidgetState.focused) ||
                   states.contains(WidgetState.pressed)) {
-                return colors.buttonHighlight;
+                return colors.hover;
               }
               return Colors.transparent;
             }),
@@ -166,9 +166,13 @@ Future<T?> showDsMenu<T>({
     context: context,
     position: RelativeRect.fromRect(rect, Offset.zero & overlay.size),
     color: colors.island,
+    // A menu is above the page rather than on it, so unlike a card it is
+    // allowed a shadow. It is the only depth cue the system spends here.
+    shadowColor: Theme.of(context).colorScheme.shadow,
+    elevation: 4,
     shape: RoundedRectangleBorder(
-      borderRadius: const BorderRadius.all(DsRadius.control),
-      side: BorderSide(color: colors.border),
+      borderRadius: const BorderRadius.all(DsRadius.menu),
+      side: BorderSide(color: colors.surfaceOutline),
     ),
     items: items,
   );

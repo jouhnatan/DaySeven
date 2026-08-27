@@ -180,7 +180,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: KnowledgeBaseMenu()),
         ),
       ),
@@ -211,7 +211,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: KnowledgeBaseMenu()),
         ),
       ),
@@ -394,7 +394,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: KnowledgeBaseMenu()),
         ),
       ),
@@ -455,7 +455,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: KnowledgeBaseMenu()),
         ),
       ),
@@ -482,7 +482,7 @@ void main() {
       UncontrolledProviderScope(
         container: emptyContainer,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(
             body: SizedBox(width: 300, height: 600, child: KnowledgeBaseMenu()),
           ),
@@ -508,7 +508,7 @@ void main() {
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp(
-            theme: dsTheme(Brightness.dark),
+            theme: dsTheme(),
             home: const Scaffold(body: KnowledgeBaseMenu()),
           ),
         ),
@@ -577,7 +577,7 @@ void main() {
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp(
-            theme: dsTheme(Brightness.dark),
+            theme: dsTheme(),
             home: const Scaffold(body: KnowledgeBaseMenu()),
           ),
         ),
@@ -657,7 +657,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: KnowledgeBaseMenu()),
         ),
       ),
@@ -715,7 +715,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: KnowledgeBaseMenu()),
         ),
       ),
@@ -787,7 +787,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: KnowledgeBaseMenu()),
         ),
       ),
@@ -810,7 +810,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: KnowledgeBaseMenu()),
         ),
       ),

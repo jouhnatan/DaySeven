@@ -78,7 +78,7 @@ Future<void> openDialog(
     ProviderScope(
       overrides: [appUpdateProvider.overrideWith((ref) => controller)],
       child: MaterialApp(
-        theme: dsTheme(Brightness.dark),
+        theme: dsTheme(),
         home: Scaffold(
           body: AppSettingsDialog(developerOptions: developerOptions),
         ),
@@ -191,27 +191,55 @@ void main() {
     expect(republished, isTrue);
   });
 
-  // The design sets a row's title in the display face and its second line in
-  // the lighter meta face.
-  testWidgets('sets a row in the two faces the design asks for', (
+  // Solway labels regions; it never carries a value. A version and a build
+  // number are values, so they are set in the sans with tabular figures — the
+  // digits have to line up between the rows stacked above and below them.
+  testWidgets('sets every value in the sans, with figures that line up', (
     tester,
   ) async {
     await openDialog(tester, RecordingController());
 
+    for (final label in [
+      'DaySeven 1.3.2',
+      'Build 7',
+      'Nothing newer published',
+    ]) {
+      final style = tester.widget<Text>(find.text(label)).style;
+      expect(style?.fontFamily, kUiFontFamily, reason: '"$label" is not sans');
+    }
+
+    for (final label in ['DaySeven 1.3.2', 'Build 7']) {
+      expect(
+        tester.widget<Text>(find.text(label)).style?.fontFeatures,
+        contains(const FontFeature.tabularFigures()),
+        reason: '"$label" carries digits that have to align',
+      );
+    }
+
+    // The dialog title is the one thing here that names a region.
     expect(
-      tester.widget<Text>(find.text('DaySeven 1.3.2')).style?.fontFamily,
-      'Solway',
+      tester.widget<Text>(find.text('App settings')).style?.fontFamily,
+      kUiHeaderFontFamily,
     );
+  });
+
+  // Fern means where you are, or this commits. In this dialog only the update
+  // action commits, so it is the only thing allowed to be a block of it.
+  testWidgets('spends the accent only on the action that commits', (
+    tester,
+  ) async {
+    await openDialog(tester, RecordingController());
+
+    final fernFills = tester
+        .widgetList<AnimatedContainer>(find.byType(AnimatedContainer))
+        .map((c) => (c.decoration as BoxDecoration?)?.color)
+        .where((color) => color == CF.fern || color == CF.fernHover)
+        .length;
+
     expect(
-      tester.widget<Text>(find.text('Build 7')).style?.fontFamily,
-      'Raleway',
-    );
-    expect(
-      tester
-          .widget<Text>(find.text('Nothing newer published'))
-          .style
-          ?.fontFamily,
-      'Raleway',
+      fernFills,
+      lessThanOrEqualTo(2),
+      reason: 'at most two fern elements belong on one surface',
     );
   });
 
@@ -233,7 +261,9 @@ void main() {
 
     expect(find.text('Version 1.4.0'), findsOneWidget);
     expect(find.text('Build 8'), findsOneWidget);
-    expect(find.text('Update now'), findsOneWidget);
+    // A button says what will happen, with the object it happens to, so that
+    // the label still means something read on its own.
+    expect(find.text('Install 1.4.0'), findsOneWidget);
   });
 
   testWidgets('installs the release when asked', (tester) async {
@@ -326,7 +356,7 @@ void main() {
           appUpdateProvider.overrideWith((ref) => RecordingController()),
         ],
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: Scaffold(
             body: Builder(
               builder: (context) => TextButton(

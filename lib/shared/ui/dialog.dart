@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class DsDialog extends StatelessWidget {
@@ -25,9 +26,12 @@ class DsDialog extends StatelessWidget {
     final colors = context.ds;
     return AlertDialog(
       backgroundColor: colors.island,
+      // A dialog is an object on the page, so its edge is the object line
+      // rather than the hairline used for divisions inside a surface. The
+      // scrim behind it does the separating.
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.all(DsRadius.island),
-        side: BorderSide(color: colors.border),
+        side: BorderSide(color: colors.surfaceOutline),
       ),
       title: title,
       content: SizedBox(
@@ -43,7 +47,7 @@ class DsDialog extends StatelessWidget {
   }
 }
 
-class DsField extends StatelessWidget {
+class DsField extends StatefulWidget {
   const DsField({
     super.key,
     required this.controller,
@@ -62,29 +66,57 @@ class DsField extends StatelessWidget {
   final EdgeInsetsGeometry margin;
 
   @override
+  State<DsField> createState() => _DsFieldState();
+}
+
+class _DsFieldState extends State<DsField> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    return Container(
-      margin: margin,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: colors.editorSurface,
-        borderRadius: const BorderRadius.all(DsRadius.control),
-        border: Border.all(color: colors.border),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        autofocus: autofocus,
-        onSubmitted: onSubmitted,
-        style: uiTextStyle(size: 13, color: colors.text),
-        cursorColor: colors.text,
-        cursorWidth: 1.5,
-        decoration: InputDecoration(
-          isCollapsed: true,
-          border: InputBorder.none,
-          hintText: hint,
-          hintStyle: uiTextStyle(size: 13, color: colors.muted),
+
+    return Padding(
+      padding: widget.margin,
+      // The field paints its own box, so the focus state is observed here
+      // rather than left to the input decoration, which is switched off.
+      child: Focus(
+        onFocusChange: (value) => setState(() => _focused = value),
+        child: DsFocusRing(
+          visible: _focused,
+          child: Container(
+            height: DsSize.control,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              color: colors.island,
+              borderRadius: const BorderRadius.all(DsRadius.control),
+              border: Border.all(
+                color: _focused ? colors.fern : colors.surfaceOutline,
+              ),
+            ),
+            child: TextField(
+              controller: widget.controller,
+              obscureText: widget.obscure,
+              autofocus: widget.autofocus,
+              onSubmitted: widget.onSubmitted,
+              style: DsType.body(color: colors.text),
+              cursorColor: colors.fern,
+              cursorWidth: 1.5,
+              decoration: InputDecoration(
+                isCollapsed: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                hintText: widget.hint,
+                // A placeholder is not a label, and it is not a message —
+                // which is the one thing the faintest ink may never be.
+                hintStyle: DsType.body(color: colors.faint),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -112,11 +144,17 @@ class DsDialogAction extends StatelessWidget {
     final color = switch (tone) {
       DsDialogActionTone.normal => colors.text,
       DsDialogActionTone.muted => colors.muted,
-      DsDialogActionTone.danger => Theme.of(context).colorScheme.error,
+      DsDialogActionTone.danger => colors.danger,
     };
     return TextButton(
       onPressed: onPressed,
-      child: Text(label, style: uiTextStyle(size: 13, color: color)),
+      child: Text(
+        label,
+        style: DsType.label(
+          color: onPressed == null ? colors.faint : color,
+          weight: tone == DsDialogActionTone.normal ? 500 : 400,
+        ),
+      ),
     );
   }
 }

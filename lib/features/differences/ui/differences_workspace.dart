@@ -221,17 +221,23 @@ class ProposalPaperCard extends StatelessWidget {
         ? proposal.proposedPath ?? 'Document change'
         : proposal.content.title;
     final paper = colors.editorSurface;
-    final band = Color.alphaBlend(colors.text.withValues(alpha: .07), paper);
+    // The band is a recessed strip under the preview rather than a tint mixed
+    // out of the text colour, so it stays a surface the palette actually has.
+    final band = colors.cardSurface;
 
     return Semantics(
       button: true,
       label: '$operation proposal for $title by ${proposal.usernameLabel}',
       hint: 'Open Review edits',
+      // Flat and bordered. These are tiles on a page, not sheets of paper
+      // lifted off it: depth here comes from the edge, never from a shadow.
       child: Material(
         color: paper,
-        elevation: 3,
-        shadowColor: Colors.black.withValues(alpha: .22),
-        borderRadius: const BorderRadius.all(Radius.circular(2)),
+        elevation: 0,
+        shape: const RoundedRectangleBorder(
+          side: BorderSide(color: CF.line),
+          borderRadius: BorderRadius.all(DsRadius.island),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           key: Key('proposal-paper-${proposal.id}'),
@@ -272,7 +278,7 @@ class ProposalPaperCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: uiTextStyle(
                           size: 13,
-                          weight: 600,
+                          weight: 500,
                           color: colors.text,
                         ),
                       ),
@@ -324,9 +330,11 @@ class _RealtimeHealth extends StatelessWidget {
       DifferencesRealtimeHealth.error =>
         'Realtime unavailable; refresh still works',
     };
+    // Semantic colours, as a small mark plus its tooltip. `removal` is a wash
+    // meant to sit behind text, so a seven-pixel dot of it would say nothing.
     final color = switch (health) {
-      DifferencesRealtimeHealth.connected => Colors.green,
-      DifferencesRealtimeHealth.error => context.ds.removal,
+      DifferencesRealtimeHealth.connected => context.ds.success,
+      DifferencesRealtimeHealth.error => context.ds.danger,
       _ => context.ds.muted,
     };
     return Tooltip(

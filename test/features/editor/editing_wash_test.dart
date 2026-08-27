@@ -45,16 +45,13 @@ void main() {
     if (await support.exists()) await support.delete(recursive: true);
   });
 
-  for (final (name, brightness, ds) in [
-    ('light', Brightness.light, DsColors.light),
-    ('dark', Brightness.dark, DsColors.dark),
-  ]) {
-    testWidgets('the wash stays on-hue while fading in, $name', (tester) async {
+  {
+    const ds = DsColors.cream;
+    testWidgets('the wash stays on-hue while fading in', (tester) async {
       final (container, _, _) = await openEditor(
         tester,
         temp,
         seed: seedWith('The second age did not end quietly.'),
-        brightness: brightness,
       );
 
       await tester.tap(find.byType(TextField).last);

@@ -29,10 +29,17 @@ class ToolbarIconButton extends StatelessWidget {
     final button = DsButton(
       onPressed: onPressed,
       active: active,
+      semanticLabel: tooltip,
       child: Icon(
         icon,
         size: kEditingToolbarIconSize,
-        color: onPressed == null ? colors.muted : colors.text,
+        // A toggled-on control is a fern block, so its glyph has to be the
+        // cream that goes on fern rather than ink.
+        color: onPressed == null
+            ? colors.faint
+            : active
+            ? colors.onFern
+            : colors.text,
       ),
     );
 

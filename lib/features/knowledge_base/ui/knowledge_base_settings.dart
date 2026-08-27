@@ -450,7 +450,7 @@ class _CollaboratorsCard extends StatelessWidget {
                               children: [
                                 CircleAvatar(
                                   radius: 15,
-                                  backgroundColor: colors.buttonHighlight,
+                                  backgroundColor: colors.sage,
                                   child: Text(
                                     member.displayName.isEmpty
                                         ? '?'

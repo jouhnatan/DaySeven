@@ -5,16 +5,19 @@
 /// button: the hero line says whether this build is current, and the update
 /// control sits underneath it.
 ///
-/// It follows its own design rather than the application theme — see
-/// `app_settings_design.dart` for what that means and why it is contained here.
+/// It is built from the application's own tokens. It used to carry a second,
+/// private design system — a separate palette, three typefaces of its own, and
+/// a film grain — because the application theme was not something a settings
+/// surface wanted to look like. That is no longer true, so the exception is
+/// gone rather than maintained.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/features/app_settings/ui/app_settings_design.dart';
-import 'package:dayseven/features/app_settings/ui/grain.dart';
 import 'package:dayseven/shared/platform/app_update.dart';
+import 'package:dayseven/shared/ui/controls.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 typedef AppSettingsDeveloperOptionsBuilder =
     AppSettingsDeveloperOptions Function(WidgetRef ref);
@@ -109,18 +112,16 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 44),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 580),
-        child: GrainOverlay(
-          borderRadius: BorderRadius.circular(10),
-          background: DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppSettingsPalette.paperHi,
-              borderRadius: BorderRadius.circular(10),
-              // Flat: one hairline rule instead of a shadow.
-              border: Border.all(color: AppSettingsPalette.rule),
-            ),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            color: CF.paper,
+            borderRadius: BorderRadius.all(DsRadius.island),
+            // Flat: the edge carries the depth, and the scrim behind the
+            // dialog does the rest.
+            border: Border.fromBorderSide(BorderSide(color: CF.line)),
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: const BorderRadius.all(DsRadius.island),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -191,13 +192,14 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                               subtitleIsMeta: false,
                               trailing: developer.republishPolicy == null
                                   ? null
-                                  : _FlatButton(
+                                  : DsLabelButton(
                                       key: const Key(
                                         'app-settings-republish-policy',
                                       ),
                                       label: _workingSettings.contains('policy')
                                           ? 'Republishing…'
                                           : 'Republish',
+                                      height: DsSize.control,
                                       onPressed:
                                           _workingSettings.contains('policy')
                                           ? null
@@ -277,14 +279,9 @@ class _DeveloperToggleRow extends StatelessWidget {
     title: title,
     subtitle: subtitle,
     subtitleIsMeta: false,
-    trailing: Switch(
-      value: value,
-      onChanged: working ? null : onChanged,
-      activeTrackColor: AppSettingsPalette.green,
-      activeThumbColor: AppSettingsPalette.paper,
-      inactiveTrackColor: AppSettingsPalette.greenTint,
-      inactiveThumbColor: AppSettingsPalette.green,
-    ),
+    // A boolean setting is a toggle, and the theme already states how one
+    // looks; restating it here is how the two drift apart.
+    trailing: Switch(value: value, onChanged: working ? null : onChanged),
   );
 }
 
@@ -342,32 +339,36 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GrainOverlay(
-      tile: GrainTile.coarse,
-      opacity: 0.30,
-      blendMode: BlendMode.overlay,
-      background: const ColoredBox(color: AppSettingsPalette.charcoal),
+    // A title bar in cream. It used to be a charcoal block, which was the one
+    // piece of dark chrome left in the product.
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: CF.bar,
+        border: Border(bottom: BorderSide(color: CF.hairline)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+        padding: const EdgeInsets.fromLTRB(20, 14, 14, 14),
         child: Row(
           children: [
             Expanded(
               child: Text(
                 'App settings',
-                style: appSettingsDisplay(
-                  size: AppSettingsType.title,
-                  color: AppSettingsPalette.paper,
-                  height: 1.15,
-                ),
+                style: uiHeaderTextStyle(size: 22, height: 28 / 22),
               ),
             ),
-            _IconButton(
-              icon: Icons.close,
-              tooltip: 'Close',
+            DsButton(
+              variant: DsButtonVariant.quiet,
+              semanticLabel: 'Close',
+              height: DsSize.smallControl,
+              padding: EdgeInsets.zero,
               onPressed: () => Navigator.of(context).pop(),
-              background: AppSettingsPalette.paper,
-              foreground: AppSettingsPalette.green,
-              hoverBackground: const Color(0xFFE9E9E7),
+              child: const Tooltip(
+                message: 'Close',
+                child: SizedBox(
+                  width: DsSize.smallControl,
+                  child: Icon(Icons.close, size: 18),
+                ),
+              ),
             ),
           ],
         ),
@@ -386,11 +387,9 @@ class _SectionHeading extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(20, 26, 20, 12),
     child: Text(
       label,
-      style: appSettingsDisplay(
-        size: AppSettingsType.heading,
-        color: AppSettingsPalette.green,
-        letterSpacing: 0.34,
-      ),
+      // Solway labels the region. It is not spending the accent to do it:
+      // fern is reserved for where you are and for what commits.
+      style: uiHeaderTextStyle(size: 16, height: 22 / 16),
     ),
   );
 }
@@ -419,13 +418,10 @@ class _Row extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-    child: GrainOverlay(
-      borderRadius: BorderRadius.circular(8),
-      background: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppSettingsPalette.paper,
-          borderRadius: BorderRadius.circular(8),
-        ),
+    child: DecoratedBox(
+      decoration: const BoxDecoration(
+        color: CF.inset,
+        borderRadius: BorderRadius.all(DsRadius.menu),
       ),
       child: Container(
         padding: const EdgeInsets.all(14),
@@ -439,21 +435,15 @@ class _Row extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: appSettingsDisplay(
-                      weight: FontWeight.w500,
-                      height: 1.34,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
+                  // A row title is a value — a version, a state — so it is
+                  // set in the sans. Solway labels regions and nothing else.
+                  Text(title, style: DsType.bodyStrong(tabular: true)),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: appSettingsMeta(
-                      color: subtitleIsMeta
-                          ? AppSettingsPalette.ink40
-                          : AppSettingsPalette.ink60,
-                      height: 1.5,
+                    style: DsType.caption(
+                      color: subtitleIsMeta ? CF.muted : CF.muted,
+                      tabular: subtitleIsMeta,
                     ),
                   ),
                 ],
@@ -481,22 +471,15 @@ class _Plate extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
     width: 42,
     height: 42,
-    child: GrainOverlay(
-      borderRadius: BorderRadius.circular(8),
-      background: DecoratedBox(
-        decoration: BoxDecoration(
-          color: pale
-              ? AppSettingsPalette.greenTint2
-              : AppSettingsPalette.green,
-          borderRadius: BorderRadius.circular(8),
-        ),
+    // Decorative, so it takes the decorative colour rather than the accent.
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: pale ? CF.paper : CF.sage,
+        borderRadius: const BorderRadius.all(DsRadius.menu),
+        border: Border.all(color: pale ? CF.line : CF.sage),
       ),
       child: Center(
-        child: Icon(
-          icon,
-          size: 20,
-          color: pale ? AppSettingsPalette.green : AppSettingsPalette.paper,
-        ),
+        child: Icon(icon, size: 20, color: pale ? CF.muted : CF.onSage),
       ),
     ),
   );
@@ -568,14 +551,20 @@ class _UpdateRow extends ConsumerWidget {
               '${(release.sizeBytes / 1048576).toStringAsFixed(1)} MB',
             _ => 'Nothing newer published',
           },
-          trailing: _FlatButton(
+          // The action that commits, so it is the one fern-filled control on
+          // this surface. Its label names what will happen.
+          trailing: DsLabelButton(
             key: const Key('app-settings-run-updates'),
             label: switch (state) {
               DownloadingUpdate() => 'Downloading…',
               InstallingUpdate() => 'Installing…',
-              UpdateAvailable() => 'Update now',
+              UpdateAvailable(:final release) =>
+                'Install ${release.version.name}',
               _ => 'Run updates',
             },
+            variant: DsButtonVariant.primary,
+            height: DsSize.control,
+            horizontalPadding: 17,
             onPressed: busy
                 ? null
                 : () => switch (state) {
@@ -590,13 +579,25 @@ class _UpdateRow extends ConsumerWidget {
         if (state case DownloadingUpdate(:final fraction))
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: fraction,
-                minHeight: 6,
-                backgroundColor: AppSettingsPalette.greenTint,
-                color: AppSettingsPalette.green,
+            // Linear, framed, and filled with fern. Progress is one of the
+            // few places a large fern surface is earned: it is the action the
+            // person asked for, still running.
+            child: Container(
+              height: 16,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: CF.paper,
+                border: Border.all(color: CF.line),
+                borderRadius: const BorderRadius.all(DsRadius.row),
+              ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.all(Radius.circular(3)),
+                child: LinearProgressIndicator(
+                  value: fraction,
+                  minHeight: 10,
+                  backgroundColor: CF.inset,
+                  color: CF.fern,
+                ),
               ),
             ),
           ),
@@ -605,7 +606,9 @@ class _UpdateRow extends ConsumerWidget {
   }
 }
 
-/// The solid ink block the design reserves for things that went wrong.
+/// The banner the system uses for a failure: a wash, a hairline in the
+/// matching semantic colour, and ink text. A full-width banner is the one
+/// place a semantic colour is allowed to fill a block.
 class _Alert extends StatelessWidget {
   const _Alert({required this.message, this.release, this.title});
 
@@ -620,16 +623,11 @@ class _Alert extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 22, 12, 12),
-      child: GrainOverlay(
-        tile: GrainTile.coarse,
-        opacity: 0.30,
-        blendMode: BlendMode.overlay,
-        borderRadius: BorderRadius.circular(8),
-        background: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppSettingsPalette.ink,
-            borderRadius: BorderRadius.circular(8),
-          ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: CF.dangerWash,
+          borderRadius: const BorderRadius.all(DsRadius.menu),
+          border: Border.all(color: CF.danger.withValues(alpha: 0.30)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -642,26 +640,21 @@ class _Alert extends StatelessWidget {
                     (release == null
                         ? "Couldn't check for updates"
                         : "Couldn't install that update"),
-                style: appSettingsDisplay(
-                  weight: FontWeight.w500,
-                  color: AppSettingsPalette.paper,
-                ),
+                style: DsType.bodyStrong(),
               ),
               const SizedBox(height: 12),
               DecoratedBox(
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0x33D9D9D9))),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: CF.danger.withValues(alpha: 0.30)),
+                  ),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: SelectableText(
                     message,
                     key: const Key('app-settings-alert'),
-                    style: appSettingsBody(
-                      size: AppSettingsType.sub,
-                      color: const Color(0xB8D9D9D9),
-                      height: 1.6,
-                    ),
+                    style: DsType.caption(color: CF.ink),
                   ),
                 ),
               ),
@@ -669,11 +662,9 @@ class _Alert extends StatelessWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: _FlatButton(
+                  child: DsLabelButton(
                     label: 'Download',
-                    background: AppSettingsPalette.paper,
-                    foreground: AppSettingsPalette.green,
-                    hoverBackground: const Color(0xFFE9E9E7),
+                    height: DsSize.control,
                     onPressed: () => openExternally(
                       release.installUrl ?? release.downloadUrl,
                     ),
@@ -692,163 +683,26 @@ class _Footer extends StatelessWidget {
   const _Footer();
 
   @override
-  Widget build(BuildContext context) => GrainOverlay(
-    background: const DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppSettingsPalette.paperLo,
-        border: Border(top: BorderSide(color: AppSettingsPalette.rule)),
-      ),
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      color: CF.bar,
+      border: Border(top: BorderSide(color: CF.hairline)),
     ),
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          _FlatButton(
+          // Dismissal, not a commitment: the action that actually does
+          // something on this surface is the update button, and there is only
+          // ever one of those.
+          DsLabelButton(
             label: 'Done',
-            icon: Icons.check,
+            height: DsSize.control,
+            horizontalPadding: 17,
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
-      ),
-    ),
-  );
-}
-
-/// A flat fill, no shadow, no gradient — the design's only button.
-class _FlatButton extends StatefulWidget {
-  const _FlatButton({
-    super.key,
-    required this.label,
-    required this.onPressed,
-    this.icon,
-    this.background = AppSettingsPalette.green,
-    this.foreground = AppSettingsPalette.paper,
-    this.hoverBackground = AppSettingsPalette.greenHover,
-  });
-
-  final String label;
-  final VoidCallback? onPressed;
-  final IconData? icon;
-  final Color background;
-  final Color foreground;
-  final Color hoverBackground;
-
-  @override
-  State<_FlatButton> createState() => _FlatButtonState();
-}
-
-class _FlatButtonState extends State<_FlatButton> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = widget.onPressed != null;
-
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: GrainOverlay(
-          borderRadius: BorderRadius.circular(8),
-          background: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.linear,
-            decoration: BoxDecoration(
-              color: !enabled
-                  // Disabled reads as the tint rather than a faded fill: this
-                  // design has no translucency anywhere.
-                  ? AppSettingsPalette.greenTint2
-                  : _hovered
-                  ? widget.hoverBackground
-                  : widget.background,
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 19),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.icon case final icon?) ...[
-                    Icon(icon, size: 16, color: widget.foreground),
-                    const SizedBox(width: 9),
-                  ],
-                  Text(
-                    widget.label,
-                    style: appSettingsBody(
-                      weight: FontWeight.w500,
-                      color: enabled
-                          ? widget.foreground
-                          : AppSettingsPalette.green,
-                      letterSpacing: -0.06,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The header's square icon button.
-class _IconButton extends StatefulWidget {
-  const _IconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-    required this.background,
-    required this.foreground,
-    required this.hoverBackground,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-  final Color background;
-  final Color foreground;
-  final Color hoverBackground;
-
-  @override
-  State<_IconButton> createState() => _IconButtonState();
-}
-
-class _IconButtonState extends State<_IconButton> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: widget.tooltip,
-    child: MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: GrainOverlay(
-            borderRadius: BorderRadius.circular(8),
-            background: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              decoration: BoxDecoration(
-                color: _hovered ? widget.hoverBackground : widget.background,
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Center(
-              child: Icon(widget.icon, size: 19, color: widget.foreground),
-            ),
-          ),
-        ),
       ),
     ),
   );

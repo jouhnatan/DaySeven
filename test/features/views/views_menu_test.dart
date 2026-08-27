@@ -17,7 +17,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(
             body: SizedBox(
               width: 180,

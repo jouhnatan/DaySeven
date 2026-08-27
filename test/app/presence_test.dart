@@ -53,10 +53,10 @@ final _seed = BlockDocument(
   ],
 );
 
-Future<Widget> _wrap(Widget child, {Brightness brightness = Brightness.dark}) =>
+Future<Widget> _wrap(Widget child) =>
     Future.value(
       MaterialApp(
-        theme: dsTheme(brightness),
+        theme: dsTheme(),
         home: Scaffold(body: child),
       ),
     );
@@ -178,7 +178,7 @@ void main() {
               peersInOpenDocumentProvider.overrideWithValue(located),
             ],
             child: MaterialApp(
-              theme: dsTheme(Brightness.dark),
+              theme: dsTheme(),
               home: const Scaffold(
                 body: Column(
                   children: [

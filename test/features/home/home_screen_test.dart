@@ -26,12 +26,11 @@ User _signedInUser() => User(
 );
 
 Widget _harness({
-  Brightness brightness = Brightness.light,
   List<Override> overrides = const [],
 }) => ProviderScope(
   overrides: overrides,
   child: MaterialApp(
-    theme: dsTheme(brightness),
+    theme: dsTheme(),
     home: const Scaffold(body: HomeScreen()),
   ),
 );

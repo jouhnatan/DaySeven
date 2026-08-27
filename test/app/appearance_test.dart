@@ -2,6 +2,9 @@
 ///
 /// Run with `--update-goldens` to refresh the checked shell images. They lock
 /// down the side-menu headers and islands, tree guides, and bottom bar.
+///
+/// There is one set of these. The interface has a single palette, so there is
+/// no second appearance to photograph.
 library;
 
 import 'dart:io';
@@ -96,8 +99,7 @@ void main() {
   }
 
   Future<ProviderContainer> renderShell(
-    WidgetTester tester,
-    Brightness brightness, {
+    WidgetTester tester, {
     bool knowledgeBaseVisible = true,
   }) async {
     tester.view.physicalSize = const Size(1280, 820);
@@ -123,7 +125,7 @@ void main() {
         container: container,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: dsTheme(brightness),
+          theme: dsTheme(),
           home: const DsShell(),
         ),
       ),
@@ -132,44 +134,36 @@ void main() {
     return container;
   }
 
-  testWidgets('home, dark', (tester) async {
-    await renderShell(tester, Brightness.dark);
+  testWidgets('home', (tester) async {
+    await renderShell(tester);
     await expectLater(
       find.byType(DsShell),
-      matchesGoldenFile('goldens/home_dark.png'),
+      matchesGoldenFile('goldens/home.png'),
     );
   });
 
-  testWidgets('home, light', (tester) async {
-    await renderShell(tester, Brightness.light);
+  testWidgets('home with Knowledge Base hidden', (tester) async {
+    await renderShell(tester, knowledgeBaseVisible: false);
     await expectLater(
       find.byType(DsShell),
-      matchesGoldenFile('goldens/home_light.png'),
+      matchesGoldenFile('goldens/home_kb_hidden.png'),
     );
   });
 
-  testWidgets('home with Knowledge Base hidden, dark', (tester) async {
-    await renderShell(tester, Brightness.dark, knowledgeBaseVisible: false);
-    await expectLater(
-      find.byType(DsShell),
-      matchesGoldenFile('goldens/home_kb_hidden_dark.png'),
-    );
-  });
-
-  testWidgets('editor with the tree open, dark', (tester) async {
-    await renderShell(tester, Brightness.dark);
+  testWidgets('editor with the tree open', (tester) async {
+    await renderShell(tester);
 
     await tester.tap(find.text('Editor'));
     await tester.pumpAndSettle();
 
     await expectLater(
       find.byType(DsShell),
-      matchesGoldenFile('goldens/editor_dark.png'),
+      matchesGoldenFile('goldens/editor.png'),
     );
   });
 
-  testWidgets('active editor toolbar island, dark', (tester) async {
-    final container = await renderShell(tester, Brightness.dark);
+  testWidgets('active editor toolbar island', (tester) async {
+    final container = await renderShell(tester);
     await tester.runAsync(
       () => container
           .read(documentControllerProvider.notifier)
@@ -188,7 +182,7 @@ void main() {
 
     await expectLater(
       find.byType(DsShell),
-      matchesGoldenFile('goldens/editor_toolbar_dark.png'),
+      matchesGoldenFile('goldens/editor_toolbar.png'),
     );
 
     await tester.pump(const Duration(milliseconds: 650));

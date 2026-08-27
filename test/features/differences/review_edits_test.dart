@@ -103,7 +103,7 @@ class ReviewRepository implements ChangeSetDataSource {
 Widget harness(ReviewRepository repository) => ProviderScope(
   overrides: [changeSetRepositoryProvider.overrideWithValue(repository)],
   child: MaterialApp(
-    theme: dsTheme(Brightness.dark),
+    theme: dsTheme(),
     home: ReviewEditsScreen(
       proposals: [proposal()],
       initialProposalId: 'proposal-1',

@@ -11,7 +11,24 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 Future<void> loadTestFonts() async {
-  final ibmPlexSans = FontLoader(kDefaultFontFamily);
+  // Families are loaded under their own literal names, never under a constant
+  // that names a *role*. Pointing FontLoader at a role constant means that
+  // renaming the role silently re-registers one family's files under another
+  // family's name, and every golden then renders in the wrong face while still
+  // claiming to have loaded fonts.
+  final instrumentSans = FontLoader(kUiFontFamily);
+  for (final path in [
+    'assets/fonts/instrument_sans/InstrumentSans-Regular.ttf',
+    'assets/fonts/instrument_sans/InstrumentSans-Medium.ttf',
+    'assets/fonts/instrument_sans/InstrumentSans-SemiBold.ttf',
+  ]) {
+    instrumentSans.addFont(
+      File(path).readAsBytes().then((b) => b.buffer.asByteData()),
+    );
+  }
+  await instrumentSans.load();
+
+  final ibmPlexSans = FontLoader('IBM Plex Sans');
   for (final path in [
     'assets/fonts/ibm_plex_sans/IBMPlexSans-Light.ttf',
     'assets/fonts/ibm_plex_sans/IBMPlexSans-LightItalic.ttf',
@@ -41,18 +58,7 @@ Future<void> loadTestFonts() async {
   }
   await archivo.load();
 
-  final geistPixel = FontLoader(kUiHeaderFontFamily)
-    ..addFont(
-      File('assets/fonts/geist_pixel/GeistPixel-Square.ttf')
-          .readAsBytes()
-          .then((b) => b.buffer.asByteData()),
-    );
-  await geistPixel.load();
-
-  // The three families the App settings dialog uses. They belong to that one
-  // dialog rather than to the theme, but a golden of it renders in fallback
-  // fonts without them.
-  final solway = FontLoader('Solway');
+  final solway = FontLoader(kUiHeaderFontFamily);
   for (final path in [
     'assets/fonts/solway/Solway-Regular.ttf',
     'assets/fonts/solway/Solway-Medium.ttf',
@@ -62,22 +68,6 @@ Future<void> loadTestFonts() async {
     solway.addFont(File(path).readAsBytes().then((b) => b.buffer.asByteData()));
   }
   await solway.load();
-
-  final spaceGrotesk = FontLoader('Space Grotesk')
-    ..addFont(
-      File('assets/fonts/space_grotesk/SpaceGrotesk-Variable.ttf')
-          .readAsBytes()
-          .then((b) => b.buffer.asByteData()),
-    );
-  await spaceGrotesk.load();
-
-  final raleway = FontLoader('Raleway')
-    ..addFont(
-      File('assets/fonts/raleway/Raleway-Variable.ttf')
-          .readAsBytes()
-          .then((b) => b.buffer.asByteData()),
-    );
-  await raleway.load();
 
   // Skipped when the SDK cannot be located; icons then render as boxes.
   final flutterRoot = Platform.environment['FLUTTER_ROOT'];

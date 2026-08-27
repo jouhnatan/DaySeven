@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 Widget harness({List<Override> overrides = const []}) => ProviderScope(
   overrides: overrides,
-  child: MaterialApp(theme: dsTheme(Brightness.dark), home: const DsShell()),
+  child: MaterialApp(theme: dsTheme(), home: const DsShell()),
 );
 
 void main() {
@@ -59,7 +59,7 @@ void main() {
 
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-      kGradientShellBackgroundDark,
+      kGradientShellBackground,
     );
 
     await tester.tap(find.text('Editor'));
@@ -67,7 +67,7 @@ void main() {
 
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-      DsColors.dark.appBackground,
+      DsColors.cream.appBackground,
     );
   });
 
@@ -99,7 +99,7 @@ void main() {
 
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-      kGradientShellBackgroundDark,
+      kGradientShellBackground,
     );
     expect(find.byKey(const Key('gradient-background-base')), findsOneWidget);
     expect(
@@ -128,7 +128,7 @@ void main() {
     expect(find.byKey(const Key('gradient-background-base')), findsNothing);
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-      DsColors.dark.appBackground,
+      DsColors.cream.appBackground,
     );
 
     await tester.tap(find.text('Home'));
@@ -588,45 +588,45 @@ void main() {
     await tester.pumpWidget(harness());
     await tester.pump();
 
-    expect(DsColors.dark.island, DsColors.dark.editorSurface);
-    expect(DsColors.light.island, DsColors.light.editorSurface);
-    expect(DsColors.dark.appBackground, isNot(DsColors.dark.editorSurface));
-    expect(DsColors.light.appBackground, isNot(DsColors.light.editorSurface));
+    expect(DsColors.cream.island, DsColors.cream.editorSurface);
+    expect(DsColors.cream.island, DsColors.cream.editorSurface);
+    expect(DsColors.cream.appBackground, isNot(DsColors.cream.editorSurface));
+    expect(DsColors.cream.appBackground, isNot(DsColors.cream.editorSurface));
   });
 
   test('the shared Card surface is darker than its island', () {
     expect(
-      DsColors.light.cardSurface.computeLuminance(),
-      lessThan(DsColors.light.island.computeLuminance()),
+      DsColors.cream.cardSurface.computeLuminance(),
+      lessThan(DsColors.cream.island.computeLuminance()),
     );
     expect(
-      DsColors.dark.cardSurface.computeLuminance(),
-      lessThan(DsColors.dark.island.computeLuminance()),
+      DsColors.cream.cardSurface.computeLuminance(),
+      lessThan(DsColors.cream.island.computeLuminance()),
     );
   });
 
   test('island and button outlines are darker than their surfaces', () {
     expect(
-      DsColors.dark.surfaceOutline.computeLuminance(),
-      lessThan(DsColors.dark.island.computeLuminance()),
+      DsColors.cream.surfaceOutline.computeLuminance(),
+      lessThan(DsColors.cream.island.computeLuminance()),
     );
     expect(
-      DsColors.light.surfaceOutline.computeLuminance(),
-      lessThan(DsColors.light.island.computeLuminance()),
+      DsColors.cream.surfaceOutline.computeLuminance(),
+      lessThan(DsColors.cream.island.computeLuminance()),
     );
   });
 
   test('light outlines are darker than the grey window background', () {
-    final background = DsColors.light.appBackground.computeLuminance();
+    final background = DsColors.cream.appBackground.computeLuminance();
 
     expect(
-      DsColors.light.surfaceOutline.computeLuminance(),
+      DsColors.cream.surfaceOutline.computeLuminance(),
       lessThan(background),
     );
-    expect(DsColors.light.border.computeLuminance(), lessThan(background));
+    expect(DsColors.cream.border.computeLuminance(), lessThan(background));
     expect(
-      DsColors.light.surfaceOutline.computeLuminance(),
-      lessThan(DsColors.light.border.computeLuminance()),
+      DsColors.cream.surfaceOutline.computeLuminance(),
+      lessThan(DsColors.cream.border.computeLuminance()),
       reason: 'island edges should read more clearly than internal lines',
     );
   });

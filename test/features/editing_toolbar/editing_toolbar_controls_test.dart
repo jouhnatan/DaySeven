@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   Widget app(Widget child) => MaterialApp(
-    theme: dsTheme(Brightness.light),
+    theme: dsTheme(),
     home: Scaffold(body: Center(child: child)),
   );
 
@@ -91,13 +91,27 @@ void main() {
       ),
     );
 
-    final center = tester.widget<DsButton>(
-      find.ancestor(
-        of: find.byIcon(Icons.format_align_center),
-        matching: find.byType(DsButton),
-      ),
-    );
-    expect(center.active, isTrue);
+    // Three exclusive options are one framed strip, so the chosen cell is
+    // raised out of the frame in paper rather than filled with the accent.
+    expect(find.byType(DsSegmented<BlockAlign>), findsOneWidget);
+
+    final ds = DsColors.cream;
+    Color cellFill(IconData icon) => (tester
+                .widget<AnimatedContainer>(
+                  find
+                      .ancestor(
+                        of: find.byIcon(icon),
+                        matching: find.byType(AnimatedContainer),
+                      )
+                      .first,
+                )
+                .decoration!
+            as BoxDecoration)
+        .color!;
+
+    expect(cellFill(Icons.format_align_center), ds.island);
+    expect(cellFill(Icons.format_align_left), isNot(ds.island));
+    expect(cellFill(Icons.format_align_right), isNot(ds.island));
 
     await tester.tap(find.byIcon(Icons.format_align_right));
     expect(picked, BlockAlign.right);

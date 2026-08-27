@@ -11,7 +11,7 @@ import '../../support/test_fonts.dart';
 Widget harness({List<Override> overrides = const []}) => ProviderScope(
   overrides: overrides,
   child: MaterialApp(
-    theme: dsTheme(Brightness.dark),
+    theme: dsTheme(),
     home: const Scaffold(
       body: Align(
         alignment: Alignment.topRight,
@@ -57,9 +57,9 @@ void main() {
     expect(decoration.borderRadius, const BorderRadius.all(DsRadius.control));
     expect(
       (decoration.border! as Border).top.color,
-      DsColors.dark.surfaceOutline,
+      DsColors.cream.surfaceOutline,
     );
-    expect(decoration.color, DsColors.dark.island);
+    expect(decoration.color, DsColors.cream.island);
   });
 
   testWidgets('opens the sign-in dialog, asking for a username', (

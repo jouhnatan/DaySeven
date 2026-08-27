@@ -58,10 +58,21 @@ so that every version anyone runs corresponds to a build that exists.
 - **Do not add a launch-time update check.** The check runs when somebody opens
   Menu → App settings, and the install when they press Run updates. Nothing
   updates on its own.
-- **App settings follows its own design, deliberately.** It is fixed light, uses
-  three typefaces nothing else uses, and is the one place outside `shared/ui/`
-  allowed a literal `fontSize:`. Do not "fix" it to match the app theme, and do
-  not import `app_settings_design.dart` from outside that feature.
+- **The interface follows one design system, written out in
+  `docs/design-system.md`.** Read it before changing how anything looks. The
+  short version: colour comes from `shared/ui/theme.dart` and nowhere else,
+  sizes come from `uiTextStyle`/`editorTextStyle`, cards are flat and only
+  menus and dialogs carry a shadow, and fern is spent at most twice per view —
+  on where you are, and on the action that commits. `check_layers.sh` fails the
+  build on a colour literal in `lib/`.
+- **Do not add a dark theme.** There is one palette and it is light. This is a
+  rule of the system rather than an omission, and the native title bar is
+  driven from the colour `app.dart` hands the window chrome — sending a dark
+  one is what would turn the Windows caption dark.
+- **App settings is no longer special.** It used to carry a second design
+  system of its own — a separate palette, three private typefaces and a film
+  grain. That existed because the app theme was not something a settings
+  surface wanted to look like, which is no longer true. Do not reintroduce it.
 - **A failed check must not report "up to date."** `UpdateCheckFailed` exists
   to keep those distinct; the check runs because someone asked, and answering
   a question the app could not actually answer is a lie.

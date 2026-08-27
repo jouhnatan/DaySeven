@@ -39,13 +39,13 @@ while IFS= read -r hit; do
 done < <(rg -n "^import 'package:dayseven/app/shell/" lib/features || true)
 
 # --- rendered font sizes must flow through the global settings --------------
-# global_settings computes the two base scales, theme applies the UI scale to
-# Material roles, and block_text_style derives footnotes from an editor style.
+# global_settings computes the two base scales and states the type scale, theme
+# applies the UI scale to Material roles, and block_text_style derives footnotes
+# from an editor style.
 #
-# app_settings_design is the one exception outside shared/ui: the App settings
-# dialog follows a fixed design with its own type scale, so it states its sizes
-# rather than deriving them. It still multiplies them by the configured UI text
-# size, so the preference is not ignored.
+# There are no exceptions outside shared/ui. App settings used to be one, when
+# it carried a design of its own; it is now built from the same tokens as
+# everything else.
 while IFS= read -r hit; do
   echo "fontSize must come from uiTextStyle or editorTextStyle:"
   echo "  $hit"
@@ -54,8 +54,25 @@ done < <(
   rg -n "fontSize:" lib \
     --glob '!lib/shared/ui/global_settings.dart' \
     --glob '!lib/shared/ui/block_text_style.dart' \
+    --glob '!lib/shared/ui/theme.dart' || true
+)
+
+# --- colour must come from the palette --------------------------------------
+# theme.dart states the palette; block_text_style turns a colour stored in a
+# document into a Color, which is the user's content rather than the interface.
+# Colors.transparent is not a colour — it is the absence of one.
+#
+# Everything else asks the theme, so that the interface cannot quietly grow a
+# hue the system does not have.
+while IFS= read -r hit; do
+  echo "colour must come from the palette in shared/ui/theme.dart:"
+  echo "  $hit"
+  fail=1
+done < <(
+  rg -n "Color\(0x|Colors\.[a-z]" lib \
     --glob '!lib/shared/ui/theme.dart' \
-    --glob '!lib/features/app_settings/ui/app_settings_design.dart' || true
+    --glob '!lib/shared/ui/block_text_style.dart' \
+    | rg -v "Colors\.transparent" || true
 )
 
 if [ "$fail" -eq 0 ]; then

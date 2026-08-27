@@ -75,7 +75,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const DsShell(),
         ),
       ),
@@ -125,7 +125,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const DsShell(),
         ),
       ),

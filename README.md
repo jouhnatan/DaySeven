@@ -51,7 +51,7 @@ lib/
     auth/          Who is signed in
     backend/       Supabase client, error vocabulary, document repository
     platform/      Install-location check
-    ui/            Theme tokens, controls, menus, dialogs, span styling
+    ui/            The palette and type scale, controls, menus, dialogs
 supabase/
   migrations/    Schema, RLS, RPCs, Realtime trigger, Storage bucket
 scripts/         Packaging and publishing for macOS (DMG) and Windows (zip)
@@ -84,6 +84,39 @@ Text in controls, menus, navigation and other application chrome must use
 `uiTextStyle`; document titles, prose, headings, tables, captions and code must
 use `editorTextStyle`. Their sizes scale from the independent UI and editor base
 sizes in the global settings rather than from feature-local constants.
+
+## How it looks
+
+The interface follows **Cream & Fern**, written out in full in
+[`docs/design-system.md`](docs/design-system.md). That document is the source of
+truth; what follows is only what an agent needs to know before touching a widget.
+
+The ground is warm cream, never white. Structure is drawn with hairlines rather
+than filled bars. There is exactly one saturated colour — a deep fern green —
+and it is spent at most twice per view, on the two things that matter: **where
+you are**, and **the action that commits**. Solway labels regions; Instrument
+Sans carries every word the user actually reads. There is no monospace: numbers
+that line up use tabular figures in the same sans.
+
+Three things follow from that, and `scripts/check_layers.sh` enforces the first
+two:
+
+- **Colour comes from `shared/ui/theme.dart`.** `CF` states the palette and
+  `DsColors` names the roles the interface reads through, as `context.ds`. A
+  literal `Color(0x…)` or `Colors.…` anywhere else in `lib/` fails the check.
+- **Size comes from `uiTextStyle` or `editorTextStyle`,** as it always has.
+- **Depth comes from borders, not shadows.** Panes, cards and tiles are flat
+  with a 1px edge. Only a menu, a popover or a dialog — things genuinely above
+  the page — carries a shadow.
+
+There is one palette. The system is light and has no dark variant, and one must
+not be added; a dark title bar, sidebar or footer is not something this
+interface has. Fern is allowed to be the only dark mass on screen.
+
+The one deliberate departure is the **gradient background** on Home, which the
+system otherwise forbids. It is kept because it is wanted, and kept quiet so it
+reads as atmosphere: it stands on the same recessed cream as everything else and
+draws only in colours the palette already contains.
 
 ## How a document is stored
 
@@ -240,7 +273,7 @@ server-authored.
 
 - **Three panes** — the Views menu, the editor and the Knowledge Base menu
   are rounded panes on the application background, each a subtle tone apart.
-- **Left** — a Geist Pixel heading, *Views*, above a rounded island containing
+- **Left** — a Solway heading, *Views*, above a rounded island containing
   Home, Editor and Differences. Differences carries the durable pending count.
   Beneath it a second heading, *Notifications*, sits above an island listing
   the latest five events — publishes, sync results, sharing, errors — newest
@@ -251,11 +284,12 @@ server-authored.
   subtext open beneath the header.
 - **Top** — a persistent search bar over the Knowledge Base's local FTS5 index,
   matching as you type.
-- **Right** — a Geist Pixel *Knowledge Base* heading, a rounded control naming
+- **Right** — a Solway *Knowledge Base* heading, a rounded control naming
   the open folder, a manual Sync button that pulls before publishing or
   proposing local changes, and a separate hierarchy island beneath it. The
-  tree shows folder and document icons, and a line running down from each
-  folder that turns in to meet its children. A plus button at the right of
+  tree shows folder and document icons, and a hairline running down from each
+  folder that turns in to meet its children. The selected row is a solid fern
+  block — in a tree, that block is the interface saying where you are. A plus button at the right of
   every editable folder creates and opens an Untitled document inside it. Drag
   a document or folder onto another folder to move it, or onto the panel
   background to bring it back out to the top level; the file is renamed on
@@ -398,18 +432,6 @@ Nothing checks for updates on its own, and nothing updates in the background:
 the check runs when App settings is opened, and the install when it is asked
 for. An old build keeps working until somebody asks it not to.
 
-### App settings looks different on purpose
-
-`lib/features/app_settings/` follows its own flat-and-grained design rather than
-the application theme — its own paper-and-green palette, Solway, Space Grotesk
-and Raleway, and a film grain baked into two noise tiles by
-`scripts/generate_grain.dart` because Flutter has no live noise filter.
-
-That design is contained to `app_settings_design.dart`, which nothing outside
-that folder should import. It is fixed light, so the dialog does not follow dark
-mode. It is the one place in `lib/` outside `shared/ui/` allowed to write a
-literal `fontSize:`, and `scripts/check_layers.sh` names it as the exception.
-
 ### The release feed
 
 `public.app_releases` holds one current row per platform and channel. It is
@@ -432,7 +454,7 @@ flutter test
 ./scripts/check_layers.sh
 ```
 
-Covers the block model's JSON round-trip, the three-way merge (including
+Covers the palette's contrast ratios, the block model's JSON round-trip, the three-way merge (including
 formatting survival and the conflict case), the Knowledge Base on disk and its
 layout migrations, moving items between folders, live folder watching, FTS5
 search, ODT/DOCX round-trips in
@@ -443,7 +465,8 @@ rules.
 `test/app/appearance_test.dart` renders the shell to `test/app/goldens/`. Those
 images are how the layout is meant to look — they caught a real misalignment
 between the islands — but like all golden tests they are sensitive to the
-Flutter and font versions that produced them. Refresh with:
+Flutter and font versions that produced them. There is one set of them, because
+there is one appearance. Refresh with:
 
 ```bash
 flutter test test/app/appearance_test.dart --update-goldens

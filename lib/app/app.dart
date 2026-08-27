@@ -24,13 +24,13 @@ class DaySevenApp extends ConsumerWidget {
       builder: (context, settings, _) => MaterialApp(
         title: 'DaySeven',
         debugShowCheckedModeBanner: false,
-        theme: dsTheme(Brightness.light, settings: settings),
-        darkTheme: dsTheme(Brightness.dark, settings: settings),
-        themeMode: ThemeMode.system,
+        // One theme. The system is light and has no dark variant, so the
+        // window chrome the native runners are handed is always a light one.
+        theme: dsTheme(settings: settings),
         builder: (context, child) => WindowChromeSync(
           backgroundColor:
               view == DsView.home || settings.gradientBackgroundEnabled
-              ? gradientShellBackground(Theme.of(context).brightness)
+              ? gradientShellBackground()
               : context.ds.appBackground,
           child: child ?? const SizedBox.shrink(),
         ),

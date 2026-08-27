@@ -178,22 +178,16 @@ class _HomeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // Opaque, flat, and bordered. A card is on the page rather than above it,
+    // so it does not float on a shadow and it does not let the background
+    // through — the gradient behind it is atmosphere, not something to read a
+    // recent-files list against.
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: isDark
-            ? colors.island.withValues(alpha: 0.84)
-            : Colors.white.withValues(alpha: 0.82),
+        color: colors.island,
         border: Border.all(color: colors.surfaceOutline),
         borderRadius: const BorderRadius.all(DsRadius.island),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(22),
@@ -204,8 +198,8 @@ class _HomeCard extends StatelessWidget {
               title,
               textAlign: TextAlign.center,
               style: uiHeaderTextStyle(
-                size: 18,
-                weight: 600,
+                size: 16,
+                weight: 500,
                 color: colors.text,
               ),
             ),

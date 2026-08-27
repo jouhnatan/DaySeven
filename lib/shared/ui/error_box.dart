@@ -22,14 +22,16 @@ class DsErrorBox extends StatelessWidget {
       width: double.infinity,
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      // A banner: the wash, a hairline in the matching semantic colour, and
+      // ink text. The colour describes the state; it does not shout it.
       decoration: BoxDecoration(
         color: colors.removal,
-        borderRadius: const BorderRadius.all(DsRadius.control),
-        border: Border.all(color: colors.border),
+        borderRadius: const BorderRadius.all(DsRadius.menu),
+        border: Border.all(color: colors.danger.withValues(alpha: 0.30)),
       ),
       child: SelectableText(
         message,
-        style: uiTextStyle(size: 12, color: colors.text),
+        style: DsType.caption(color: colors.text),
         cursorColor: colors.text,
         // Right-click and the platform's own copy shortcut both work.
         contextMenuBuilder: (context, state) =>

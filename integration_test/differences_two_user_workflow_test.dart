@@ -117,7 +117,7 @@ void main() {
           changeSetRepositoryProvider.overrideWithValue(decisions),
         ],
         child: MaterialApp(
-          theme: dsTheme(Brightness.dark),
+          theme: dsTheme(),
           home: const Scaffold(body: DifferencesWorkspace()),
         ),
       ),

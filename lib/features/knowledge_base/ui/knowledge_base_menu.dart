@@ -381,7 +381,7 @@ class _KbTree extends ConsumerWidget {
             builder: (context, candidate, _) => Container(
               color: candidate.isEmpty
                   ? Colors.transparent
-                  : context.ds.selection.withValues(alpha: 0.4),
+                  : context.ds.rowSelected,
               child: ListView(
                 key: const Key('kb-tree-list'),
                 padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
@@ -700,24 +700,29 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
         child: Container(
           height: _TreeGuides.rowHeight,
           decoration: BoxDecoration(
-            color: highlighted
-                ? colors.buttonHighlight
-                : selected
-                ? colors.buttonHighlight
+            // The selected row is where you are, so it is a solid block rather
+            // than a wash. Hover is the neutral wash every surface uses, and a
+            // drop target is announced by a fern outline rather than a fill —
+            // otherwise dragging over the selection would say nothing.
+            color: selected
+                ? colors.navSelected
                 : _hovered
-                ? colors.buttonHighlight
+                ? colors.hover
                 : Colors.transparent,
-            borderRadius: const BorderRadius.all(DsRadius.menuItem),
-            border: highlighted
-                ? Border.all(color: colors.muted.withValues(alpha: 0.5))
-                : Border.all(color: Colors.transparent),
+            borderRadius: const BorderRadius.all(DsRadius.row),
+            border: Border.all(
+              color: highlighted ? colors.fern : Colors.transparent,
+              width: highlighted ? DsSize.focusRing : 1,
+            ),
           ),
           child: Row(
             children: [
               _TreeGuides(
                 ancestors: widget.ancestors,
                 isLast: widget.isLast,
-                color: colors.muted.withValues(alpha: 0.45),
+                // The rails trace depth back to an ancestor. Inside the
+                // selection there is nothing to trace, so they step aside.
+                color: selected ? Colors.transparent : colors.border,
               ),
               const SizedBox(width: 4),
               Icon(
@@ -727,7 +732,11 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
                           : Icons.folder_outlined)
                     : Icons.description_outlined,
                 size: 14,
-                color: isFolder || selected ? colors.text : colors.muted,
+                color: selected
+                    ? colors.onNavSelected
+                    : isFolder
+                    ? colors.text
+                    : colors.muted,
               ),
               const SizedBox(width: 6),
               Expanded(
@@ -736,8 +745,12 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
                   overflow: TextOverflow.ellipsis,
                   style: uiTextStyle(
                     size: 13,
-                    weight: isFolder || selected ? 600 : 400,
-                    color: isFolder || selected ? colors.text : colors.muted,
+                    weight: isFolder || selected ? 500 : 400,
+                    color: selected
+                        ? colors.onNavSelected
+                        : isFolder
+                        ? colors.text
+                        : colors.muted,
                   ),
                 ),
               ),
@@ -757,7 +770,7 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
                     Icons.shield,
                     key: ValueKey('protected-document-${node.relativePath}'),
                     size: 13,
-                    color: colors.text,
+                    color: selected ? colors.onNavSelected : colors.text,
                   ),
                 ),
               ],
@@ -772,8 +785,8 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
                     height: _TreeGuides.rowHeight,
                   ),
                   iconSize: 16,
-                  color: colors.muted,
-                  hoverColor: colors.buttonHighlight,
+                  color: selected ? colors.onNavSelected : colors.muted,
+                  hoverColor: colors.hover,
                   icon: const Icon(Icons.add),
                 )
               else
@@ -860,8 +873,13 @@ class _TreeGuides extends StatelessWidget {
   final bool isLast;
   final Color color;
 
-  static const double slot = 14;
-  static const double rowHeight = 26;
+  /// One level of depth. The painter derives every x-position from this, so
+  /// the rails and the elbows move together with it.
+  static const double slot = 16;
+
+  /// A dense row. The tree is the densest surface in the product and is the
+  /// one place that earns the tighter of the two row heights.
+  static const double rowHeight = DsSize.denseRow;
 
   @override
   Widget build(BuildContext context) {

@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   Widget app(Widget child) => MaterialApp(
-    theme: dsTheme(Brightness.light),
+    theme: dsTheme(),
     home: Scaffold(body: Center(child: child)),
   );
 
@@ -28,7 +28,7 @@ void main() {
     await tester.pumpWidget(
       app(DsButton(onPressed: () {}, child: const Text('A'))),
     );
-    expect(buttonFill(tester), DsColors.light.island);
+    expect(buttonFill(tester), DsColors.cream.island);
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
@@ -36,21 +36,41 @@ void main() {
     await mouse.moveTo(tester.getCenter(find.byType(DsButton)));
     await tester.pumpAndSettle();
 
-    expect(buttonFill(tester), DsColors.light.buttonHighlight);
+    expect(buttonFill(tester), DsColors.cream.selection);
   });
 
-  testWidgets('a button can override its highlight', (tester) async {
+  testWidgets('a button can override the fill it takes while hovered', (
+    tester,
+  ) async {
     const custom = Color(0xFF123456);
     await tester.pumpWidget(
-      app(DsButton(active: true, highlight: custom, child: const Text('A'))),
+      app(
+        DsButton(onPressed: () {}, highlight: custom, child: const Text('A')),
+      ),
     );
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer();
+    await mouse.moveTo(tester.getCenter(find.byType(DsButton)));
+    await tester.pumpAndSettle();
 
     expect(buttonFill(tester), custom);
   });
 
-  testWidgets('list rows use the green highlight and rounder shape', (
+  testWidgets('a toggled-on button is a fern block, not a hover', (
     tester,
   ) async {
+    await tester.pumpWidget(
+      app(DsButton(active: true, onPressed: () {}, child: const Text('A'))),
+    );
+
+    // Active is a state that persists. It is one of the two things fern is
+    // spent on, so it fills solid rather than washing like a hover.
+    expect(buttonFill(tester), DsColors.cream.fern);
+  });
+
+  testWidgets('list rows wash neutrally on hover', (tester) async {
     await tester.pumpWidget(
       app(DsHoverRow(onTap: () {}, child: const Text('Row'))),
     );
@@ -68,8 +88,41 @@ void main() {
       ),
     );
     final decoration = container.decoration! as BoxDecoration;
-    expect(decoration.color, DsColors.light.buttonHighlight);
-    expect(decoration.borderRadius, const BorderRadius.all(DsRadius.menuItem));
+    expect(decoration.color, DsColors.cream.hover);
+    expect(decoration.borderRadius, const BorderRadius.all(DsRadius.row));
+  });
+
+  testWidgets('a selected row is a solid fern block with cream text', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(DsHoverRow(onTap: () {}, selected: true, child: const Text('Row'))),
+    );
+
+    final container = tester.widget<AnimatedContainer>(
+      find.descendant(
+        of: find.byType(DsHoverRow),
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+
+    // Position is shown by fill, not by weight: the row the user is on is a
+    // block of the accent, and its text is the cream that goes on it.
+    expect(
+      (container.decoration! as BoxDecoration).color,
+      DsColors.cream.navSelected,
+    );
+    expect(
+      tester.widget<DefaultTextStyle>(
+        find
+            .descendant(
+              of: find.byType(DsHoverRow),
+              matching: find.byType(DefaultTextStyle),
+            )
+            .last,
+      ).style.color,
+      DsColors.cream.onNavSelected,
+    );
   });
 
   testWidgets('popup items inset their rounded green highlight', (
@@ -99,7 +152,7 @@ void main() {
     );
     expect(
       ink.overlayColor!.resolve(const {WidgetState.hovered}),
-      DsColors.light.buttonHighlight,
+      DsColors.cream.hover,
     );
     expect(ink.borderRadius, const BorderRadius.all(DsRadius.menuItem));
     expect(
@@ -160,7 +213,7 @@ void main() {
     expect(spaceAbove, spaceBelow);
   });
 
-  test('button highlights keep text legible in both themes', () {
+  test('the palette clears its stated contrast ratios', () {
     double contrast(Color foreground, Color background) {
       final lighter =
           foreground.computeLuminance() > background.computeLuminance()
@@ -171,13 +224,41 @@ void main() {
           (darker.computeLuminance() + 0.05);
     }
 
+    // The floor for anything a person has to read. `faint` is deliberately
+    // absent: it measures about 3:1 and is legal only on disabled controls.
+    for (final (name, foreground, background) in [
+      ('ink on paper', CF.ink, CF.paper),
+      ('ink on inset', CF.ink, CF.inset),
+      ('ink on bar', CF.ink, CF.bar),
+      ('muted on paper', CF.muted, CF.paper),
+      ('muted on inset', CF.muted, CF.inset),
+      ('muted on bar', CF.muted, CF.bar),
+      ('onFern on fern', CF.onFern, CF.fern),
+      ('onFern on fernHover', CF.onFern, CF.fernHover),
+      ('slate on paper', CF.slate, CF.paper),
+      ('success on paper', CF.success, CF.paper),
+      ('warning on paper', CF.warning, CF.paper),
+      ('danger on paper', CF.danger, CF.paper),
+      ('onSage on sage', CF.onSage, CF.sage),
+      ('ink on fernWash', CF.ink, CF.fernWash),
+      ('ink on warningWash', CF.ink, CF.warningWash),
+      ('ink on dangerWash', CF.ink, CF.dangerWash),
+    ]) {
+      expect(
+        contrast(foreground, background),
+        greaterThanOrEqualTo(4.5),
+        reason: '$name is below AA',
+      );
+    }
+  });
+
+  test('a selected row keeps its text legible against the accent', () {
+    // The two places fern is spent both put text on top of it, so the pair
+    // that has to hold is onFern against fern rather than ink against a wash.
     expect(
-      contrast(DsColors.dark.text, DsColors.dark.buttonHighlight),
-      greaterThanOrEqualTo(4.5),
-    );
-    expect(
-      contrast(DsColors.light.text, DsColors.light.buttonHighlight),
-      greaterThanOrEqualTo(4.5),
+      DsColors.cream.onNavSelected,
+      isNot(equals(DsColors.cream.text)),
+      reason: 'ink on a fern block is unreadable; it must invert to cream',
     );
   });
 }

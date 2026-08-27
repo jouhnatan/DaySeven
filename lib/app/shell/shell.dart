@@ -59,7 +59,6 @@ class DsShell extends ConsumerWidget {
       differencesStateProvider.select((state) => state.pendingCount),
     );
     final colors = context.ds;
-    final brightness = Theme.of(context).brightness;
 
     return ValueListenableBuilder<DsAppSettings>(
       valueListenable: DsGlobalSettings.listenable,
@@ -78,13 +77,12 @@ class DsShell extends ConsumerWidget {
           },
           child: Scaffold(
             backgroundColor: showGradient
-                ? gradientShellBackground(brightness)
+                ? gradientShellBackground()
                 : colors.appBackground,
             body: Stack(
               fit: StackFit.expand,
               children: [
-                if (showGradient)
-                  GradientBackground(isDark: brightness == Brightness.dark),
+                if (showGradient) const GradientBackground(),
                 Column(
                   children: [
                     Expanded(

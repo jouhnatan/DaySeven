@@ -2,10 +2,14 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:dayseven/shared/ui/theme.dart';
 
 /// A feature-menu title drawn directly on the application background.
+///
+/// Headings are the one place the slab serif appears. It labels a region; it
+/// never carries a value or a control label.
 class DsMenuHeader extends StatelessWidget {
   const DsMenuHeader(this.label, {super.key}) : _visible = true;
 
@@ -36,6 +40,9 @@ class DsMenuHeader extends StatelessWidget {
 }
 
 /// A rounded pane sitting on the application background.
+///
+/// Flat, by rule: an island is on the page rather than above it, so it is
+/// drawn with a border and never with a shadow.
 class DsIsland extends StatelessWidget {
   const DsIsland({super.key, required this.child, this.editorSurface = false});
 
@@ -59,8 +66,9 @@ class DsIsland extends StatelessWidget {
 
 /// A contrasting section nested inside an island.
 ///
-/// Cards use the shared darker surface and can carry one horizontal separator
-/// where they meet the island's primary content.
+/// Cards use the recessed surface and can carry one hairline separator where
+/// they meet the island's primary content. A card inside a bordered island
+/// does not draw its own border — the system never doubles a border.
 class DsCard extends StatelessWidget {
   const DsCard({super.key, required this.child, this.separator});
 
@@ -88,18 +96,95 @@ class DsCard extends StatelessWidget {
 
 enum DsCardSeparator { top, bottom }
 
+/// Draws the focus ring: 2px fern, offset 2px, matching the control's radius.
+///
+/// The ring is painted by a stack child positioned outside the bounds, so a
+/// control that gains focus does not change size and nothing around it moves.
+/// Focus is never removed, including for mouse users.
+class DsFocusRing extends StatelessWidget {
+  const DsFocusRing({
+    super.key,
+    required this.visible,
+    required this.child,
+    this.borderRadius = const BorderRadius.all(DsRadius.control),
+  });
+
+  final bool visible;
+  final Widget child;
+  final BorderRadiusGeometry borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!visible) return child;
+
+    const inset = DsSize.focusRingOffset + DsSize.focusRing;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        Positioned.fill(
+          left: -inset,
+          top: -inset,
+          right: -inset,
+          bottom: -inset,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: context.ds.fern,
+                  width: DsSize.focusRing,
+                ),
+                borderRadius: borderRadius.add(
+                  const BorderRadius.all(Radius.circular(inset)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Which of the sanctioned button treatments a [DsButton] wears.
+///
+/// There is one primary action per surface. If a second button on screen is
+/// filled with fern, one of the two is wrong.
+enum DsButtonVariant {
+  /// Paper, a hairline edge, ink label. The default, and most buttons.
+  secondary,
+
+  /// Fern fill, cream label, no border. The action that commits.
+  primary,
+
+  /// No fill and no border until hovered. For a command that must not compete.
+  quiet,
+
+  /// Paper and a hairline edge, with a danger label. Destructive commands are
+  /// never filled with fern; a filled destructive button belongs only in the
+  /// confirmation dialog that follows.
+  danger,
+}
+
 /// The bordered, focus-safe button used by the shell and feature controls.
 ///
 /// It deliberately uses gestures rather than a Material button so clicking an
-/// editor toolbar control does not steal the current text selection.
+/// editor toolbar control does not steal the current text selection. It is
+/// still reachable and operable from the keyboard: the editing toolbar opts
+/// its own copies out of the focus traversal instead.
+///
+/// [active] is a *state*, not a hover — a mode that is switched on. It fills
+/// with fern and stands out until it is switched off again.
 class DsButton extends StatefulWidget {
   const DsButton({
     super.key,
     required this.child,
     this.onPressed,
     this.active = false,
+    this.variant = DsButtonVariant.secondary,
     this.highlight,
     this.height,
+    this.semanticLabel,
     this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     this.borderRadius = const BorderRadius.all(DsRadius.control),
   });
@@ -107,10 +192,15 @@ class DsButton extends StatefulWidget {
   final Widget child;
   final VoidCallback? onPressed;
   final bool active;
+  final DsButtonVariant variant;
 
-  /// Overrides the theme's actionable-button highlight.
+  /// Overrides the fill this button takes while hovered.
   final Color? highlight;
   final double? height;
+
+  /// Names the action for assistive technology. Required in practice for an
+  /// icon-only button, which has no text to read.
+  final String? semanticLabel;
   final EdgeInsetsGeometry padding;
   final BorderRadiusGeometry borderRadius;
 
@@ -120,30 +210,114 @@ class DsButton extends StatefulWidget {
 
 class _DsButtonState extends State<DsButton> {
   bool _hovered = false;
+  bool _pressed = false;
+  bool _focused = false;
+
+  void _activate() => widget.onPressed?.call();
 
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
     final enabled = widget.onPressed != null;
+    final active = widget.active;
 
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: DsMotion.hover,
-          height: widget.height,
-          padding: widget.padding,
-          decoration: BoxDecoration(
-            color: (_hovered && enabled) || widget.active
-                ? widget.highlight ?? colors.buttonHighlight
-                : colors.island,
+    final filled = active || widget.variant == DsButtonVariant.primary;
+    final quiet = widget.variant == DsButtonVariant.quiet;
+    final label = switch (widget.variant) {
+      DsButtonVariant.danger => colors.danger,
+      _ => colors.text,
+    };
+
+    final (Color fill, Color edge, Color foreground) = switch (null) {
+      // Disabled fills with the recessed surface rather than fading: there is
+      // no translucency anywhere in this interface.
+      _ when !enabled => (
+        filled ? colors.cardSurface : colors.island,
+        filled ? colors.cardSurface : colors.surfaceOutline,
+        colors.faint,
+      ),
+      _ when filled => (
+        _hovered || _pressed ? colors.fernHover : colors.fern,
+        _hovered || _pressed ? colors.fernHover : colors.fern,
+        colors.onFern,
+      ),
+      _ when quiet => (
+        _pressed
+            ? colors.pressed
+            : _hovered
+            ? colors.hover
+            : Colors.transparent,
+        Colors.transparent,
+        label,
+      ),
+      _ when _pressed => (colors.pressed, colors.muted, label),
+      _ when _hovered => (
+        widget.highlight ?? colors.selection,
+        colors.muted,
+        label,
+      ),
+      _ => (colors.island, colors.surfaceOutline, label),
+    };
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.semanticLabel,
+      child: Focus(
+        canRequestFocus: enabled,
+        onFocusChange: (value) => setState(() => _focused = value),
+        onKeyEvent: (node, event) {
+          if (!enabled || event is! KeyDownEvent) return KeyEventResult.ignored;
+          if (event.logicalKey != LogicalKeyboardKey.enter &&
+              event.logicalKey != LogicalKeyboardKey.space) {
+            return KeyEventResult.ignored;
+          }
+          _activate();
+          return KeyEventResult.handled;
+        },
+        // Hover is tracked directly rather than through the focus system.
+        // A pointer entering a control is not a question about highlight
+        // policy, and routing it through one silently loses the hover state
+        // wherever the framework decides highlights are not being shown.
+        child: MouseRegion(
+          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: DsFocusRing(
+            visible: _focused && enabled,
             borderRadius: widget.borderRadius,
-            border: Border.all(color: colors.surfaceOutline),
+            child: GestureDetector(
+              onTap: widget.onPressed,
+              onTapDown: enabled
+                  ? (_) => setState(() => _pressed = true)
+                  : null,
+              onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+              onTapCancel: enabled
+                  ? () => setState(() => _pressed = false)
+                  : null,
+              child: AnimatedContainer(
+                duration: DsMotion.of(context, DsMotion.hover),
+                curve: DsMotion.curve,
+                height: widget.height,
+                padding: widget.padding,
+                decoration: BoxDecoration(
+                  color: fill,
+                  borderRadius: widget.borderRadius,
+                  border: Border.all(color: edge),
+                ),
+                // Children that state their own colour keep it; those that do
+                // not follow the button, so a toggled-on button reads correctly
+                // without every caller restating it.
+                child: IconTheme.merge(
+                  data: IconThemeData(color: foreground),
+                  child: DefaultTextStyle.merge(
+                    style: TextStyle(color: foreground),
+                    child: widget.child,
+                  ),
+                ),
+              ),
+            ),
           ),
-          child: widget.child,
         ),
       ),
     );
@@ -157,6 +331,8 @@ class DsLabelButton extends StatelessWidget {
     required this.label,
     this.onPressed,
     this.highlight,
+    this.active = false,
+    this.variant = DsButtonVariant.secondary,
     this.horizontalPadding = 14,
     this.height = 34,
   });
@@ -164,6 +340,8 @@ class DsLabelButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
   final Color? highlight;
+  final bool active;
+  final DsButtonVariant variant;
   final double horizontalPadding;
   final double? height;
 
@@ -173,7 +351,10 @@ class DsLabelButton extends StatelessWidget {
     return DsButton(
       onPressed: onPressed,
       highlight: highlight,
+      active: active,
+      variant: variant,
       height: height,
+      semanticLabel: label,
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Center(
         widthFactor: 1,
@@ -183,7 +364,13 @@ class DsLabelButton extends StatelessWidget {
           style: uiTextStyle(
             size: 13,
             weight: 500,
-            color: onPressed == null ? colors.muted : colors.text,
+            color: onPressed == null
+                ? colors.faint
+                : active || variant == DsButtonVariant.primary
+                ? colors.onFern
+                : variant == DsButtonVariant.danger
+                ? colors.danger
+                : colors.text,
           ),
         ),
       ),
@@ -191,7 +378,11 @@ class DsLabelButton extends StatelessWidget {
   }
 }
 
-/// A clickable list/tree row with the shared actionable highlight treatment.
+/// A clickable list or navigation row.
+///
+/// [selected] means *this is where you are*, so it fills solid rather than
+/// washing: position is shown by fill, not by weight. Hover is the neutral
+/// wash every surface shares.
 class DsHoverRow extends StatefulWidget {
   const DsHoverRow({
     super.key,
@@ -199,6 +390,7 @@ class DsHoverRow extends StatefulWidget {
     required this.onTap,
     this.selected = false,
     this.hoverOpacity = 1,
+    this.semanticLabel,
     this.padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     this.margin = EdgeInsets.zero,
   });
@@ -207,6 +399,7 @@ class DsHoverRow extends StatefulWidget {
   final VoidCallback onTap;
   final bool selected;
   final double hoverOpacity;
+  final String? semanticLabel;
   final EdgeInsetsGeometry padding;
   final EdgeInsetsGeometry margin;
 
@@ -216,33 +409,206 @@ class DsHoverRow extends StatefulWidget {
 
 class _DsHoverRowState extends State<DsHoverRow> {
   bool _hovered = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.ds;
-    final hovered = colors.buttonHighlight.withValues(
-      alpha: widget.hoverOpacity,
-    );
+    final foreground = widget.selected ? colors.onNavSelected : colors.text;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: DsMotion.hover,
-          margin: widget.margin,
-          padding: widget.padding,
-          decoration: BoxDecoration(
-            color: widget.selected
-                ? colors.buttonHighlight
-                : _hovered
-                ? hovered
-                : Colors.transparent,
-            borderRadius: const BorderRadius.all(DsRadius.menuItem),
+    return Semantics(
+      button: true,
+      selected: widget.selected,
+      label: widget.semanticLabel,
+      child: Focus(
+        onFocusChange: (value) => setState(() => _focused = value),
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          if (event.logicalKey != LogicalKeyboardKey.enter &&
+              event.logicalKey != LogicalKeyboardKey.space) {
+            return KeyEventResult.ignored;
+          }
+          widget.onTap();
+          return KeyEventResult.handled;
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: DsFocusRing(
+            visible: _focused,
+            borderRadius: const BorderRadius.all(DsRadius.row),
+            child: GestureDetector(
+              onTap: widget.onTap,
+              child: AnimatedContainer(
+                duration: DsMotion.of(context, DsMotion.hover),
+                curve: DsMotion.curve,
+                margin: widget.margin,
+                padding: widget.padding,
+                decoration: BoxDecoration(
+                  color: widget.selected
+                      ? colors.navSelected
+                      : _hovered
+                      ? colors.hover.withValues(
+                          alpha: colors.hover.a * widget.hoverOpacity,
+                        )
+                      : Colors.transparent,
+                  borderRadius: const BorderRadius.all(DsRadius.row),
+                ),
+                child: IconTheme.merge(
+                  data: IconThemeData(color: foreground),
+                  child: DefaultTextStyle.merge(
+                    style: TextStyle(color: foreground),
+                    child: widget.child,
+                  ),
+                ),
+              ),
+            ),
           ),
-          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
+/// One of two to four exclusive options, all of them worth showing.
+///
+/// A framed strip on the recessed surface, with the chosen cell raised out of
+/// it in paper. Selection here is not fern: these are settings rather than
+/// places, and the accent is reserved for where you are and for what commits.
+/// Five or more options belong in a menu instead.
+class DsSegmented<T> extends StatelessWidget {
+  const DsSegmented({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.onPick,
+    this.cellHeight = 30,
+  });
+
+  final T value;
+
+  /// The height of a cell. The strip itself stands 6px taller: two for its
+  /// inner padding and one for its border, on each edge. Set it so the strip
+  /// matches the height of the controls it sits beside — a segmented control
+  /// that is two pixels taller than its neighbours makes the whole row look
+  /// misaligned.
+  final double cellHeight;
+
+  /// Each cell, in the order they are shown. [DsSegmentedOption.semanticLabel]
+  /// names the cell for assistive technology and for its tooltip, which an
+  /// icon-only cell has no text to supply.
+  final List<DsSegmentedOption<T>> options;
+  final ValueChanged<T> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: colors.cardSurface,
+        borderRadius: const BorderRadius.all(DsRadius.menu),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final option in options)
+            _DsSegmentedCell(
+              option: option,
+              selected: option.value == value,
+              height: cellHeight,
+              onPick: () => onPick(option.value),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+@immutable
+class DsSegmentedOption<T> {
+  const DsSegmentedOption({
+    required this.value,
+    required this.child,
+    required this.semanticLabel,
+  });
+
+  final T value;
+  final Widget child;
+  final String semanticLabel;
+}
+
+class _DsSegmentedCell<T> extends StatefulWidget {
+  const _DsSegmentedCell({
+    required this.option,
+    required this.selected,
+    required this.height,
+    required this.onPick,
+  });
+
+  final DsSegmentedOption<T> option;
+  final bool selected;
+  final double height;
+  final VoidCallback onPick;
+
+  @override
+  State<_DsSegmentedCell<T>> createState() => _DsSegmentedCellState<T>();
+}
+
+class _DsSegmentedCellState<T> extends State<_DsSegmentedCell<T>> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    final selected = widget.selected;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: widget.option.semanticLabel,
+      child: Tooltip(
+        message: widget.option.semanticLabel,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            onTap: widget.onPick,
+            child: AnimatedContainer(
+              duration: DsMotion.of(context, DsMotion.hover),
+              curve: DsMotion.curve,
+              height: widget.height,
+              padding: const EdgeInsets.symmetric(horizontal: 9),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? colors.island
+                    : _hovered
+                    ? colors.hover
+                    : Colors.transparent,
+                borderRadius: const BorderRadius.all(DsRadius.row),
+                // The chosen cell is lifted out of the strip. This is the one
+                // shadow in the system that is not on something floating above
+                // the page: without it, paper on the recessed surface is too
+                // fine a distinction to read as "this is the one".
+                boxShadow: selected ? cfSegmentedShadow : null,
+              ),
+              child: IconTheme.merge(
+                data: IconThemeData(
+                  color: selected ? colors.text : colors.muted,
+                ),
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(
+                    color: selected ? colors.text : colors.muted,
+                  ),
+                  child: widget.option.child,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

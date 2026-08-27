@@ -39,7 +39,7 @@ Widget harness(List<ChangeSet> proposals, String documentId) => ProviderScope(
     ),
   ],
   child: MaterialApp(
-    theme: dsTheme(Brightness.dark),
+    theme: dsTheme(),
     home: Consumer(
       builder: (context, ref, _) => Scaffold(
         body: TextButton(

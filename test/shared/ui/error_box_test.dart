@@ -8,7 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../support/test_fonts.dart';
 
 Widget harness(Widget child) => MaterialApp(
-  theme: dsTheme(Brightness.dark),
+  theme: dsTheme(),
   home: Scaffold(
     body: Center(child: SizedBox(width: 320, child: child)),
   ),
@@ -59,9 +59,15 @@ void main() {
     );
     final decoration = container.decoration! as BoxDecoration;
 
-    expect(decoration.borderRadius, const BorderRadius.all(DsRadius.control));
-    expect(decoration.color, DsColors.dark.removal);
+    expect(decoration.borderRadius, const BorderRadius.all(DsRadius.menu));
+    expect(decoration.color, DsColors.cream.removal);
     expect(decoration.border, isNotNull);
+    // The banner's edge is the semantic colour it is describing, held back so
+    // it frames the message rather than competing with it.
+    expect(
+      (decoration.border! as Border).top.color.withValues(alpha: 1),
+      DsColors.cream.danger,
+    );
   });
 
   group('what an error says', () {

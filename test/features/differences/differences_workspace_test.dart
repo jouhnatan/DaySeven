@@ -58,7 +58,7 @@ Widget harness(List<ChangeSet> proposals) => ProviderScope(
     ),
   ],
   child: MaterialApp(
-    theme: dsTheme(Brightness.dark),
+    theme: dsTheme(),
     home: const Scaffold(body: DifferencesWorkspace()),
   ),
 );

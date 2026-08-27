@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.3.21+26
+version: 1.4.0+27
 
 environment:
   sdk: ^3.13.0
@@ -79,13 +79,24 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets:
-    # Noise tiles for the App settings dialog's grain, baked by
-    # scripts/generate_grain.dart because Flutter has no live noise filter.
-    - assets/textures/
-
   fonts:
-    # IBM Plex Sans is the default for application UI and document text.
+    # Instrument Sans carries every word the interface actually reads: control
+    # labels, values, menu items, table cells, helper text. Application chrome
+    # is pinned to it and does not follow the document font preference, so the
+    # interface keeps one voice whatever a document is set in.
+    #
+    # These are the static 400/500/600 instances. Each file names itself
+    # "Instrument Sans Medium"/"SemiBold" internally, but Flutter matches on the
+    # family and weight declared here, exactly as it does for IBM Plex Sans.
+    - family: Instrument Sans
+      fonts:
+        - asset: assets/fonts/instrument_sans/InstrumentSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/instrument_sans/InstrumentSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/instrument_sans/InstrumentSans-SemiBold.ttf
+          weight: 600
+    # IBM Plex Sans remains available as a document typeface.
     - family: IBM Plex Sans
       fonts:
         - asset: assets/fonts/ibm_plex_sans/IBMPlexSans-Light.ttf
@@ -120,13 +131,8 @@ flutter:
         - asset: assets/fonts/archivo/Archivo.ttf
         - asset: assets/fonts/archivo/Archivo-Italic.ttf
           style: italic
-    # Geist Pixel Square is reserved for headings in application chrome.
-    - family: Geist Pixel Square
-      fonts:
-        - asset: assets/fonts/geist_pixel/GeistPixel-Square.ttf
-    # The three families below belong to the App settings dialog alone, which
-    # follows its own design rather than the application theme. Nothing else
-    # should reach for them — see lib/features/app_settings/ui/app_settings_design.dart.
+    # Solway labels regions: window titles, pane titles, section headings. It
+    # never carries a value or a control label.
     - family: Solway
       fonts:
         - asset: assets/fonts/solway/Solway-Regular.ttf
@@ -137,19 +143,3 @@ flutter:
           weight: 700
         - asset: assets/fonts/solway/Solway-ExtraBold.ttf
           weight: 800
-    # Variable on the wght axis, like Archivo above: one file, weight applied
-    # per span with FontVariation rather than by registering static faces.
-    #
-    # Renamed from the upstream SpaceGrotesk[wght].ttf. Flutter percent-encodes
-    # the brackets into the asset key but leaves the file named as it was, so
-    # the runtime lookup misses and the family silently falls back to the
-    # default sans. Tests never caught it because they load the file directly.
-    - family: Space Grotesk
-      fonts:
-        - asset: assets/fonts/space_grotesk/SpaceGrotesk-Variable.ttf
-    # Also variable on wght, and its default instance is Thin (100) rather than
-    # Regular — so it must always be given an explicit weight, or it renders
-    # lighter than anything asked for it.
-    - family: Raleway
-      fonts:
-        - asset: assets/fonts/raleway/Raleway-Variable.ttf

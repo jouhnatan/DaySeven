@@ -3,18 +3,16 @@ import 'package:dayseven/shared/ui/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _harness(Brightness brightness) => MaterialApp(
-  theme: dsTheme(brightness),
-  home: Scaffold(
-    body: GradientBackground(isDark: brightness == Brightness.dark),
-  ),
+Widget _harness() => MaterialApp(
+  theme: dsTheme(),
+  home: const Scaffold(body: GradientBackground()),
 );
 
 void main() {
-  testWidgets('renders five layered radial pools in the light palette', (
+  testWidgets('renders five layered radial pools on the application ground', (
     tester,
   ) async {
-    await tester.pumpWidget(_harness(Brightness.light));
+    await tester.pumpWidget(_harness());
 
     final base = tester.widget<ColoredBox>(
       find.byKey(const Key('gradient-background-base')),
@@ -24,7 +22,7 @@ void main() {
     );
     final gradient = (firstBlob.decoration as BoxDecoration).gradient;
 
-    expect(base.color, const Color(0xFFF7FCF8));
+    expect(base.color, kGradientShellBackground);
     expect(gradient, isA<RadialGradient>());
     for (var index = 0; index < 5; index++) {
       expect(
@@ -32,30 +30,45 @@ void main() {
         findsOneWidget,
       );
     }
-    expect(
-      gradientShellBackground(Brightness.light),
-      kGradientShellBackgroundLight,
-    );
+    expect(gradientShellBackground(), kGradientShellBackground);
   });
 
-  testWidgets('uses the adaptive deep-green palette in dark mode', (
+  testWidgets('draws only in colours the rest of the interface already uses', (
     tester,
   ) async {
-    await tester.pumpWidget(_harness(Brightness.dark));
+    await tester.pumpWidget(_harness());
 
-    final base = tester.widget<ColoredBox>(
-      find.byKey(const Key('gradient-background-base')),
-    );
-    final firstBlob = tester.widget<DecoratedBox>(
-      find.byKey(const Key('gradient-background-blob-0')),
-    );
-    final gradient = (firstBlob.decoration as BoxDecoration).gradient;
+    // The gradient is a sanctioned exception to a system that otherwise has no
+    // gradients at all. It earns that by introducing no new hue: every pool is
+    // a palette colour, so the background can never drift away from the
+    // surfaces standing on it.
+    final palette = <Color>{
+      CF.paper,
+      CF.paperRaised,
+      CF.inset,
+      CF.bar,
+      CF.hairline,
+      CF.line,
+      CF.sage,
+      CF.fernWash,
+      CF.warningWash,
+    };
 
-    expect(base.color, const Color(0xFF0A2117));
-    expect(gradient, isA<RadialGradient>());
-    expect(
-      gradientShellBackground(Brightness.dark),
-      kGradientShellBackgroundDark,
-    );
+    expect(palette, contains(kGradientShellBackground));
+
+    for (var index = 0; index < 5; index++) {
+      final blob = tester.widget<DecoratedBox>(
+        find.byKey(Key('gradient-background-blob-$index')),
+      );
+      final gradient =
+          (blob.decoration as BoxDecoration).gradient! as RadialGradient;
+      for (final color in gradient.colors) {
+        expect(
+          palette,
+          contains(color.withValues(alpha: 1)),
+          reason: 'blob $index introduced a colour outside the palette',
+        );
+      }
+    }
   });
 }

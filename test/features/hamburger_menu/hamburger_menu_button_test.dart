@@ -10,7 +10,7 @@ void main() {
     var selected = false;
     await tester.pumpWidget(
       MaterialApp(
-        theme: dsTheme(Brightness.dark),
+        theme: dsTheme(),
         home: Scaffold(
           body: Align(
             alignment: Alignment.topRight,
@@ -46,7 +46,7 @@ void main() {
     var uncheckedSelected = false;
     await tester.pumpWidget(
       MaterialApp(
-        theme: dsTheme(Brightness.dark),
+        theme: dsTheme(),
         home: Scaffold(
           body: Align(
             alignment: Alignment.topRight,
@@ -83,14 +83,15 @@ void main() {
     expect(
       tester.getTopLeft(find.text('Knowledge Base')).dx,
       tester.getTopLeft(find.text('Views')).dx,
-      reason: 'toggle labels share the normal left-aligned menu edge',
+      reason: 'every label starts at the same edge, checked or not, so the '
+          'list does not shift as items are switched on and off',
     );
     expect(
       tester
           .getCenter(find.byKey(const Key('hamburger-menu-toggle-check-0')))
           .dx,
-      greaterThan(tester.getCenter(find.text('Knowledge Base')).dx),
-      reason: 'the active checkmark is trailing, not leading',
+      lessThan(tester.getTopLeft(find.text('Knowledge Base')).dx),
+      reason: 'a checked item carries its mark in the leading slot',
     );
 
     await tester.tap(find.byKey(const Key('hamburger-menu-toggle-1')));
