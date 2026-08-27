@@ -31,6 +31,11 @@ user explicitly says not to release it, do not stop after committing or
 pushing `main`: publish a build that the running app can discover in App
 settings.
 
+Work done on a branch is not exempt, and neither is work that went through a
+pull request. Merging the PR is not the end of the task: green CI on a PR
+builds the app, it does not publish it, so carry on through the steps below in
+the same task rather than handing back a merged branch nobody can install.
+
 After a change is merged to `main`:
 
 1. **Bump `version:` in `pubspec.yaml`.** Always raise the build number, not
