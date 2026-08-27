@@ -288,7 +288,7 @@ class DsShell extends ConsumerWidget {
 /// feature App settings is not allowed to import.
 void _openAppSettings(
   BuildContext context, {
-  AppSettingsSection section = AppSettingsSection.general,
+  AppSettingsSection section = AppSettingsSection.appearance,
 }) {
   unawaited(
     showAppSettingsDialog(
