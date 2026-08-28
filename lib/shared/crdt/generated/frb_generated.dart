@@ -3,7 +3,6 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
-import 'api/policy.dart';
 import 'api/workspace.dart';
 
 import 'dart:async';
@@ -68,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -2049453698;
+  int get rustContentHash => -1771583082;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -109,23 +108,6 @@ abstract class RustLibApi extends BaseApi {
     required String path,
     required bool protected,
     required List<String> owners,
-  });
-
-  Future<PolicyKeypair> crateApiPolicyPolicyGenerateKeypair();
-
-  Future<Uint8List> crateApiPolicyPolicyPublicKey({
-    required List<int> secretKey,
-  });
-
-  Future<Uint8List> crateApiPolicyPolicySign({
-    required List<int> secretKey,
-    required List<int> message,
-  });
-
-  Future<bool> crateApiPolicyPolicyVerify({
-    required List<int> publicKey,
-    required List<int> message,
-    required List<int> signature,
   });
 
   Future<int?> crateApiWorkspaceTextAbsoluteIndex({
@@ -390,136 +372,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PolicyKeypair> crateApiPolicyPolicyGenerateKeypair() {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 7,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_policy_keypair,
-          decodeErrorData: null,
-        ),
-        constMeta: kCrateApiPolicyPolicyGenerateKeypairConstMeta,
-        argValues: [],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiPolicyPolicyGenerateKeypairConstMeta =>
-      const TaskConstMeta(debugName: "policy_generate_keypair", argNames: []);
-
-  @override
-  Future<Uint8List> crateApiPolicyPolicyPublicKey({
-    required List<int> secretKey,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_list_prim_u_8_loose(secretKey, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 8,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_prim_u_8_strict,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiPolicyPolicyPublicKeyConstMeta,
-        argValues: [secretKey],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiPolicyPolicyPublicKeyConstMeta =>
-      const TaskConstMeta(
-        debugName: "policy_public_key",
-        argNames: ["secretKey"],
-      );
-
-  @override
-  Future<Uint8List> crateApiPolicyPolicySign({
-    required List<int> secretKey,
-    required List<int> message,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_list_prim_u_8_loose(secretKey, serializer);
-          sse_encode_list_prim_u_8_loose(message, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 9,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_prim_u_8_strict,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiPolicyPolicySignConstMeta,
-        argValues: [secretKey, message],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiPolicyPolicySignConstMeta => const TaskConstMeta(
-    debugName: "policy_sign",
-    argNames: ["secretKey", "message"],
-  );
-
-  @override
-  Future<bool> crateApiPolicyPolicyVerify({
-    required List<int> publicKey,
-    required List<int> message,
-    required List<int> signature,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_list_prim_u_8_loose(publicKey, serializer);
-          sse_encode_list_prim_u_8_loose(message, serializer);
-          sse_encode_list_prim_u_8_loose(signature, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 10,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_bool,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiPolicyPolicyVerifyConstMeta,
-        argValues: [publicKey, message, signature],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiPolicyPolicyVerifyConstMeta => const TaskConstMeta(
-    debugName: "policy_verify",
-    argNames: ["publicKey", "message", "signature"],
-  );
-
-  @override
   Future<int?> crateApiWorkspaceTextAbsoluteIndex({
     required BigInt handle,
     required String fileId,
@@ -535,7 +387,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 7,
             port: port_,
           );
         },
@@ -572,7 +424,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 8,
             port: port_,
           );
         },
@@ -607,7 +459,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 9,
             port: port_,
           );
         },
@@ -638,7 +490,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 10,
             port: port_,
           );
         },
@@ -668,7 +520,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 11,
             port: port_,
           );
         },
@@ -703,7 +555,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 12,
             port: port_,
           );
         },
@@ -734,7 +586,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 13,
             port: port_,
           );
         },
@@ -762,7 +614,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 14,
             port: port_,
           );
         },
@@ -790,7 +642,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 15,
             port: port_,
           );
         },
@@ -822,7 +674,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 16,
             port: port_,
           );
         },
@@ -855,7 +707,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 17,
             port: port_,
           );
         },
@@ -930,18 +782,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
-  }
-
-  @protected
-  PolicyKeypair dco_decode_policy_keypair(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return PolicyKeypair(
-      secretKey: dco_decode_list_prim_u_8_strict(arr[0]),
-      publicKey: dco_decode_list_prim_u_8_strict(arr[1]),
-    );
   }
 
   @protected
@@ -1040,14 +880,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PolicyKeypair sse_decode_policy_keypair(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_secretKey = sse_decode_list_prim_u_8_strict(deserializer);
-    var var_publicKey = sse_decode_list_prim_u_8_strict(deserializer);
-    return PolicyKeypair(secretKey: var_secretKey, publicKey: var_publicKey);
-  }
-
-  @protected
   int sse_decode_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint32();
@@ -1142,13 +974,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     if (self != null) {
       sse_encode_box_autoadd_u_32(self, serializer);
     }
-  }
-
-  @protected
-  void sse_encode_policy_keypair(PolicyKeypair self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_list_prim_u_8_strict(self.secretKey, serializer);
-    sse_encode_list_prim_u_8_strict(self.publicKey, serializer);
   }
 
   @protected

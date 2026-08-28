@@ -9,8 +9,3 @@ crate-type = ["cdylib", "staticlib", "lib"]
 [dependencies]
 yrs = "0.23"
 flutter_rust_bridge = "=2.13.0"
-# Policy signing. Kept in Rust rather than adding a Dart dependency: the
-# bridge already exists, and one audited implementation is easier to reason
-# about than a second one on the other side of it.
-ed25519-dalek = { version = "2", features = ["rand_core"] }
-rand = "0.8"
