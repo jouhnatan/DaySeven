@@ -26,7 +26,6 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:dayseven/shared/backend/supabase_client.dart' as backend;
 import 'package:dayseven/shared/crdt/workspace_policy.dart';
 
 /// How long a client accumulates local edits before writing them to Postgres.
@@ -177,15 +176,6 @@ class CrdtProposalOutcome {
   }
 }
 
-/// The signing key a Knowledge Base has published, and the signed policy it
-/// verifies. Either may be absent on a Knowledge Base nobody has signed for.
-class PolicyTrustRoot {
-  const PolicyTrustRoot({this.publicKey, this.document});
-
-  final Uint8List? publicKey;
-  final String? document;
-}
-
 class CrdtSyncRepository {
   CrdtSyncRepository(this.client);
 
@@ -285,86 +275,6 @@ class CrdtSyncRepository {
       },
     );
     return CrdtProposalOutcome.fromRpc(Map<String, Object?>.from(value as Map));
-  }
-
-  /// Publishes the signing key and the document it verifies, together.
-  ///
-  /// Owners and co-owners only, enforced server-side. The two are one call
-  /// because they are one fact: a key published without its document leaves
-  /// every member who cannot sign looking at a policy they can neither find
-  /// nor create, which is not a state any of them can leave.
-  Future<void> publishPolicy({
-    required String kbId,
-    required List<int> publicKey,
-    required String signedDocument,
-    required PolicyRole actorRole,
-  }) async {
-    final values = <String, Object?>{
-      'policy_public_key': _toPostgresBytea(publicKey),
-      'policy_document': signedDocument,
-    };
-
-    if (actorRole == PolicyRole.owner) {
-      // Owners already have an owner-scoped UPDATE policy on this row. Writing
-      // both values in one statement keeps the trust root atomic and avoids a
-      // second SECURITY DEFINER hop that an owner does not need and that can
-      // fail independently of the row policy.
-      // Selecting the id makes a zero-row RLS result an error instead of a
-      // silent success.
-      final updated = await client
-          .from('knowledge_bases')
-          .update(values)
-          .eq('id', kbId)
-          .select('id')
-          .maybeSingle();
-      if (updated == null) {
-        throw const backend.SyncException(
-          'The policy was not published because the Knowledge Base owner row '
-          'was not updated.',
-        );
-      }
-      return;
-    }
-
-    // Co-owners intentionally cannot update the whole Knowledge Base row.
-    // Their narrow SECURITY DEFINER RPC authorizes only these two policy
-    // fields and remains the least-privilege path for that role.
-    await client.rpc(
-      'publish_policy',
-      params: {
-        'p_kb_id': kbId,
-        'p_public_key': values['policy_public_key'],
-        'p_document': values['policy_document'],
-      },
-    );
-  }
-
-  /// What this Knowledge Base has published to verify `policy.json` against,
-  /// and the signed copy itself.
-  ///
-  /// Both are read in one round trip because a client that acted on one
-  /// without the other would be deciding from half a fact.
-  Future<PolicyTrustRoot> policyTrustRoot(String kbId) async {
-    final row = await client
-        .from('knowledge_bases')
-        .select('policy_public_key, policy_document')
-        .eq('id', kbId)
-        .maybeSingle();
-    final document = row?['policy_document'];
-    return PolicyTrustRoot(
-      publicKey: _parseBytea(row?['policy_public_key']),
-      document: document is String && document.isNotEmpty ? document : null,
-    );
-  }
-
-  /// PostgREST renders `bytea` as a hex string with a leading backslash-x.
-  static Uint8List? _parseBytea(Object? value) {
-    if (value is! String || !value.startsWith(r'\x')) return null;
-    final hex = value.substring(2);
-    return Uint8List.fromList([
-      for (var i = 0; i + 1 < hex.length; i += 2)
-        int.parse(hex.substring(i, i + 2), radix: 16),
-    ]);
   }
 
   /// Builds the policy body from the database's independently enforced view.

@@ -787,13 +787,12 @@ void main() {
     );
   });
 
-  testWidgets('settings keeps policy signing recovery with the active room', (
+  testWidgets('settings reports a refused update with the active room', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(700, 950);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    var republished = false;
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -805,8 +804,6 @@ void main() {
               child: KnowledgeBaseSettingsPanel(
                 collaborationStatus: KbCollaborationStatus(
                   state: KbConnectionState.connected,
-                  policyDetail: 'This device does not hold the published key.',
-                  republishPolicy: () async => republished = true,
                   refusalCount: 1,
                   refusalDetail: 'A Reviewer cannot publish directly.',
                 ),
@@ -818,17 +815,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Policy signing needs attention'), findsOneWidget);
     expect(find.text('An incoming update was refused'), findsOneWidget);
     expect(
       find.textContaining('A Reviewer cannot publish directly.'),
       findsOneWidget,
     );
-    final republish = find.byKey(const Key('knowledge-base-republish-policy'));
-    await tester.ensureVisible(republish);
-    await tester.tap(republish);
-    await tester.pumpAndSettle();
-    expect(republished, isTrue);
   });
 
   test(

@@ -40,8 +40,6 @@ class KbCollaborationStatus {
     this.state = KbConnectionState.disconnected,
     this.waitingForPeer = false,
     this.detail,
-    this.policyDetail,
-    this.republishPolicy,
     this.refusalCount = 0,
     this.refusalDetail,
   });
@@ -49,8 +47,6 @@ class KbCollaborationStatus {
   final KbConnectionState state;
   final bool waitingForPeer;
   final String? detail;
-  final String? policyDetail;
-  final Future<void> Function()? republishPolicy;
   final int refusalCount;
   final String? refusalDetail;
 }
@@ -117,7 +113,6 @@ class KnowledgeBaseSettingsPanel extends ConsumerStatefulWidget {
 class _KnowledgeBaseSettingsPanelState
     extends ConsumerState<KnowledgeBaseSettingsPanel> {
   bool _working = false;
-  bool _policyWorking = false;
   String? _error;
 
   Future<void> _setRole(
@@ -180,22 +175,6 @@ class _KnowledgeBaseSettingsPanelState
           .record(DsNotificationKind.share, 'Invite link copied.');
     } catch (error) {
       if (mounted) setState(() => _error = describeError(error));
-    }
-  }
-
-  Future<void> _republishPolicy() async {
-    final republish = widget.collaborationStatus.republishPolicy;
-    if (republish == null) return;
-    setState(() {
-      _policyWorking = true;
-      _error = null;
-    });
-    try {
-      await republish();
-    } catch (error) {
-      if (mounted) setState(() => _error = describeError(error));
-    } finally {
-      if (mounted) setState(() => _policyWorking = false);
     }
   }
 
@@ -293,10 +272,8 @@ class _KnowledgeBaseSettingsPanelState
             status: widget.collaborationStatus,
             shared: role != null && role != KbRole.local,
             working: _working,
-            policyWorking: _policyWorking,
             onShare: canManage && role == KbRole.local ? _share : null,
             onCopyInviteLink: () => _copyInviteLink(kbId),
-            onRepublishPolicy: _republishPolicy,
           ),
           const SizedBox(height: 24),
         ],
@@ -390,20 +367,16 @@ class _ShareKnowledgeBasePanel extends StatelessWidget {
     required this.status,
     required this.shared,
     required this.working,
-    required this.policyWorking,
     required this.onShare,
     required this.onCopyInviteLink,
-    required this.onRepublishPolicy,
   });
 
   final String kbId;
   final KbCollaborationStatus status;
   final bool shared;
   final bool working;
-  final bool policyWorking;
   final VoidCallback? onShare;
   final VoidCallback onCopyInviteLink;
-  final VoidCallback onRepublishPolicy;
 
   @override
   Widget build(BuildContext context) {
@@ -476,28 +449,6 @@ class _ShareKnowledgeBasePanel extends StatelessWidget {
                   ? colors.danger
                   : colors.muted,
             ),
-          ),
-        ],
-        if (status.policyDetail case final detail?) ...[
-          const SizedBox(height: 12),
-          DsStatusBlock(
-            key: const Key('knowledge-base-policy-signing'),
-            icon: Icons.key_outlined,
-            tone: status.republishPolicy == null
-                ? DsTone.success
-                : DsTone.warning,
-            headline: status.republishPolicy == null
-                ? 'Policy signing ready'
-                : 'Policy signing needs attention',
-            detail: detail,
-            trailing: status.republishPolicy == null
-                ? null
-                : DsLabelButton(
-                    key: const Key('knowledge-base-republish-policy'),
-                    label: policyWorking ? 'Republishing…' : 'Republish',
-                    height: DsSize.smallControl,
-                    onPressed: policyWorking ? null : onRepublishPolicy,
-                  ),
           ),
         ],
         if (status.refusalCount > 0) ...[

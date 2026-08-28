@@ -302,7 +302,6 @@ void _openAppSettings(
 Widget _knowledgeBaseSettingsPanel(WidgetRef ref) {
   final collaboration = ref.watch(crdtCollaborationProvider);
   final link = collaboration.linkState;
-  final signing = collaboration.policySigning;
   final state = collaboration.unavailable != null
       ? KbConnectionState.error
       : switch (link.connection) {
@@ -317,15 +316,6 @@ Widget _knowledgeBaseSettingsPanel(WidgetRef ref) {
       state: state,
       waitingForPeer: link.waitingForPeer,
       detail: collaboration.unavailable ?? link.detail,
-      policyDetail: switch (signing.health) {
-        PolicySigningHealth.ready =>
-          'This device holds the key matching the published policy.',
-        PolicySigningHealth.needsRepublish => signing.detail,
-        PolicySigningHealth.notApplicable => null,
-      },
-      republishPolicy: signing.canRepublish
-          ? () => ref.read(crdtCollaborationProvider.notifier).republishPolicy()
-          : null,
       refusalCount: collaboration.refusalCount,
       refusalDetail: collaboration.lastRefusal?.detail,
     ),

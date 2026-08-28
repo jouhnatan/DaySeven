@@ -5,23 +5,11 @@
 /// about that encoding surviving the trip, not about yrs semantics.
 library;
 
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dayseven/shared/crdt/crdt_sync_repository.dart';
-import 'package:dayseven/shared/crdt/workspace_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-class _CapturedRequest {
-  const _CapturedRequest(this.method, this.uri, this.body);
-
-  final String method;
-  final Uri uri;
-  final Object? body;
-}
 
 void main() {
   group('CrdtUpdate', () {
@@ -138,70 +126,6 @@ void main() {
           int.parse(hex.substring(i, i + 2), radix: 16),
       ];
       expect(decoded, all);
-    });
-  });
-
-  group('policy publishing', () {
-    Future<_CapturedRequest> publishAs(PolicyRole role) async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      final captured = Completer<_CapturedRequest>();
-      server.listen((request) async {
-        final rawBody = await utf8.decoder.bind(request).join();
-        captured.complete(
-          _CapturedRequest(
-            request.method,
-            request.uri,
-            rawBody.isEmpty ? null : jsonDecode(rawBody),
-          ),
-        );
-        request.response.headers.contentType = ContentType.json;
-        request.response.write(
-          request.method == 'PATCH' ? '{"id":"kb-1"}' : 'null',
-        );
-        await request.response.close();
-      });
-
-      final client = SupabaseClient(
-        'http://${server.address.host}:${server.port}',
-        'sb_publishable_test',
-        accessToken: () async => 'test-access-token',
-      );
-      try {
-        await CrdtSyncRepository(client).publishPolicy(
-          kbId: 'kb-1',
-          publicKey: const [0, 1, 15, 255],
-          signedDocument: '{"policy":"signed"}',
-          actorRole: role,
-        );
-        return await captured.future;
-      } finally {
-        await client.dispose();
-        await server.close(force: true);
-      }
-    }
-
-    test('an owner atomically updates the RLS-protected row', () async {
-      final request = await publishAs(PolicyRole.owner);
-
-      expect(request.method, 'PATCH');
-      expect(request.uri.path, '/rest/v1/knowledge_bases');
-      expect(request.uri.queryParameters['id'], 'eq.kb-1');
-      expect(request.body, {
-        'policy_public_key': r'\x00010fff',
-        'policy_document': '{"policy":"signed"}',
-      });
-    });
-
-    test('a co-owner keeps the narrow policy RPC', () async {
-      final request = await publishAs(PolicyRole.coOwner);
-
-      expect(request.method, 'POST');
-      expect(request.uri.path, '/rest/v1/rpc/publish_policy');
-      expect(request.body, {
-        'p_kb_id': 'kb-1',
-        'p_public_key': r'\x00010fff',
-        'p_document': '{"policy":"signed"}',
-      });
     });
   });
 }

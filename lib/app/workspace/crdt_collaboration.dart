@@ -29,15 +29,12 @@ import 'package:dayseven/shared/blocks/markdown.dart';
 import 'package:dayseven/shared/crdt/awareness.dart';
 import 'package:dayseven/shared/crdt/collaboration_journal.dart';
 import 'package:dayseven/shared/crdt/crdt_authorization.dart';
-import 'package:dayseven/shared/crdt/generated/api/policy.dart'
-    as policy_crypto;
 import 'package:dayseven/shared/crdt/generated/api/workspace.dart'
     as workspace_api;
 import 'package:dayseven/shared/crdt/crdt_session.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_repository.dart';
+import 'package:dayseven/shared/crdt/policy_source.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
-import 'package:dayseven/shared/crdt/policy_bootstrap.dart';
-import 'package:dayseven/shared/crdt/policy_key_store.dart';
 import 'package:dayseven/shared/crdt/workspace_policy.dart';
 import 'package:dayseven/shared/crdt/workspace_store.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
@@ -45,33 +42,6 @@ import 'package:dayseven/shared/security/security_log.dart';
 
 const String kPolicyFileName = 'policy.json';
 
-enum PolicySigningHealth {
-  /// This account is not responsible for signing the current policy.
-  notApplicable,
-
-  /// This device holds the seed matching the published public key.
-  ready,
-
-  /// The policy verifies, but this device cannot sign the next revision until
-  /// its locally held key is explicitly republished.
-  needsRepublish,
-}
-
-class PolicySigningState {
-  const PolicySigningState({
-    this.health = PolicySigningHealth.notApplicable,
-    this.detail,
-  });
-
-  final PolicySigningHealth health;
-  final String? detail;
-
-  bool get canRepublish => health == PolicySigningHealth.needsRepublish;
-}
-
-/// A proposal decoded from its opaque Yjs payload for the existing Differences
-/// workspace. The SQLite journal retains the binary source of truth; these
-/// documents are short-lived review projections.
 class CrdtProposalReview {
   const CrdtProposalReview({
     required this.proposal,
@@ -99,7 +69,6 @@ class CrdtCollaboration {
     this.linkState = const CrdtLinkState(),
     this.lastRefusal,
     this.refusalCount = 0,
-    this.policySigning = const PolicySigningState(),
   });
 
   final WorkspaceStore? store;
@@ -115,7 +84,6 @@ class CrdtCollaboration {
   final CrdtLinkState linkState;
   final CrdtDecision? lastRefusal;
   final int refusalCount;
-  final PolicySigningState policySigning;
 
   bool get isActive => session != null;
 
@@ -123,7 +91,6 @@ class CrdtCollaboration {
     CrdtLinkState? linkState,
     CrdtDecision? Function()? lastRefusal,
     int? refusalCount,
-    PolicySigningState? policySigning,
   }) => CrdtCollaboration(
     store: store,
     session: session,
@@ -133,7 +100,6 @@ class CrdtCollaboration {
     linkState: linkState ?? this.linkState,
     lastRefusal: lastRefusal == null ? this.lastRefusal : lastRefusal(),
     refusalCount: refusalCount ?? this.refusalCount,
-    policySigning: policySigning ?? this.policySigning,
   );
 
   static const CrdtCollaboration off = CrdtCollaboration();
@@ -160,8 +126,6 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
   StreamSubscription<CrdtDecision>? _refusals;
   String? _boundKbId;
   SecurityLog? _log;
-  final PolicyKeyStore _policyKeys = PolicyKeyStore();
-  Future<void>? _activePolicyRepublish;
 
   /// Rebuilds the live room and reconciles the open Knowledge Base.
   Future<void> refresh() => _bind(_ref.read(kbSessionProvider), force: true);
@@ -199,17 +163,6 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     try {
       final profile = await _profileForPolicy(user);
       await _start(kb: kb, userId: user.id, username: profile.username);
-    } on _PolicySigningRequired catch (error) {
-      await _teardown();
-      _publish(
-        CrdtCollaboration(
-          unavailable: error.message,
-          policySigning: PolicySigningState(
-            health: PolicySigningHealth.needsRepublish,
-            detail: error.message,
-          ),
-        ),
-      );
     } on Object catch (error) {
       // Every failure here is survivable. The Knowledge Base is a folder of
       // Markdown and it keeps working.
@@ -228,8 +181,6 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     final prepared = await _preparePolicy(
       kb: kb,
       kbId: kbId,
-      userId: userId,
-      username: username,
       repository: repository,
     );
     final workspace = await WorkspaceStore.openFor(
@@ -298,7 +249,6 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
         awareness: AwarenessResolver(workspace),
         policy: prepared.policy,
         linkState: session.state,
-        policySigning: prepared.signing,
       ),
     );
 
@@ -323,172 +273,50 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     return Profile(id: user.id, username: username, displayName: username);
   }
 
+  /// The protection rules to run with.
+  ///
+  /// Postgres is the authority and row level security already limits every row
+  /// to members, so reading it with this user's own credentials is what makes
+  /// the answer trustworthy. The cache exists only for a member who cannot
+  /// reach it, and [resolvePolicySource] decides between them.
   Future<_PreparedPolicy> _preparePolicy({
     required KnowledgeBase kb,
     required String kbId,
-    required String userId,
-    required String username,
     required CrdtSyncRepository repository,
   }) async {
     final policyFile = _policyFile(kb);
-    final trust = await repository.policyTrustRoot(kbId);
-    final snapshot = await repository.policySnapshot(kbId);
-    final role = snapshot.roleOf(userId);
-    final maySign = role == PolicyRole.owner || role == PolicyRole.coOwner;
-    final secret = maySign ? await _policyKeys.read(username) : null;
-    final localPublic = secret == null
-        ? null
-        : await policy_crypto.policyPublicKey(secretKey: secret);
-    final keyMatches =
-        trust.publicKey != null &&
-        localPublic != null &&
-        _sameBytes(trust.publicKey!, localPublic);
 
-    final plan = await resolvePolicy(
-      kbId: kbId,
-      snapshot: snapshot,
-      publishedKey: trust.publicKey,
-      publishedDocument: trust.document,
-      localDocument: await policyFile.exists()
+    WorkspacePolicy? authoritative;
+    String? authorityError;
+    try {
+      authoritative = await repository.policySnapshot(kbId);
+    } on Object catch (error) {
+      authorityError = describeError(error);
+    }
+
+    final source = resolvePolicySource(
+      authoritative: authoritative,
+      cachedDocument: await policyFile.exists()
           ? await policyFile.readAsString()
           : null,
-      maySign: maySign,
-      keyMatches: keyMatches,
+      expectedKbId: kbId,
+      authorityError: authorityError,
     );
 
-    switch (plan) {
-      case PolicyAbsent():
-        return const _PreparedPolicy(policy: null);
-
-      case PolicyNeedsPublishing():
-        // loadOrCreate, not the secret read above: this branch is also reached
-        // on a fresh install, where there is nothing to read and establishing
-        // the key is the point. When a seed is already stored it is returned
-        // unchanged, so re-signing under the published key stays re-signing.
-        final keypair = await _policyKeys.loadOrCreate(username);
-        await _publishSignedPolicy(
-          repository: repository,
-          kbId: kbId,
-          file: policyFile,
-          policy: snapshot,
-          keypair: keypair,
-          actorRole: role!,
-        );
-        return _PreparedPolicy(
-          policy: snapshot,
-          signing: const PolicySigningState(health: PolicySigningHealth.ready),
-        );
-
-      case PolicyReady(
-        :final policy,
-        :final documentToCache,
-        :final needsRepublish,
-      ):
-        // Cached so this member can open the workspace again offline. It is
-        // written only after verifying, so what lands on disk is a copy of
-        // something already checked, not something to be checked later.
-        if (documentToCache != null) {
-          try {
-            await _writePolicyDocument(policyFile, documentToCache);
-          } on Object {
-            // An unwritable metadata directory is not a reason to refuse a
-            // policy that verified. It only costs the offline copy.
-          }
+    switch (source) {
+      case PolicyFromAuthority(:final policy, :final documentToCache):
+        try {
+          await _writePolicyDocument(policyFile, documentToCache);
+        } on Object {
+          // An unwritable metadata directory only costs the offline copy.
         }
-        return _PreparedPolicy(
-          policy: policy,
-          signing: switch (needsRepublish) {
-            final detail? => PolicySigningState(
-              health: PolicySigningHealth.needsRepublish,
-              detail: detail,
-            ),
-            // Signing health is not this member's concern to read, and
-            // "ready" would tell them they hold a key they do not have.
-            _ when !maySign => const PolicySigningState(),
-            _ => const PolicySigningState(health: PolicySigningHealth.ready),
-          },
-        );
+        return _PreparedPolicy(policy: policy);
 
-      case PolicyBlocked(:final message, :final thisDeviceCanFixIt):
-        if (thisDeviceCanFixIt) throw _PolicySigningRequired(message);
+      case PolicyFromCache(:final policy):
+        return _PreparedPolicy(policy: policy);
+
+      case PolicyUnavailable(:final message):
         throw WorkspacePolicyException(message);
-    }
-  }
-
-  /// Explicit recovery for a fresh install, lost Keychain item, or a policy
-  /// currently signed by another owner device.
-  Future<void> republishPolicy() {
-    final active = _activePolicyRepublish;
-    if (active != null) return active;
-
-    late final Future<void> operation;
-    operation = _republishPolicy().whenComplete(() {
-      if (identical(_activePolicyRepublish, operation)) {
-        _activePolicyRepublish = null;
-      }
-    });
-    _activePolicyRepublish = operation;
-    return operation;
-  }
-
-  Future<void> _republishPolicy() async {
-    final kb = _ref.read(kbSessionProvider)?.kb;
-    final user = _ref.read(currentUserProvider);
-    if (kb == null || user == null) {
-      throw const WorkspacePolicyException(
-        'Open a shared Knowledge Base and sign in before republishing.',
-      );
-    }
-    final profile = await _republishStep(
-      'loading the signed-in profile',
-      () => _profileForPolicy(user),
-    );
-    final repository = CrdtSyncRepository(supabase);
-    final snapshot = await _republishStep(
-      'reading the current membership and protection rules',
-      () => repository.policySnapshot(kb.manifest.kbId),
-    );
-    final role = snapshot.roleOf(user.id);
-    if (role != PolicyRole.owner && role != PolicyRole.coOwner) {
-      throw const WorkspacePolicyException(
-        'Only an owner or co-owner may republish the policy.',
-      );
-    }
-
-    final keypair = await _republishStep(
-      'loading this device\'s signing key',
-      () => _policyKeys.loadOrCreate(profile.username),
-    );
-    final document = await _republishStep(
-      'signing the current policy',
-      () => snapshot.signedJson(keypair.secretKey),
-    );
-    await _republishStep(
-      'publishing the signed policy',
-      () => repository.publishPolicy(
-        kbId: kb.manifest.kbId,
-        publicKey: keypair.publicKey,
-        signedDocument: document,
-        actorRole: role!,
-      ),
-    );
-    await _republishStep(
-      'saving the verified policy on this device',
-      () => _writePolicyDocument(_policyFile(kb), document),
-    );
-    await _bind(_ref.read(kbSessionProvider), force: true);
-  }
-
-  Future<T> _republishStep<T>(
-    String stage,
-    Future<T> Function() operation,
-  ) async {
-    try {
-      return await operation();
-    } on Object catch (error) {
-      throw SyncException(
-        'Couldn\'t republish while $stage.\n\n${describeError(error)}',
-      );
     }
   }
 
@@ -496,43 +324,11 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     p.join(kb.rootPath, kMetadataDirName, kYjsSubdirName, kPolicyFileName),
   );
 
-  /// Signs [policy], publishes it, and writes it out.
-  ///
-  /// The upload happens first. A local `policy.json` signed by a key the
-  /// server never accepted would verify on this machine and nowhere else,
-  /// which looks like working collaboration to the one person who cannot tell.
-  Future<void> _publishSignedPolicy({
-    required CrdtSyncRepository repository,
-    required String kbId,
-    required File file,
-    required WorkspacePolicy policy,
-    required policy_crypto.PolicyKeypair keypair,
-    required PolicyRole actorRole,
-  }) async {
-    final document = await policy.signedJson(keypair.secretKey);
-    await repository.publishPolicy(
-      kbId: kbId,
-      publicKey: keypair.publicKey,
-      signedDocument: document,
-      actorRole: actorRole,
-    );
-    await _writePolicyDocument(file, document);
-  }
-
   Future<void> _writePolicyDocument(File file, String document) async {
     await file.parent.create(recursive: true);
     final temporary = File('${file.path}.tmp');
     await temporary.writeAsString(document, flush: true);
     await temporary.rename(file.path);
-  }
-
-  static bool _sameBytes(List<int> a, List<int> b) {
-    if (a.length != b.length) return false;
-    var difference = 0;
-    for (var i = 0; i < a.length; i++) {
-      difference |= a[i] ^ b[i];
-    }
-    return difference == 0;
   }
 
   /// The installation's log, shared with sign-in and membership changes, so
@@ -737,17 +533,7 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
 }
 
 class _PreparedPolicy {
-  const _PreparedPolicy({
-    required this.policy,
-    this.signing = const PolicySigningState(),
-  });
+  const _PreparedPolicy({required this.policy});
 
   final WorkspacePolicy? policy;
-  final PolicySigningState signing;
-}
-
-class _PolicySigningRequired implements Exception {
-  const _PolicySigningRequired(this.message);
-
-  final String message;
 }

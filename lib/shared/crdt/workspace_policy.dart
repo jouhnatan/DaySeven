@@ -1,28 +1,32 @@
 /// Who owns this Knowledge Base, and which files are protected.
 ///
-/// Lives at `metadata/yjs/policy.json`, signed by the owner. It travels with
-/// the workspace — through the CRDT, a backup, a copied folder — so by the
-/// time a client reads it, it has been somewhere untrusted. Believing it
-/// unverified would mean taking instructions about who may write from a file
-/// anybody could have edited.
+/// Postgres is the authority. `kb_members.role` and the `documents`
+/// `protection_class` / `minimum_publish_role` columns are the facts, and row
+/// level security already restricts every one of them to members of the
+/// Knowledge Base. A client reads those rows with its own credentials and
+/// builds the policy from them, so what it holds came from the authority over
+/// an authenticated channel rather than from a file that travelled with the
+/// workspace.
 ///
-/// **Nothing here is a permission check on its own.** A client verifying its
-/// own policy is advisory: it stops an honest client from broadcasting an edit
-/// that would be refused, and stops a tampered file from quietly widening
-/// somebody's rights. The enforcement that matters is in Postgres, which
-/// checks the same rules against `kb_members` and `documents` on every write
-/// and does not consult this file at all.
+/// A copy is cached at `metadata/yjs/policy.json` purely so a member who
+/// cannot reach the network can keep working with the protection rules they
+/// last saw. It carries no signature because nothing trusts it on its own: a
+/// client that has never reached the authority has no policy at all, and
+/// refuses to start collaborating rather than assuming nothing is protected.
 ///
-/// The signed bytes are the canonical JSON of everything except the signature,
-/// with keys sorted and no insignificant whitespace. Two clients must agree
-/// byte-for-byte on what was signed, so the encoding is pinned here rather
-/// than left to whatever `jsonEncode` happens to do with map ordering.
+/// **Nothing here is a permission check on its own.** The relay decides who
+/// may write by verifying membership against Postgres on every connection,
+/// and re-checking it while the socket is open. What this file adds is which
+/// *files* are protected, which the relay cannot know because it never decodes
+/// a CRDT payload. That is what routes an edit to a protected file into a
+/// proposal instead of a direct broadcast.
+///
+/// Keys are emitted in a fixed order and collections sorted, so the same
+/// policy produces the same bytes on every machine and in every Dart version.
 library;
 
 import 'dart:convert';
 import 'dart:typed_data';
-
-import 'package:dayseven/shared/crdt/generated/api/policy.dart' as crypto;
 
 /// How much authority a member has, lowest first. Mirrors the database's
 /// `kb_members.role` and the ranking in `private.publish_role_rank`.
@@ -148,12 +152,8 @@ class WorkspacePolicy {
     return true;
   }
 
-  /// The exact bytes that get signed.
-  ///
-  /// Keys are emitted in a fixed order and collections are sorted, so the same
-  /// policy produces the same bytes on every machine and in every Dart
-  /// version. A signature over "whatever jsonEncode did today" is a signature
-  /// that stops verifying when something unrelated changes.
+  /// The canonical encoding, used for the offline cache and for comparing two
+  /// policies byte for byte.
   Uint8List canonicalBytes() => Uint8List.fromList(
     utf8.encode(
       jsonEncode({
@@ -173,18 +173,8 @@ class WorkspacePolicy {
     ),
   );
 
-  /// Signs this policy and renders the file that goes on disk.
-  Future<String> signedJson(List<int> ownerSecretKey) async {
-    final body = canonicalBytes();
-    final signature = await crypto.policySign(
-      secretKey: ownerSecretKey,
-      message: body,
-    );
-    return jsonEncode({
-      'policy': jsonDecode(utf8.decode(body)),
-      'signature': base64Encode(signature),
-    });
-  }
+  /// Renders the offline cache file.
+  String cacheJson() => utf8.decode(canonicalBytes());
 
   static WorkspacePolicy _fromBody(Map<String, Object?> body) {
     final version = body['version'];
@@ -234,18 +224,17 @@ class WorkspacePolicy {
     );
   }
 
-  /// Parses and verifies. Returns a policy only when the signature is this
-  /// exact document signed by [ownerPublicKey].
+  /// Reads a cached policy written by [cacheJson].
   ///
-  /// Throws rather than returning null: an unverifiable policy is not an
-  /// absent one, and the two must never be handled by the same branch. A
-  /// missing file means a Knowledge Base with no protected content; a file
-  /// that fails to verify means somebody changed it.
-  static Future<WorkspacePolicy> verified(
+  /// Throws rather than returning null: a damaged cache is not an absent one,
+  /// and the two must never take the same branch. No cache at all means this
+  /// device has never reached the authority, which stops collaboration; a
+  /// cache that will not parse means something rewrote it, and believing it
+  /// would mean taking protection rules from a file anybody could have edited.
+  static WorkspacePolicy fromCache(
     String json, {
-    required List<int> ownerPublicKey,
     required String expectedKbId,
-  }) async {
+  }) {
     final Object? parsed;
     try {
       parsed = jsonDecode(json);
@@ -255,53 +244,15 @@ class WorkspacePolicy {
     if (parsed is! Map) {
       throw const WorkspacePolicyException('policy.json is not an object');
     }
-    final body = parsed['policy'];
-    final signature = parsed['signature'];
-    if (body is! Map || signature is! String) {
-      throw const WorkspacePolicyException(
-        'policy.json is missing its body or signature',
-      );
-    }
 
-    final policy = _fromBody(Map<String, Object?>.from(body));
+    final policy = _fromBody(Map<String, Object?>.from(parsed));
 
-    // Verify before believing anything, including which KB this is for.
-    final Uint8List signatureBytes;
-    try {
-      signatureBytes = base64Decode(signature);
-    } on FormatException {
-      throw const WorkspacePolicyException(
-        'policy.json signature is malformed',
-      );
-    }
-
-    final bool ok;
-    try {
-      ok = await crypto.policyVerify(
-        publicKey: ownerPublicKey,
-        message: policy.canonicalBytes(),
-        signature: signatureBytes,
-      );
-    } on Object catch (error) {
-      // A signature that *could not be checked* is not a signature that
-      // failed. Both refuse the policy, but they are different sentences.
-      throw WorkspacePolicyException(
-        'policy.json signature could not be checked: $error',
-      );
-    }
-    if (!ok) {
-      throw const WorkspacePolicyException(
-        'policy.json does not match its signature. It has been modified since '
-        'the owner signed it, and none of its permissions can be trusted.',
-      );
-    }
-
-    // A validly signed policy for a *different* Knowledge Base is a real
-    // attack: copy a folder's policy into another workspace and inherit its
-    // ownership. The signature proves who wrote it, not what it is for.
+    // A cached policy for a *different* Knowledge Base is a real mix-up: copy
+    // a folder's cache into another workspace and it would carry that
+    // workspace's ownership and protection across with it.
     if (policy.kbId != expectedKbId) {
       throw WorkspacePolicyException(
-        'policy.json is signed for Knowledge Base ${policy.kbId}, not '
+        'policy.json is cached for Knowledge Base ${policy.kbId}, not '
         '$expectedKbId.',
       );
     }
