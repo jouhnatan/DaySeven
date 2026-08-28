@@ -1,5 +1,4 @@
-/// Settings for the connection between an on-disk Knowledge Base and its
-/// optional Supabase mirror.
+/// Settings for sharing an on-disk Knowledge Base with collaborators.
 ///
 /// These live inside App settings rather than in a dialog of their own: they
 /// are settings, and the application has one place for those. What is left
@@ -8,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
@@ -26,6 +26,42 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_sync_button.d
 import 'package:path/path.dart' as p;
 
 const double kKnowledgeBaseControlHeight = 38;
+
+const String _crdtRelayHost = 'dayseven-server.onrender.com';
+
+/// The small, feature-facing vocabulary used by the composition root to pass
+/// live relay state into settings without coupling this feature to the CRDT
+/// transport implementation in `app/`.
+enum KbConnectionState { connected, connecting, disconnected, error }
+
+@immutable
+class KbCollaborationStatus {
+  const KbCollaborationStatus({
+    this.state = KbConnectionState.disconnected,
+    this.waitingForPeer = false,
+    this.detail,
+    this.policyDetail,
+    this.republishPolicy,
+    this.refusalCount = 0,
+    this.refusalDetail,
+  });
+
+  final KbConnectionState state;
+  final bool waitingForPeer;
+  final String? detail;
+  final String? policyDetail;
+  final Future<void> Function()? republishPolicy;
+  final int refusalCount;
+  final String? refusalDetail;
+}
+
+@visibleForTesting
+String buildKnowledgeBaseInviteUri(String kbId) => Uri(
+  scheme: 'wss',
+  host: _crdtRelayHost,
+  path: '/ws',
+  queryParameters: {'room': kbId},
+).toString();
 
 /// The compact gear beside the active Knowledge Base selector.
 class KnowledgeBaseSettingsButton extends ConsumerWidget {
@@ -66,7 +102,12 @@ class KnowledgeBaseSettingsButton extends ConsumerWidget {
 
 /// The Knowledge Base section of App settings.
 class KnowledgeBaseSettingsPanel extends ConsumerStatefulWidget {
-  const KnowledgeBaseSettingsPanel({super.key});
+  const KnowledgeBaseSettingsPanel({
+    super.key,
+    this.collaborationStatus = const KbCollaborationStatus(),
+  });
+
+  final KbCollaborationStatus collaborationStatus;
 
   @override
   ConsumerState<KnowledgeBaseSettingsPanel> createState() =>
@@ -76,6 +117,7 @@ class KnowledgeBaseSettingsPanel extends ConsumerStatefulWidget {
 class _KnowledgeBaseSettingsPanelState
     extends ConsumerState<KnowledgeBaseSettingsPanel> {
   bool _working = false;
+  bool _policyWorking = false;
   String? _error;
 
   Future<void> _setRole(
@@ -127,6 +169,36 @@ class _KnowledgeBaseSettingsPanelState
     }
   }
 
+  Future<void> _copyInviteLink(String kbId) async {
+    try {
+      await Clipboard.setData(
+        ClipboardData(text: buildKnowledgeBaseInviteUri(kbId)),
+      );
+      if (!mounted) return;
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.share, 'Invite link copied.');
+    } catch (error) {
+      if (mounted) setState(() => _error = describeError(error));
+    }
+  }
+
+  Future<void> _republishPolicy() async {
+    final republish = widget.collaborationStatus.republishPolicy;
+    if (republish == null) return;
+    setState(() {
+      _policyWorking = true;
+      _error = null;
+    });
+    try {
+      await republish();
+    } catch (error) {
+      if (mounted) setState(() => _error = describeError(error));
+    } finally {
+      if (mounted) setState(() => _policyWorking = false);
+    }
+  }
+
   Future<void> _deleteShared() async {
     final colors = context.ds;
     final confirmed = await showDialog<bool>(
@@ -150,10 +222,10 @@ class _KnowledgeBaseSettingsPanelState
         ],
         children: [
           Text(
-            'This permanently deletes the Supabase copy, invitations, '
-            'revision history and pending proposals. It does not delete or '
-            'change the Knowledge Base folder or any files on this computer. '
-            'You can share it again later.',
+            'This permanently removes shared membership, invitations and '
+            'remote access. It does not delete or change the Knowledge Base '
+            'folder or any files on this computer. You can share it again '
+            'later.',
             style: uiTextStyle(size: 13, color: colors.muted),
           ),
         ],
@@ -174,7 +246,7 @@ class _KnowledgeBaseSettingsPanelState
           .read(notificationStoreProvider.notifier)
           .record(
             DsNotificationKind.share,
-            'Supabase connection removed. Local files were not changed.',
+            'Shared access removed. Local files were not changed.',
           );
     } catch (error) {
       if (!mounted) return;
@@ -215,6 +287,19 @@ class _KnowledgeBaseSettingsPanelState
           },
         ),
         const SizedBox(height: 24),
+        if (kbId != null) ...[
+          _ShareKnowledgeBasePanel(
+            kbId: kbId,
+            status: widget.collaborationStatus,
+            shared: role != null && role != KbRole.local,
+            working: _working,
+            policyWorking: _policyWorking,
+            onShare: canManage && role == KbRole.local ? _share : null,
+            onCopyInviteLink: () => _copyInviteLink(kbId),
+            onRepublishPolicy: _republishPolicy,
+          ),
+          const SizedBox(height: 24),
+        ],
         if (kbId != null && role != null && role != KbRole.local) ...[
           _CollaboratorsCard(
             collaborators: collaborators,
@@ -263,18 +348,7 @@ class _KnowledgeBaseSettingsPanelState
             style: uiTextStyle(size: 13, color: colors.muted),
           )
         else ...[
-          if (role == KbRole.local)
-            _SettingsAction(
-              key: const Key('share-knowledge-base-setting'),
-              label: _working ? 'Sharing…' : 'Share Knowledge Base',
-              description: _working
-                  ? 'Connecting to Supabase and publishing this Knowledge Base.'
-                  : 'Creates the Supabase copy used for invitations, revisions '
-                        'and Differences. Nothing is moved off this computer.',
-              onPressed: _working ? null : _share,
-            ),
           if (role == KbRole.local || role == KbRole.owner) ...[
-            const SizedBox(height: 24),
             Text(
               'Danger Zone',
               style: uiTextStyle(size: 15, weight: 500, color: colors.text),
@@ -285,8 +359,8 @@ class _KnowledgeBaseSettingsPanelState
               first: true,
               label: 'Delete Knowledge Base',
               helper:
-                  'Deletes the Supabase copy and collaboration history, '
-                  'but not your local files.',
+                  'Removes shared access and invitations, but not your local '
+                  'files.',
               trailing: DsLabelButton(
                 label: 'Delete',
                 variant: DsButtonVariant.danger,
@@ -306,6 +380,190 @@ class _KnowledgeBaseSettingsPanelState
           DsErrorBox(_error!),
         ],
       ],
+    );
+  }
+}
+
+class _ShareKnowledgeBasePanel extends StatelessWidget {
+  const _ShareKnowledgeBasePanel({
+    required this.kbId,
+    required this.status,
+    required this.shared,
+    required this.working,
+    required this.policyWorking,
+    required this.onShare,
+    required this.onCopyInviteLink,
+    required this.onRepublishPolicy,
+  });
+
+  final String kbId;
+  final KbCollaborationStatus status;
+  final bool shared;
+  final bool working;
+  final bool policyWorking;
+  final VoidCallback? onShare;
+  final VoidCallback onCopyInviteLink;
+  final VoidCallback onRepublishPolicy;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    final inviteUri = buildKnowledgeBaseInviteUri(kbId);
+
+    return Column(
+      key: const Key('share-knowledge-base-panel'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Share Knowledge Base',
+                style: uiTextStyle(size: 15, weight: 500, color: colors.text),
+              ),
+            ),
+            _ConnectionBadge(state: status.state),
+          ],
+        ),
+        const SizedBox(height: 8),
+        DsSettingRow(
+          key: const Key('knowledge-base-room-id'),
+          first: true,
+          label: 'Room ID',
+          helper: kbId,
+          trailing: DsLabelButton(
+            key: const Key('copy-knowledge-base-invite-link'),
+            label: 'Copy Invite Link',
+            height: DsSize.smallControl,
+            onPressed: onCopyInviteLink,
+          ),
+        ),
+        Text(
+          'This link identifies the room; it is not a credential. '
+          'An invitation and accepted membership are still required.',
+          style: uiTextStyle(size: 11, color: colors.muted),
+        ),
+        if (!shared) ...[
+          const SizedBox(height: 12),
+          _SettingsAction(
+            key: const Key('share-knowledge-base-setting'),
+            label: working ? 'Sharing…' : 'Share',
+            description: working
+                ? 'Creating the collaboration membership for this room.'
+                : 'Invite collaborators while files remain on this computer.',
+            onPressed: working ? null : onShare,
+          ),
+        ],
+        if (status.waitingForPeer) ...[
+          const SizedBox(height: 12),
+          const DsStatusBlock(
+            key: Key('knowledge-base-waiting-for-peer'),
+            icon: Icons.people_outline,
+            tone: DsTone.warning,
+            headline: 'Waiting for a collaborator to come online',
+            detail:
+                'Local files are ready. An existing collaborator is needed '
+                'to provide the current shared state.',
+          ),
+        ] else if (status.detail case final detail?) ...[
+          const SizedBox(height: 8),
+          Text(
+            detail,
+            key: const Key('knowledge-base-connection-detail'),
+            style: uiTextStyle(
+              size: 11,
+              color: status.state == KbConnectionState.error
+                  ? colors.danger
+                  : colors.muted,
+            ),
+          ),
+        ],
+        if (status.policyDetail case final detail?) ...[
+          const SizedBox(height: 12),
+          DsStatusBlock(
+            key: const Key('knowledge-base-policy-signing'),
+            icon: Icons.key_outlined,
+            tone: status.republishPolicy == null
+                ? DsTone.success
+                : DsTone.warning,
+            headline: status.republishPolicy == null
+                ? 'Policy signing ready'
+                : 'Policy signing needs attention',
+            detail: detail,
+            trailing: status.republishPolicy == null
+                ? null
+                : DsLabelButton(
+                    key: const Key('knowledge-base-republish-policy'),
+                    label: policyWorking ? 'Republishing…' : 'Republish',
+                    height: DsSize.smallControl,
+                    onPressed: policyWorking ? null : onRepublishPolicy,
+                  ),
+          ),
+        ],
+        if (status.refusalCount > 0) ...[
+          const SizedBox(height: 12),
+          DsStatusBlock(
+            key: const Key('knowledge-base-refused-update'),
+            icon: Icons.gpp_maybe_outlined,
+            tone: DsTone.danger,
+            headline: 'An incoming update was refused',
+            detail:
+                '${status.refusalCount} update(s) were kept out of this '
+                'workspace. '
+                '${status.refusalDetail ?? 'The collaboration policy did not allow them.'}',
+          ),
+        ],
+        // Keep the canonical value in the semantics tree even when it is too
+        // long to repeat visually. This also makes the copied target auditable.
+        Semantics(
+          label: 'Invite URI $inviteUri',
+          child: const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+}
+
+class _ConnectionBadge extends StatelessWidget {
+  const _ConnectionBadge({required this.state});
+
+  final KbConnectionState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    final (label, color) = switch (state) {
+      KbConnectionState.connected => ('Connected', colors.success),
+      KbConnectionState.connecting => ('Connecting', colors.pending),
+      KbConnectionState.disconnected => ('Disconnected', colors.muted),
+      KbConnectionState.error => ('Error', colors.danger),
+    };
+
+    return Semantics(
+      label: 'Connection status: $label',
+      child: Container(
+        key: const Key('knowledge-base-connection-status'),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: const BorderRadius.all(DsRadius.pill),
+          border: Border.all(color: color),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: uiTextStyle(size: 11, color: color, weight: 500),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -339,10 +597,7 @@ class _SyncStatusRow extends StatelessWidget {
             children: [
               Text(
                 'Sync this knowledge base',
-                style: uiTextStyle(
-                  size: 13,
-                  color: colors.text,
-                ),
+                style: uiTextStyle(size: 13, color: colors.text),
               ),
               const SizedBox(height: 2),
               Row(
@@ -501,8 +756,7 @@ class _CollaboratorsCard extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 6,
                               ),
-                              semanticLabel:
-                                  'Remove ${members[i].displayName}',
+                              semanticLabel: 'Remove ${members[i].displayName}',
                               onPressed: () => onRemove(members[i].userId),
                               child: Icon(
                                 Icons.close,
@@ -530,14 +784,11 @@ class _CollaboratorsCard extends StatelessWidget {
                 onTap: onInvite,
                 child: Text(
                   'Invite',
-                  style: uiTextStyle(
-                    size: 13,
-                    weight: 500,
-                    color: colors.link,
-                  ).copyWith(
-                    decoration: TextDecoration.underline,
-                    decorationColor: colors.link,
-                  ),
+                  style: uiTextStyle(size: 13, weight: 500, color: colors.link)
+                      .copyWith(
+                        decoration: TextDecoration.underline,
+                        decorationColor: colors.link,
+                      ),
                 ),
               ),
             ),
@@ -619,11 +870,7 @@ class _KbSwitcher extends ConsumerWidget {
       children: [
         Text(
           'Knowledge Base',
-          style: uiTextStyle(
-            size: 15,
-            weight: 500,
-            color: colors.text,
-          ),
+          style: uiTextStyle(size: 15, weight: 500, color: colors.text),
         ),
         const SizedBox(height: 8),
         Row(
@@ -676,11 +923,7 @@ class _KbSwitcher extends ConsumerWidget {
                           style: uiTextStyle(size: 13, color: colors.text),
                         ),
                         const SizedBox(width: 6),
-                        Icon(
-                          Icons.expand_more,
-                          size: 16,
-                          color: colors.muted,
-                        ),
+                        Icon(Icons.expand_more, size: 16, color: colors.muted),
                       ],
                     ),
                   ),

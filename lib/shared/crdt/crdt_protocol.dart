@@ -1,385 +1,411 @@
-/// The wire protocol for `crdt:<kbId>`, and the rules for not trusting it.
+/// DaySeven relay protocol v1.
 ///
-/// Everything arriving on this topic was written by another client. Realtime
-/// authenticates the sender and RLS proves they are a member with an editing
-/// role, and that is the entire extent of what is known about a message. The
-/// bytes inside are unverified, may be malformed, may be enormous, may be a
-/// replay, and may be a deliberate attempt to exhaust this process.
+/// Every WebSocket message is binary and has this layout:
 ///
-/// So the shape here is deliberately narrow:
+///     version:u8 | opcode:u8 | metadataLength:u32be | metadata:utf8-json | body
 ///
-///   * a **closed set** of message types — anything else is dropped unread;
-///   * payloads that are **file UUIDs and opaque CRDT bytes only** — never a
-///     path, a command, a URL, or anything that gets interpreted;
-///   * a **size limit checked before decoding**, not after;
-///   * **chunking**, because Realtime caps a payload at 256 KB and a first
-///     sync of a real Knowledge Base is larger than that;
-///   * **replay rejection**, because a resent chunk from a hostile or merely
-///     confused peer must not be able to reassemble into something new.
-///
-/// Nothing in this file evaluates, deserialises into a class by name, resolves
-/// a path, or performs I/O. It turns bytes into either a `CrdtMessage` or
-/// nothing at all.
+/// The relay authenticates the socket and replaces `senderId` and
+/// `senderRole` before forwarding a frame. Clients therefore never trust a
+/// sender identity that originated in another client payload.
 library;
 
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
-/// Realtime's hard ceiling for one broadcast payload.
-const int kMaxRealtimePayloadBytes = 256 * 1024;
-
-/// Raw bytes per chunk before base64, which adds about a third. 128 KB encodes
-/// to ~171 KB, leaving room for the JSON envelope inside the 256 KB ceiling.
+const int kCrdtProtocolVersion = 1;
+const int kCrdtEnvelopeHeaderBytes = 6;
+const int kMaxCrdtMetadataBytes = 16 * 1024;
+const int kMaxStateVectorBytes = 64 * 1024;
 const int kMaxChunkPayloadBytes = 128 * 1024;
-
-/// The largest reassembled update this peer will build. A first sync of a big
-/// Knowledge Base is legitimately megabytes; anything past this is a peer
-/// trying to make us allocate.
-const int kMaxAssembledBytes = 8 * 1024 * 1024;
-
-/// A single non-chunked update. Matches the server's `yjs_max_update_bytes`.
-const int kMaxSingleUpdateBytes = 1024 * 1024;
-
-/// Control messages carry identifiers, never content, so they are small. A
-/// large one is a malformed or hostile one.
-const int kMaxControlPayloadBytes = 16 * 1024;
-
-/// How many partially-received chunk sets to hold at once. Past this the
-/// oldest is dropped: a peer that starts many assemblies and finishes none is
-/// otherwise an unbounded memory cost.
+const int kMaxChunkCount = 400;
+const int kMaxAssembledBytes = 50 * 1024 * 1024;
+const int kMaxProposalInventoryIds = 256;
+const int kMaxMessageIdBytes = 128;
 const int kMaxPendingAssemblies = 4;
-
-/// An assembly that has not completed in this long is abandoned. The durable
-/// log makes anything lost recoverable, so waiting longer buys nothing.
 const Duration kAssemblyTimeout = Duration(seconds: 30);
-
-/// How many recently-seen message ids to remember for replay rejection.
 const int kReplayWindow = 512;
 
-/// The closed set. A message whose type is not one of these is dropped without
-/// being decoded — that is the point of an allowlist rather than a blocklist.
-enum CrdtMessageType {
-  /// "Here is my state vector; send me what I am missing."
-  syncStep1('sync-step-1'),
+/// Opcodes are part of the server contract. Do not renumber them.
+enum CrdtOpcode {
+  peerJoined(0x01),
+  peerLeft(0x02),
+  stateVectorRequest(0x03),
+  crdtUpdate(0x04),
+  proposalInventory(0x05),
+  proposalRequest(0x06),
+  proposalData(0x07),
+  proposalResolution(0x08),
+  presence(0x09),
+  ack(0x0a),
+  error(0x0b);
 
-  /// The reply to [syncStep1]: everything the asker lacked.
-  syncStep2('sync-step-2'),
+  const CrdtOpcode(this.wire);
+  final int wire;
 
-  /// An incremental update from a peer's ongoing editing.
-  crdtUpdate('crdt-update'),
-
-  /// Cursor, selection and active file. Ephemeral.
-  awareness('awareness'),
-
-  ping('ping'),
-  pong('pong'),
-
-  /// A change to a protected file, which cannot be applied directly and
-  /// travels as a reviewable proposal instead.
-  proposalUpdate('proposal-update');
-
-  const CrdtMessageType(this.wire);
-
-  /// The value that actually crosses the wire. Kept separate from the Dart
-  /// name so renaming the enum cannot silently break compatibility with a
-  /// build already in the field.
-  final String wire;
-
-  static CrdtMessageType? fromWire(Object? value) {
-    if (value is! String) return null;
-    for (final type in CrdtMessageType.values) {
-      if (type.wire == value) return type;
+  static CrdtOpcode? fromWire(int value) {
+    for (final opcode in values) {
+      if (opcode.wire == value) return opcode;
     }
     return null;
   }
 }
 
-/// One decoded, size-checked, non-replayed message.
-class CrdtMessage {
-  const CrdtMessage({
-    required this.type,
-    required this.messageId,
-    required this.senderId,
-    required this.payload,
-  });
+class CrdtEnvelope {
+  CrdtEnvelope({
+    required this.opcode,
+    required Map<String, Object?> metadata,
+    Uint8List? body,
+  }) : metadata = Map.unmodifiable(metadata),
+       body = body ?? Uint8List(0);
 
-  final CrdtMessageType type;
+  final CrdtOpcode opcode;
+  final Map<String, Object?> metadata;
+  final Uint8List body;
 
-  /// Unique per message per sender. Used to reject replays, and to group the
-  /// chunks of one logical message.
-  final String messageId;
-
-  final String senderId;
-
-  /// Opaque to this layer: CRDT bytes for the sync types, UTF-8 JSON for
-  /// awareness. Never a path or a command.
-  final Uint8List payload;
-
-  int get byteSize => payload.length;
+  String? get messageId =>
+      metadata['messageId'] is String ? metadata['messageId']! as String : null;
+  String? get senderId =>
+      metadata['senderId'] is String ? metadata['senderId']! as String : null;
+  String? get senderRole => metadata['senderRole'] is String
+      ? metadata['senderRole']! as String
+      : null;
 }
 
-/// A message being sent, already split into wire-sized frames.
-class CrdtFrame {
-  const CrdtFrame(this.payload);
-
-  /// Ready to hand to `sendBroadcastMessage`.
-  final Map<String, Object?> payload;
-}
-
-/// Splits an outbound message into frames that fit Realtime's ceiling.
-///
-/// A message small enough to travel whole still gets a chunk envelope, so the
-/// receiver has exactly one code path and a single-frame message is not a
-/// special case that only gets tested by accident.
-List<CrdtFrame> encodeMessage({
-  required CrdtMessageType type,
-  required String messageId,
-  required String senderId,
-  required List<int> payload,
-  int maxChunkBytes = kMaxChunkPayloadBytes,
-}) {
-  assert(maxChunkBytes > 0);
-  final total = payload.isEmpty
-      ? 1
-      : (payload.length + maxChunkBytes - 1) ~/ maxChunkBytes;
-  return [
-    for (var index = 0; index < total; index++)
-      CrdtFrame({
-        't': type.wire,
-        'mid': messageId,
-        'sender': senderId,
-        'i': index,
-        'n': total,
-        'b': base64Encode(
-          payload.sublist(
-            index * maxChunkBytes,
-            ((index + 1) * maxChunkBytes).clamp(0, payload.length),
-          ),
-        ),
-      }),
-  ];
-}
-
-/// Why a frame was dropped. Surfaced so phase 10 can log it: a peer producing
-/// these steadily is doing something worth knowing about.
 enum CrdtRejection {
-  unknownType,
+  wrongFrameType,
+  wrongVersion,
+  unknownOpcode,
   malformed,
   tooLarge,
   replay,
   incoherentChunking,
-  assemblyAbandoned,
 }
 
-/// A frame is one of exactly three things, and callers must handle all three:
-/// it completed a message, it was refused, or it was a valid chunk of
-/// something still arriving. Collapsing the third into either of the others is
-/// how a chunked message ends up logged as an attack or applied half-formed.
-class CrdtDecodeResult {
-  const CrdtDecodeResult.message(this.message)
-    : rejection = null,
-      senderId = null;
-  const CrdtDecodeResult.rejected(this.rejection, {this.senderId})
-    : message = null;
-  const CrdtDecodeResult.incomplete({this.senderId})
-    : message = null,
-      rejection = null;
+class CrdtProtocolException implements Exception {
+  const CrdtProtocolException(this.rejection, this.message);
+  final CrdtRejection rejection;
+  final String message;
 
-  /// Non-null only when a complete message was assembled.
-  final CrdtMessage? message;
-
-  /// Non-null when the frame was refused.
-  final CrdtRejection? rejection;
-
-  /// Best-effort attribution, for logging. Null when the frame was too
-  /// malformed to name a sender.
-  final String? senderId;
-
-  bool get isMessage => message != null;
-  bool get isRejected => rejection != null;
-
-  /// A well-formed chunk of a message that is still arriving.
-  bool get isIncomplete => message == null && rejection == null;
+  @override
+  String toString() => message;
 }
 
-/// Reassembles inbound frames, refusing anything that does not add up.
+Uint8List encodeEnvelope(CrdtEnvelope envelope) {
+  final messageId = envelope.messageId;
+  if (messageId == null || !_validMessageId(messageId)) {
+    throw const CrdtProtocolException(
+      CrdtRejection.malformed,
+      'messageId is required and must be at most 128 UTF-8 bytes.',
+    );
+  }
+  _validateTypedEnvelope(envelope, outbound: true);
+
+  final metadataBytes = utf8.encode(jsonEncode(envelope.metadata));
+  if (metadataBytes.length > kMaxCrdtMetadataBytes) {
+    throw const CrdtProtocolException(
+      CrdtRejection.tooLarge,
+      'CRDT metadata exceeds 16 KiB.',
+    );
+  }
+  final output = Uint8List(
+    kCrdtEnvelopeHeaderBytes + metadataBytes.length + envelope.body.length,
+  );
+  final header = ByteData.sublistView(output);
+  header.setUint8(0, kCrdtProtocolVersion);
+  header.setUint8(1, envelope.opcode.wire);
+  header.setUint32(2, metadataBytes.length, Endian.big);
+  output.setRange(
+    kCrdtEnvelopeHeaderBytes,
+    kCrdtEnvelopeHeaderBytes + metadataBytes.length,
+    metadataBytes,
+  );
+  output.setRange(
+    kCrdtEnvelopeHeaderBytes + metadataBytes.length,
+    output.length,
+    envelope.body,
+  );
+  return output;
+}
+
+CrdtEnvelope decodeEnvelope(Object? raw) {
+  if (raw is! List<int>) {
+    throw const CrdtProtocolException(
+      CrdtRejection.wrongFrameType,
+      'The CRDT relay accepts binary WebSocket frames only.',
+    );
+  }
+  if (raw.length < kCrdtEnvelopeHeaderBytes) {
+    throw const CrdtProtocolException(
+      CrdtRejection.malformed,
+      'CRDT frame is shorter than its header.',
+    );
+  }
+  final bytes = raw is Uint8List ? raw : Uint8List.fromList(raw);
+  final header = ByteData.sublistView(bytes);
+  if (header.getUint8(0) != kCrdtProtocolVersion) {
+    throw const CrdtProtocolException(
+      CrdtRejection.wrongVersion,
+      'Unsupported CRDT relay protocol version.',
+    );
+  }
+  final opcode = CrdtOpcode.fromWire(header.getUint8(1));
+  if (opcode == null) {
+    throw const CrdtProtocolException(
+      CrdtRejection.unknownOpcode,
+      'Unknown CRDT relay opcode.',
+    );
+  }
+  final metadataLength = header.getUint32(2, Endian.big);
+  if (metadataLength > kMaxCrdtMetadataBytes) {
+    throw const CrdtProtocolException(
+      CrdtRejection.tooLarge,
+      'CRDT metadata exceeds 16 KiB.',
+    );
+  }
+  final metadataEnd = kCrdtEnvelopeHeaderBytes + metadataLength;
+  if (metadataEnd > bytes.length) {
+    throw const CrdtProtocolException(
+      CrdtRejection.malformed,
+      'CRDT metadata length exceeds the frame.',
+    );
+  }
+
+  final Object? decoded;
+  try {
+    decoded = jsonDecode(
+      utf8.decode(bytes.sublist(kCrdtEnvelopeHeaderBytes, metadataEnd)),
+    );
+  } on Object {
+    throw const CrdtProtocolException(
+      CrdtRejection.malformed,
+      'CRDT metadata is not UTF-8 JSON.',
+    );
+  }
+  if (decoded is! Map) {
+    throw const CrdtProtocolException(
+      CrdtRejection.malformed,
+      'CRDT metadata must be a JSON object.',
+    );
+  }
+  final metadata = <String, Object?>{};
+  for (final entry in decoded.entries) {
+    if (entry.key is! String) {
+      throw const CrdtProtocolException(
+        CrdtRejection.malformed,
+        'CRDT metadata keys must be strings.',
+      );
+    }
+    metadata[entry.key as String] = entry.value;
+  }
+  final envelope = CrdtEnvelope(
+    opcode: opcode,
+    metadata: metadata,
+    body: Uint8List.sublistView(bytes, metadataEnd),
+  );
+  final messageId = envelope.messageId;
+  if (messageId == null || !_validMessageId(messageId)) {
+    throw const CrdtProtocolException(
+      CrdtRejection.malformed,
+      'messageId is required and must be at most 128 UTF-8 bytes.',
+    );
+  }
+  _validateTypedEnvelope(envelope, outbound: false);
+  return envelope;
+}
+
+/// Encodes one logical message into relay-sized binary frames.
 ///
-/// One of these per session. It is deliberately stateful and deliberately
-/// bounded: every collection inside has a cap, because the whole point is to
-/// survive a peer that does not stop.
+/// Only CRDT updates and proposal data may be chunked. They always carry the
+/// chunk fields, including when the body fits in a single frame.
+List<Uint8List> encodeChunkedEnvelopes({
+  required CrdtOpcode opcode,
+  required String messageId,
+  required Map<String, Object?> metadata,
+  required List<int> body,
+  int maxChunkBytes = kMaxChunkPayloadBytes,
+}) {
+  if (opcode != CrdtOpcode.crdtUpdate && opcode != CrdtOpcode.proposalData) {
+    throw ArgumentError.value(opcode, 'opcode', 'is not chunkable');
+  }
+  if (maxChunkBytes < 1 || maxChunkBytes > kMaxChunkPayloadBytes) {
+    throw RangeError.range(
+      maxChunkBytes,
+      1,
+      kMaxChunkPayloadBytes,
+      'maxChunkBytes',
+    );
+  }
+  if (body.length > kMaxAssembledBytes) {
+    throw const CrdtProtocolException(
+      CrdtRejection.tooLarge,
+      'CRDT message exceeds the 50 MiB workspace ceiling.',
+    );
+  }
+  final count = body.isEmpty
+      ? 1
+      : (body.length + maxChunkBytes - 1) ~/ maxChunkBytes;
+  if (count > kMaxChunkCount) {
+    throw const CrdtProtocolException(
+      CrdtRejection.tooLarge,
+      'CRDT message requires too many chunks.',
+    );
+  }
+  return [
+    for (var index = 0; index < count; index++)
+      encodeEnvelope(
+        CrdtEnvelope(
+          opcode: opcode,
+          metadata: {
+            ...metadata,
+            'messageId': messageId,
+            'chunkIndex': index,
+            'chunkCount': count,
+            'totalBytes': body.length,
+          },
+          body: Uint8List.fromList(
+            body.sublist(
+              index * maxChunkBytes,
+              ((index + 1) * maxChunkBytes).clamp(0, body.length),
+            ),
+          ),
+        ),
+      ),
+  ];
+}
+
+class CrdtAssemblyResult {
+  const CrdtAssemblyResult.message(this.message) : rejection = null;
+  const CrdtAssemblyResult.incomplete() : message = null, rejection = null;
+  const CrdtAssemblyResult.rejected(this.rejection) : message = null;
+
+  final CrdtEnvelope? message;
+  final CrdtRejection? rejection;
+  bool get isMessage => message != null;
+  bool get isIncomplete => message == null && rejection == null;
+  bool get isRejected => rejection != null;
+}
+
+/// Bounded chunk reassembly and replay rejection for inbound relay frames.
 class CrdtAssembler {
   CrdtAssembler({
-    this.maxAssembledBytes = kMaxAssembledBytes,
     this.maxPendingAssemblies = kMaxPendingAssemblies,
     this.assemblyTimeout = kAssemblyTimeout,
     this.replayWindow = kReplayWindow,
     DateTime Function()? clock,
   }) : _now = clock ?? DateTime.now;
 
-  final int maxAssembledBytes;
   final int maxPendingAssemblies;
   final Duration assemblyTimeout;
   final int replayWindow;
   final DateTime Function() _now;
-
-  /// Keyed by "sender/messageId" so two peers cannot collide, and a peer
-  /// cannot displace another's assembly by guessing an id.
-  final Map<String, _Assembly> _pending = <String, _Assembly>{};
-
-  /// Insertion-ordered, so eviction is oldest-first without a sort.
+  final Map<String, _Assembly> _pending = {};
   final Queue<String> _seen = Queue<String>();
-  final Set<String> _seenIndex = <String>{};
+  final Set<String> _seenIndex = {};
 
   int get pendingCount => _pending.length;
 
-  /// Takes one raw broadcast payload and returns either a whole message or a
-  /// reason it was refused.
-  CrdtDecodeResult accept(Map<String, dynamic> raw) {
-    final type = CrdtMessageType.fromWire(raw['t']);
-    final sender = _string(raw['sender']);
-    if (type == null) {
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.unknownType,
-        senderId: sender,
-      );
-    }
-
-    final messageId = _string(raw['mid']);
-    final index = _int(raw['i']);
-    final total = _int(raw['n']);
-    final encoded = _string(raw['b']);
-    if (messageId == null ||
-        messageId.isEmpty ||
-        sender == null ||
-        sender.isEmpty ||
-        index == null ||
-        total == null ||
-        encoded == null) {
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.malformed,
-        senderId: sender,
-      );
-    }
-    if (total < 1 || index < 0 || index >= total) {
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.incoherentChunking,
-        senderId: sender,
-      );
-    }
-
-    // Refuse on the encoded length, before allocating the decoded bytes. A
-    // base64 string is 4/3 of what it decodes to, so this is the cheap check
-    // that makes the expensive one safe.
-    if (encoded.length > kMaxRealtimePayloadBytes) {
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.tooLarge,
-        senderId: sender,
-      );
-    }
-    if (total * kMaxChunkPayloadBytes > maxAssembledBytes) {
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.tooLarge,
-        senderId: sender,
-      );
-    }
-
-    final Uint8List bytes;
+  CrdtAssemblyResult accept(Object? raw) {
+    final CrdtEnvelope frame;
     try {
-      bytes = base64Decode(encoded);
-    } on FormatException {
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.malformed,
-        senderId: sender,
-      );
+      frame = decodeEnvelope(raw);
+    } on CrdtProtocolException catch (error) {
+      return CrdtAssemblyResult.rejected(error.rejection);
     }
-    if (bytes.length > kMaxChunkPayloadBytes) {
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.tooLarge,
-        senderId: sender,
-      );
-    }
-    if (_isControl(type) && bytes.length > kMaxControlPayloadBytes) {
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.tooLarge,
-        senderId: sender,
-      );
-    }
-
+    final sender = frame.senderId ?? 'relay';
+    final messageId = frame.messageId!;
     final key = '$sender/$messageId';
     if (_seenIndex.contains(key)) {
-      return CrdtDecodeResult.rejected(CrdtRejection.replay, senderId: sender);
+      return const CrdtAssemblyResult.rejected(CrdtRejection.replay);
     }
 
-    // The single-frame case completes without ever entering _pending, so the
-    // common path costs no bookkeeping.
-    if (total == 1) {
+    if (frame.opcode != CrdtOpcode.crdtUpdate &&
+        frame.opcode != CrdtOpcode.proposalData) {
       _remember(key);
-      return CrdtDecodeResult.message(
-        CrdtMessage(
-          type: type,
-          messageId: messageId,
-          senderId: sender,
-          payload: bytes,
-        ),
-      );
+      return CrdtAssemblyResult.message(frame);
     }
 
     _expire();
+    final index = frame.metadata['chunkIndex'] as int;
+    final count = frame.metadata['chunkCount'] as int;
+    final totalBytes = frame.metadata['totalBytes'] as int;
+    if (count == 1) {
+      _remember(key);
+      return CrdtAssemblyResult.message(frame);
+    }
+
     final assembly = _pending.putIfAbsent(
       key,
-      () => _Assembly(type: type, total: total, startedAt: _now()),
+      () => _Assembly(
+        opcode: frame.opcode,
+        count: count,
+        totalBytes: totalBytes,
+        metadata: frame.metadata,
+        startedAt: _now(),
+      ),
     );
-    // A sender that changes the type or length of a message mid-assembly is
-    // not one to keep reassembling for.
-    if (assembly.type != type || assembly.total != total) {
+    if (assembly.opcode != frame.opcode ||
+        assembly.count != count ||
+        assembly.totalBytes != totalBytes) {
       _pending.remove(key);
-      return CrdtDecodeResult.rejected(
+      return const CrdtAssemblyResult.rejected(
         CrdtRejection.incoherentChunking,
-        senderId: sender,
       );
     }
-    if (assembly.chunks.containsKey(index)) {
-      return CrdtDecodeResult.rejected(CrdtRejection.replay, senderId: sender);
+    final previous = assembly.chunks[index];
+    if (previous != null) {
+      if (!_sameBytes(previous, frame.body)) {
+        _pending.remove(key);
+        return const CrdtAssemblyResult.rejected(
+          CrdtRejection.incoherentChunking,
+        );
+      }
+      return const CrdtAssemblyResult.incomplete();
     }
-    if (assembly.byteCount + bytes.length > maxAssembledBytes) {
+    if (assembly.byteCount + frame.body.length > totalBytes) {
       _pending.remove(key);
-      return CrdtDecodeResult.rejected(
-        CrdtRejection.tooLarge,
-        senderId: sender,
-      );
+      return const CrdtAssemblyResult.rejected(CrdtRejection.tooLarge);
     }
-    assembly.chunks[index] = bytes;
-    assembly.byteCount += bytes.length;
+    assembly.chunks[index] = frame.body;
+    assembly.byteCount += frame.body.length;
 
-    if (_pending.length > maxPendingAssemblies) {
+    while (_pending.length > maxPendingAssemblies) {
       _pending.remove(_pending.keys.first);
     }
-    if (assembly.chunks.length < total) {
-      return CrdtDecodeResult.incomplete(senderId: sender);
+    if (assembly.chunks.length != count) {
+      return const CrdtAssemblyResult.incomplete();
+    }
+    if (assembly.byteCount != totalBytes) {
+      _pending.remove(key);
+      return const CrdtAssemblyResult.rejected(
+        CrdtRejection.incoherentChunking,
+      );
     }
 
+    final joined = BytesBuilder(copy: false);
+    for (var i = 0; i < count; i++) {
+      final chunk = assembly.chunks[i];
+      if (chunk == null) return const CrdtAssemblyResult.incomplete();
+      joined.add(chunk);
+    }
     _pending.remove(key);
     _remember(key);
-    final joined = BytesBuilder(copy: false);
-    for (var i = 0; i < total; i++) {
-      joined.add(assembly.chunks[i]!);
-    }
-    return CrdtDecodeResult.message(
-      CrdtMessage(
-        type: type,
-        messageId: messageId,
-        senderId: sender,
-        payload: joined.takeBytes(),
+    final metadata = Map<String, Object?>.from(assembly.metadata)
+      ..remove('chunkIndex')
+      ..remove('chunkCount')
+      ..remove('totalBytes');
+    return CrdtAssemblyResult.message(
+      CrdtEnvelope(
+        opcode: frame.opcode,
+        metadata: metadata,
+        body: joined.takeBytes(),
       ),
     );
   }
 
-  /// Drops assemblies that have been open too long.
   void _expire() {
-    if (_pending.isEmpty) return;
     final cutoff = _now().subtract(assemblyTimeout);
-    _pending.removeWhere((_, a) => a.startedAt.isBefore(cutoff));
+    _pending.removeWhere((_, assembly) => assembly.startedAt.isBefore(cutoff));
   }
 
   void _remember(String key) {
@@ -389,32 +415,153 @@ class CrdtAssembler {
       _seenIndex.remove(_seen.removeFirst());
     }
   }
+}
 
-  static bool _isControl(CrdtMessageType type) => switch (type) {
-    CrdtMessageType.awareness ||
-    CrdtMessageType.ping ||
-    CrdtMessageType.pong ||
-    CrdtMessageType.syncStep1 => true,
-    CrdtMessageType.syncStep2 ||
-    CrdtMessageType.crdtUpdate ||
-    CrdtMessageType.proposalUpdate => false,
-  };
+void _validateTypedEnvelope(CrdtEnvelope envelope, {required bool outbound}) {
+  final metadata = envelope.metadata;
+  final body = envelope.body;
+  int? integer(String key) =>
+      metadata[key] is int ? metadata[key]! as int : null;
+  String? string(String key) =>
+      metadata[key] is String ? metadata[key]! as String : null;
 
-  static String? _string(Object? value) => value is String ? value : null;
+  switch (envelope.opcode) {
+    case CrdtOpcode.peerJoined:
+    case CrdtOpcode.peerLeft:
+    case CrdtOpcode.error:
+      if (outbound) {
+        throw CrdtProtocolException(
+          CrdtRejection.malformed,
+          '${envelope.opcode.name} is server-generated.',
+        );
+      }
+    case CrdtOpcode.stateVectorRequest:
+      if (body.length > kMaxStateVectorBytes) {
+        throw const CrdtProtocolException(
+          CrdtRejection.tooLarge,
+          'State vector exceeds 64 KiB.',
+        );
+      }
+    case CrdtOpcode.crdtUpdate:
+    case CrdtOpcode.proposalData:
+      final index = integer('chunkIndex');
+      final count = integer('chunkCount');
+      final total = integer('totalBytes');
+      if (index == null ||
+          count == null ||
+          total == null ||
+          index < 0 ||
+          count < 1 ||
+          count > kMaxChunkCount ||
+          index >= count ||
+          total < 0 ||
+          total > kMaxAssembledBytes) {
+        throw const CrdtProtocolException(
+          CrdtRejection.incoherentChunking,
+          'Invalid CRDT chunk metadata.',
+        );
+      }
+      if (body.length > kMaxChunkPayloadBytes || body.length > total) {
+        throw const CrdtProtocolException(
+          CrdtRejection.tooLarge,
+          'CRDT chunk exceeds its declared bounds.',
+        );
+      }
+      if (envelope.opcode == CrdtOpcode.proposalData &&
+          !_validIdentifier(string('proposalId'))) {
+        throw const CrdtProtocolException(
+          CrdtRejection.malformed,
+          'proposal-data requires proposalId.',
+        );
+      }
+    case CrdtOpcode.proposalInventory:
+      final ids = metadata['proposalIds'];
+      if (ids is! List ||
+          ids.length > kMaxProposalInventoryIds ||
+          ids.any((id) => id is! String || !_validIdentifier(id))) {
+        throw const CrdtProtocolException(
+          CrdtRejection.malformed,
+          'proposal-inventory requires up to 256 proposal IDs.',
+        );
+      }
+      if (body.isNotEmpty) _mustBeEmpty();
+    case CrdtOpcode.proposalRequest:
+      if (!_validIdentifier(string('proposalId')) || body.isNotEmpty) {
+        throw const CrdtProtocolException(
+          CrdtRejection.malformed,
+          'proposal-request requires proposalId and an empty body.',
+        );
+      }
+    case CrdtOpcode.proposalResolution:
+      final status = string('status');
+      final note = string('note');
+      if (!_validIdentifier(string('proposalId')) ||
+          (status != 'approved' && status != 'rejected') ||
+          (note != null && utf8.encode(note).length > 2048) ||
+          body.isNotEmpty) {
+        throw const CrdtProtocolException(
+          CrdtRejection.malformed,
+          'Invalid proposal resolution.',
+        );
+      }
+    case CrdtOpcode.presence:
+      if (body.length > kMaxCrdtMetadataBytes) {
+        throw const CrdtProtocolException(
+          CrdtRejection.tooLarge,
+          'Presence exceeds 16 KiB.',
+        );
+      }
+      try {
+        jsonDecode(utf8.decode(body));
+      } on Object {
+        throw const CrdtProtocolException(
+          CrdtRejection.malformed,
+          'Presence body must be UTF-8 JSON.',
+        );
+      }
+    case CrdtOpcode.ack:
+      if (!_validIdentifier(string('ackedMessageId')) || body.isNotEmpty) {
+        throw const CrdtProtocolException(
+          CrdtRejection.malformed,
+          'ack requires ackedMessageId and an empty body.',
+        );
+      }
+  }
+}
 
-  static int? _int(Object? value) => value is int
-      ? value
-      : value is num
-      ? value.toInt()
-      : null;
+Never _mustBeEmpty() => throw const CrdtProtocolException(
+  CrdtRejection.malformed,
+  'This CRDT message requires an empty body.',
+);
+
+bool _validMessageId(String value) =>
+    value.isNotEmpty && utf8.encode(value).length <= kMaxMessageIdBytes;
+
+bool _validIdentifier(String? value) =>
+    value != null && value.isNotEmpty && utf8.encode(value).length <= 256;
+
+bool _sameBytes(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 class _Assembly {
-  _Assembly({required this.type, required this.total, required this.startedAt});
+  _Assembly({
+    required this.opcode,
+    required this.count,
+    required this.totalBytes,
+    required this.metadata,
+    required this.startedAt,
+  });
 
-  final CrdtMessageType type;
-  final int total;
+  final CrdtOpcode opcode;
+  final int count;
+  final int totalBytes;
+  final Map<String, Object?> metadata;
   final DateTime startedAt;
-  final Map<int, Uint8List> chunks = <int, Uint8List>{};
+  final Map<int, Uint8List> chunks = {};
   int byteCount = 0;
 }

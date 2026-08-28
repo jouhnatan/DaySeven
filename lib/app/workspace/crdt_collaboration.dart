@@ -6,13 +6,10 @@
 /// driving the transport. Everything below this file is deliberately ignorant
 /// of Riverpod, the filesystem watcher, and each other.
 ///
-/// **Off by default.** The reviewed-edit path through `documents`/`revisions`
-/// is what the two people running this app rely on, and it stays authoritative
-/// until CRDT sync has been proven end to end between two real clients. This
-/// controller only starts when `AppStore.crdtCollaboration` is switched on, and
-/// every failure inside it degrades to "collaboration unavailable" rather than
-/// taking the Knowledge Base down — a folder of Markdown files must keep
-/// working when the network, the native library, or the policy does not.
+/// The local folder and `workspace.bin` are authoritative. The Render relay is
+/// deliberately ephemeral: it only carries binary updates between currently
+/// connected members, while a device-local SQLite journal retains work that
+/// still needs to be sent or reviewed.
 library;
 
 import 'dart:async';
@@ -22,17 +19,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
-import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/security_log.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
+import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/blocks/markdown.dart';
 import 'package:dayseven/shared/crdt/awareness.dart';
+import 'package:dayseven/shared/crdt/collaboration_journal.dart';
 import 'package:dayseven/shared/crdt/crdt_authorization.dart';
 import 'package:dayseven/shared/crdt/generated/api/policy.dart'
     as policy_crypto;
+import 'package:dayseven/shared/crdt/generated/api/workspace.dart'
+    as workspace_api;
 import 'package:dayseven/shared/crdt/crdt_session.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_repository.dart';
+import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
 import 'package:dayseven/shared/crdt/policy_bootstrap.dart';
 import 'package:dayseven/shared/crdt/policy_key_store.dart';
 import 'package:dayseven/shared/crdt/workspace_policy.dart';
@@ -64,6 +67,25 @@ class PolicySigningState {
   final String? detail;
 
   bool get canRepublish => health == PolicySigningHealth.needsRepublish;
+}
+
+/// A proposal decoded from its opaque Yjs payload for the existing Differences
+/// workspace. The SQLite journal retains the binary source of truth; these
+/// documents are short-lived review projections.
+class CrdtProposalReview {
+  const CrdtProposalReview({
+    required this.proposal,
+    required this.base,
+    required this.proposed,
+    required this.current,
+    required this.relativePath,
+  });
+
+  final CollaborationProposal proposal;
+  final BlockDocument base;
+  final BlockDocument proposed;
+  final BlockDocument current;
+  final String relativePath;
 }
 
 /// Everything running for one open Knowledge Base, or the reason nothing is.
@@ -128,6 +150,7 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     _ref.listen(currentUserProvider, (_, _) {
       unawaited(_bind(_ref.read(kbSessionProvider)));
     });
+    _ref.listen<OpenDocument?>(documentControllerProvider, _documentChanged);
   }
 
   final Ref _ref;
@@ -140,7 +163,7 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
   final PolicyKeyStore _policyKeys = PolicyKeyStore();
   Future<void>? _activePolicyRepublish;
 
-  /// Re-reads the developer flag and rebuilds (or stops) the open session.
+  /// Rebuilds the live room and reconciles the open Knowledge Base.
   Future<void> refresh() => _bind(_ref.read(kbSessionProvider), force: true);
 
   /// Rebuilds the whole stack for whatever Knowledge Base is now open.
@@ -153,12 +176,6 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     if (!force && _boundKbId == kb.manifest.kbId && _last.isActive) return;
     await _teardown();
 
-    final store = await _ref.read(appStoreProvider.future);
-    if (!await store.developerFlag(AppStore.crdtCollaboration)) {
-      // Not an error, and not worth a message: nobody asked for it.
-      _publish(CrdtCollaboration.off);
-      return;
-    }
     if (!isSupabaseConfigured) {
       _publish(
         const CrdtCollaboration(
@@ -215,15 +232,31 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
       username: username,
       repository: repository,
     );
-    final workspace = await WorkspaceStore.openFor(kb);
+    final workspace = await WorkspaceStore.openFor(
+      kb,
+      preserveCanonicalFileIds:
+          prepared.policy?.protectedFiles.keys.toSet() ?? const {},
+    );
+    final journal = await CollaborationJournal.open(rootPath: kb.rootPath);
+    final transport = CrdtSyncService(
+      roomId: kbId,
+      accessTokenProvider: () async {
+        final accessToken = supabase.auth.currentSession?.accessToken;
+        if (accessToken == null || accessToken.isEmpty) {
+          throw StateError('Sign in to collaborate.');
+        }
+        return accessToken;
+      },
+    );
 
     final log = await _openSecurityLog();
     final session = CrdtSession(
       kbId: kbId,
       store: workspace,
-      repository: repository,
       authorId: userId,
       gate: CrdtAuthorizationGate(store: workspace, policy: prepared.policy),
+      transport: transport,
+      journal: journal,
       securityLog: log,
     );
 
@@ -507,6 +540,52 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
   Future<SecurityLog> _openSecurityLog() =>
       _ref.read(securityLogProvider.future);
 
+  void _documentChanged(OpenDocument? previous, OpenDocument? next) {
+    // DocumentController flips dirty to false only after the Markdown write
+    // finishes. Observing that edge keeps disk strictly ahead of CRDT state.
+    if (previous?.dirty != true || next == null || next.dirty) return;
+    if (previous!.document.id != next.document.id) return;
+    unawaited(_ingestPersistedDocument(next));
+  }
+
+  Future<void> _ingestPersistedDocument(OpenDocument document) async {
+    final collaboration = _last;
+    final session = collaboration.session;
+    final workspace = collaboration.store;
+    final user = _ref.read(currentUserProvider);
+    final kb = _ref.read(kbSessionProvider)?.kb;
+    if (session == null || workspace == null || user == null || kb == null) {
+      return;
+    }
+    if (_boundKbId != kb.manifest.kbId) return;
+
+    final gate = CrdtAuthorizationGate(
+      store: workspace,
+      policy: collaboration.policy,
+    );
+    if (gate.mustProposeInsteadOfBroadcast(
+      userId: user.id,
+      fileId: document.document.id,
+    )) {
+      // The Markdown working copy remains on disk. It enters canonical Yjs
+      // state only if the person explicitly proposes it and a reviewer
+      // approves it through Differences.
+      return;
+    }
+
+    await workspace.upsertFile(
+      fileId: document.document.id,
+      path: document.relativePath,
+      protected:
+          collaboration.policy?.isProtected(document.document.id) ?? false,
+    );
+    await workspace.setFileText(
+      fileId: document.document.id,
+      next: encodeMarkdown(document.document),
+    );
+    session.noteLocalChange();
+  }
+
   /// Call after a local edit to [fileId] that this device is allowed to make.
   ///
   /// Returns false when the edit must be proposed instead — the caller should
@@ -531,6 +610,92 @@ class CrdtCollaborationController extends StateNotifier<CrdtCollaboration> {
     final session = state.session;
     if (session == null) return null;
     return session.proposeChange(fileId: fileId, text: text);
+  }
+
+  Future<void> reconcile() async {
+    final session = _last.session;
+    if (session == null) return;
+    await session.reconcile();
+  }
+
+  Future<List<CrdtProposalReview>> pendingProposalReviews() async {
+    final session = _last.session;
+    final workspace = _last.store;
+    if (session == null || workspace == null) return const [];
+    final proposals = session.journal.proposals(
+      status: CollaborationProposalStatus.pending,
+    );
+    final reviews = <CrdtProposalReview>[];
+    for (final proposal in proposals) {
+      reviews.add(await _decodeProposal(workspace, proposal));
+    }
+    return reviews;
+  }
+
+  Future<CrdtProposalReview> _decodeProposal(
+    WorkspaceStore workspace,
+    CollaborationProposal proposal,
+  ) async {
+    final handle = await workspace_api.workspaceLoad(
+      bytes: proposal.baseSnapshot,
+    );
+    try {
+      final baseText = await workspace_api.fileText(
+        handle: handle,
+        fileId: proposal.fileId,
+      );
+      await workspace_api.workspaceApply(
+        handle: handle,
+        update: proposal.update,
+      );
+      final proposedText = await workspace_api.fileText(
+        handle: handle,
+        fileId: proposal.fileId,
+      );
+      final meta = await workspace.getFileMeta(proposal.fileId);
+      return CrdtProposalReview(
+        proposal: proposal,
+        base: decodeMarkdown(baseText),
+        proposed: decodeMarkdown(proposedText),
+        current: decodeMarkdown(await workspace.getFileText(proposal.fileId)),
+        relativePath: meta.path,
+      );
+    } finally {
+      await workspace_api.workspaceClose(handle: handle);
+    }
+  }
+
+  Future<CollaborationResolution> resolveProposal({
+    required String proposalId,
+    required bool approve,
+    BlockDocument? merged,
+    String? reviewNote,
+  }) async {
+    final session = _last.session;
+    final workspace = _last.store;
+    if (session == null || workspace == null) {
+      throw StateError('Collaboration is not active.');
+    }
+    List<int>? resolvedUpdate;
+    if (approve) {
+      if (merged == null) throw ArgumentError.notNull('merged');
+      final branch = await workspace.branch();
+      try {
+        await branch.setFileText(
+          fileId: merged.id,
+          next: encodeMarkdown(merged),
+        );
+        resolvedUpdate = await branch.diffSinceBase();
+      } finally {
+        await branch.close();
+      }
+    }
+    return session.resolveProposal(
+      proposalId: proposalId,
+      approve: approve,
+      reviewNote: reviewNote,
+      resolvedUpdate: resolvedUpdate,
+    );
   }
 
   /// Stops everything and releases the Rust handle.

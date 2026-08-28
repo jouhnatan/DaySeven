@@ -92,13 +92,6 @@ void main() {
     expect(await store.developerFlag(AppStore.showWorkspaceMetadata), isFalse);
   });
 
-  test('CRDT collaboration is off unless explicitly enabled', () async {
-    // The reviewed-edit path is what the two people running this app rely on.
-    // A missing or damaged settings file must never turn the new one on.
-    final store = AppStore(File(p.join(dir.path, 'settings2.json')));
-    expect(await store.developerFlag(AppStore.crdtCollaboration), isFalse);
-  });
-
   test('packaging keeps the complete metadata directory', () async {
     // Backup, export and synchronisation must include metadata/ even though
     // the tree hides it: a workspace copied without workspace.bin has lost its

@@ -597,9 +597,7 @@ void main() {
           child: MaterialApp(
             theme: dsTheme(),
             home: const Scaffold(
-              body: SingleChildScrollView(
-                child: KnowledgeBaseSettingsPanel(),
-              ),
+              body: SingleChildScrollView(child: KnowledgeBaseSettingsPanel()),
             ),
           ),
         ),
@@ -611,16 +609,14 @@ void main() {
       expect(find.text('Delete Knowledge Base'), findsOneWidget);
       expect(
         find.textContaining(
-          'Deletes the Supabase copy and collaboration history, but not your local files.',
+          'Removes shared access and invitations, but not your local files.',
         ),
         findsOneWidget,
       );
 
       final danger = tester.widget<Text>(
         find.descendant(
-          of: find.byKey(
-            const Key('delete-shared-knowledge-base-setting'),
-          ),
+          of: find.byKey(const Key('delete-shared-knowledge-base-setting')),
           matching: find.text('Delete'),
         ),
       );
@@ -636,6 +632,8 @@ void main() {
         closeTo(tester.getRect(deleteButton).center.dy, 0.5),
       );
 
+      await tester.ensureVisible(deleteButton);
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: find.byKey(const Key('delete-shared-knowledge-base-setting')),
@@ -662,6 +660,176 @@ void main() {
       expect(File(kb.absolutePathFor(originalPath)).existsSync(), isTrue);
     },
   );
+
+  testWidgets('settings shows the relay room and copies its exact invite URI', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 850);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: const Scaffold(
+            body: SingleChildScrollView(
+              child: KnowledgeBaseSettingsPanel(
+                collaborationStatus: KbCollaborationStatus(
+                  state: KbConnectionState.connected,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Room ID'), findsOneWidget);
+    expect(find.text(kb.manifest.kbId), findsOneWidget);
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.textContaining('not a credential'), findsOneWidget);
+    expect(find.textContaining('accepted membership'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('copy-knowledge-base-invite-link')));
+    await tester.pumpAndSettle();
+
+    expect(
+      copied,
+      'wss://dayseven-server.onrender.com/ws?room=${kb.manifest.kbId}',
+    );
+  });
+
+  testWidgets('settings exposes every socket state and peer bootstrap wait', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    const labels = {
+      KbConnectionState.connected: 'Connected',
+      KbConnectionState.connecting: 'Connecting',
+      KbConnectionState.disconnected: 'Disconnected',
+      KbConnectionState.error: 'Error',
+    };
+    for (final entry in labels.entries) {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: dsTheme(),
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: KnowledgeBaseSettingsPanel(
+                  collaborationStatus: KbCollaborationStatus(
+                    state: entry.key,
+                    waitingForPeer: entry.key == KbConnectionState.connected,
+                    detail: entry.key == KbConnectionState.error
+                        ? 'Relay refused the connection.'
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(entry.value), findsOneWidget);
+    }
+
+    expect(
+      find.text('Waiting for a collaborator to come online'),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: const Scaffold(
+            body: SingleChildScrollView(
+              child: KnowledgeBaseSettingsPanel(
+                collaborationStatus: KbCollaborationStatus(
+                  state: KbConnectionState.connected,
+                  waitingForPeer: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Waiting for a collaborator to come online'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('settings keeps policy signing recovery with the active room', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 950);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    var republished = false;
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: KnowledgeBaseSettingsPanel(
+                collaborationStatus: KbCollaborationStatus(
+                  state: KbConnectionState.connected,
+                  policyDetail: 'This device does not hold the published key.',
+                  republishPolicy: () async => republished = true,
+                  refusalCount: 1,
+                  refusalDetail: 'A Reviewer cannot publish directly.',
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Policy signing needs attention'), findsOneWidget);
+    expect(find.text('An incoming update was refused'), findsOneWidget);
+    expect(
+      find.textContaining('A Reviewer cannot publish directly.'),
+      findsOneWidget,
+    );
+    final republish = find.byKey(const Key('knowledge-base-republish-policy'));
+    await tester.ensureVisible(republish);
+    await tester.tap(republish);
+    await tester.pumpAndSettle();
+    expect(republished, isTrue);
+  });
 
   test(
     'sharing exposes the remote owner state before document upload finishes',
@@ -745,7 +913,9 @@ void main() {
             kbRoleProvider.overrideWith((ref) async => KbRole.owner),
             recentKbPathsProvider.overrideWith((ref) async => const []),
             kbRepositoryProvider.overrideWithValue(kbRepo),
-            kbSyncHealthProvider.overrideWith((ref, kbId) async => SyncHealth.active),
+            kbSyncHealthProvider.overrideWith(
+              (ref, kbId) async => SyncHealth.active,
+            ),
           ],
         );
         await container
@@ -759,9 +929,7 @@ void main() {
           child: MaterialApp(
             theme: dsTheme(),
             home: const Scaffold(
-              body: SingleChildScrollView(
-                child: KnowledgeBaseSettingsPanel(),
-              ),
+              body: SingleChildScrollView(child: KnowledgeBaseSettingsPanel()),
             ),
           ),
         ),
@@ -777,7 +945,9 @@ void main() {
       expect(find.text('Select a knowledge base'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text('Sync this knowledge base')).dy,
-        greaterThan(tester.getBottomLeft(find.text('Select a knowledge base')).dy),
+        greaterThan(
+          tester.getBottomLeft(find.text('Select a knowledge base')).dy,
+        ),
       );
       final syncTextRect = tester.getRect(
         find.text('Sync this knowledge base'),

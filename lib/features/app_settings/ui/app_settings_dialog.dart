@@ -23,45 +23,16 @@ import 'package:dayseven/shared/ui/theme.dart';
 
 typedef AppSettingsDeveloperOptionsBuilder =
     AppSettingsDeveloperOptions Function(WidgetRef ref);
-
-enum AppSettingsCollaborationHealth {
-  off,
-  connecting,
-  connected,
-  degraded,
-  unavailable,
-}
+typedef AppSettingsPanelBuilder = Widget Function(WidgetRef ref);
 
 class AppSettingsDeveloperOptions {
   const AppSettingsDeveloperOptions({
     required this.showWorkspaceMetadata,
-    required this.crdtCollaboration,
     required this.setShowWorkspaceMetadata,
-    required this.setCrdtCollaboration,
-    required this.collaborationHealth,
-    this.collaborationDetail,
-    this.cursor = 0,
-    this.pendingLocalPush = false,
-    this.queuedInbound = 0,
-    this.refusalCount = 0,
-    this.refusalDetail,
-    this.policyDetail,
-    this.republishPolicy,
   });
 
   final bool showWorkspaceMetadata;
-  final bool crdtCollaboration;
   final Future<void> Function(bool enabled) setShowWorkspaceMetadata;
-  final Future<void> Function(bool enabled) setCrdtCollaboration;
-  final AppSettingsCollaborationHealth collaborationHealth;
-  final String? collaborationDetail;
-  final int cursor;
-  final bool pendingLocalPush;
-  final int queuedInbound;
-  final int refusalCount;
-  final String? refusalDetail;
-  final String? policyDetail;
-  final Future<void> Function()? republishPolicy;
 }
 
 /// The sibling regions of App settings, in the order the switcher lists them.
@@ -81,13 +52,15 @@ Future<void> showAppSettingsDialog(
   BuildContext context, {
   AppSettingsDeveloperOptionsBuilder? developerOptions,
   Widget? knowledgeBasePanel,
+  AppSettingsPanelBuilder? knowledgeBasePanelBuilder,
   AppSettingsSection initialSection = AppSettingsSection.appearance,
 }) => showDialog<void>(
   context: context,
   builder: (context) => Consumer(
     builder: (context, ref, _) => AppSettingsDialog(
       developerOptions: developerOptions?.call(ref),
-      knowledgeBasePanel: knowledgeBasePanel,
+      knowledgeBasePanel:
+          knowledgeBasePanelBuilder?.call(ref) ?? knowledgeBasePanel,
       initialSection: initialSection,
     ),
   ),
@@ -191,9 +164,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                     // Each section starts at its own top rather than
                     // inheriting the last one's scroll position.
                     key: ValueKey(_section),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: DsSpace.xl,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: DsSpace.xl),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -233,10 +204,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       first: true,
       label: 'Gradient background',
       helper: 'Soft pools behind Home and other views',
-      trailing: Switch(
-        value: true,
-        onChanged: (_) {},
-      ),
+      trailing: Switch(value: true, onChanged: (_) {}),
     ),
     DsSettingRow(
       label: 'Window chrome',
@@ -293,21 +261,14 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
               onTap: () {},
               child: Text(
                 "What's new in ${ref.watch(currentVersionProvider).valueOrNull?.name ?? '1.3.7'}",
-                style: uiTextStyle(
-                  size: 13,
-                  color: CF.slate,
-                  weight: 500,
-                ),
+                style: uiTextStyle(size: 13, color: CF.slate, weight: 500),
               ),
             ),
           ],
         ),
       ),
       const SizedBox(height: 6),
-      Container(
-        height: 1,
-        color: CF.hairline,
-      ),
+      Container(height: 1, color: CF.hairline),
     ];
   }
 
@@ -325,19 +286,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     return [
       _DeveloperToggleRow(
         first: true,
-        key: const Key('app-settings-crdt-toggle'),
-        icon: Icons.hub_outlined,
-        title: 'CRDT collaboration',
-        subtitle: developer.crdtCollaboration
-            ? 'On for the open Knowledge Base. The reviewed '
-                  'edit path remains available.'
-            : 'Off. Reviewed edits remain authoritative.',
-        value: developer.crdtCollaboration,
-        working: _workingSettings.contains('crdt'),
-        onChanged: (value) =>
-            _changeSetting('crdt', () => developer.setCrdtCollaboration(value)),
-      ),
-      _DeveloperToggleRow(
         key: const Key('app-settings-metadata-toggle'),
         icon: Icons.folder_open_outlined,
         title: 'Show workspace metadata',
@@ -351,45 +299,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
           () => developer.setShowWorkspaceMetadata(value),
         ),
       ),
-      const _SectionHeading('Collaboration'),
-      _CollaborationRow(options: developer),
-      if (developer.policyDetail case final detail?) ...[
-        const SizedBox(height: 12),
-        DsStatusBlock(
-          key: const Key('app-settings-policy-signing'),
-          icon: Icons.key_outlined,
-          tone: developer.republishPolicy == null
-              ? DsTone.success
-              : DsTone.warning,
-          headline: developer.republishPolicy == null
-              ? 'Policy signing ready'
-              : 'Policy signing needs attention',
-          detail: detail,
-          trailing: developer.republishPolicy == null
-              ? null
-              : DsLabelButton(
-                  key: const Key('app-settings-republish-policy'),
-                  label: _workingSettings.contains('policy')
-                      ? 'Republishing…'
-                      : 'Republish',
-                  height: DsSize.control,
-                  onPressed: _workingSettings.contains('policy')
-                      ? null
-                      : () => _changeSetting(
-                          'policy',
-                          developer.republishPolicy!,
-                        ),
-                ),
-        ),
-      ],
-      if (developer.refusalCount > 0)
-        _Alert(
-          title: 'An incoming update was refused',
-          message:
-              '${developer.refusalCount} update(s) were '
-              'kept out of this workspace. '
-              '${developer.refusalDetail ?? 'The signed policy did not allow them.'}',
-        ),
     ];
   }
 
@@ -523,61 +432,6 @@ class _DeveloperToggleRow extends StatelessWidget {
   );
 }
 
-class _CollaborationRow extends StatelessWidget {
-  const _CollaborationRow({required this.options});
-
-  final AppSettingsDeveloperOptions options;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = switch (options.collaborationHealth) {
-      AppSettingsCollaborationHealth.off => 'Collaboration is off',
-      AppSettingsCollaborationHealth.connecting => 'Connecting',
-      AppSettingsCollaborationHealth.connected => 'Connected',
-      AppSettingsCollaborationHealth.degraded => 'Connection degraded',
-      AppSettingsCollaborationHealth.unavailable => 'Collaboration unavailable',
-    };
-    final detail =
-        options.collaborationDetail ??
-        switch (options.collaborationHealth) {
-          AppSettingsCollaborationHealth.off =>
-            'Enable the developer toggle above to start a session.',
-          AppSettingsCollaborationHealth.connecting =>
-            'Catching up from the durable update log.',
-          AppSettingsCollaborationHealth.connected => [
-            'Durable cursor ${options.cursor}',
-            if (options.pendingLocalPush) 'local changes waiting to push',
-            if (options.queuedInbound > 0)
-              '${options.queuedInbound} incoming update(s) queued',
-          ].join(' · '),
-          AppSettingsCollaborationHealth.degraded =>
-            'Files remain saved on this device while sharing recovers.',
-          AppSettingsCollaborationHealth.unavailable =>
-            'Local editing remains available.',
-        };
-
-    return DsStatusBlock(
-      key: const Key('app-settings-collaboration-state'),
-      icon: switch (options.collaborationHealth) {
-        AppSettingsCollaborationHealth.connected => Icons.cloud_done_outlined,
-        AppSettingsCollaborationHealth.connecting => Icons.sync,
-        AppSettingsCollaborationHealth.degraded ||
-        AppSettingsCollaborationHealth.unavailable =>
-          Icons.cloud_off_outlined,
-        AppSettingsCollaborationHealth.off => Icons.hub_outlined,
-      },
-      tone: switch (options.collaborationHealth) {
-        AppSettingsCollaborationHealth.connected => DsTone.success,
-        AppSettingsCollaborationHealth.degraded => DsTone.warning,
-        AppSettingsCollaborationHealth.unavailable => DsTone.danger,
-        _ => DsTone.neutral,
-      },
-      headline: title,
-      detail: detail,
-    );
-  }
-}
-
 class _Header extends StatelessWidget {
   const _Header({this.switcher});
 
@@ -635,25 +489,6 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// A heading inside a section, for a group of settings the section holds more
-/// than one of. The section's own name is on its cell in the switcher.
-class _SectionHeading extends StatelessWidget {
-  const _SectionHeading(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
-    child: Text(
-      label,
-      // Solway labels the region. It is not spending the accent to do it:
-      // fern is reserved for where you are and for what commits.
-      style: uiHeaderTextStyle(size: 16, height: 22 / 16),
-    ),
-  );
-}
-
 class _UpdateStatusBlock extends ConsumerWidget {
   const _UpdateStatusBlock({required this.state, required this.enabled});
 
@@ -701,8 +536,7 @@ class _UpdateStatusBlock extends ConsumerWidget {
             _ => 'Up to date',
           },
           detail: switch (state) {
-            UpdateAvailable(:final release) =>
-              'Build ${release.version.build}',
+            UpdateAvailable(:final release) => 'Build ${release.version.build}',
             CheckingForUpdate() => 'Checking…',
             DownloadingUpdate(:final release) =>
               '${(release.sizeBytes / 1048576).toStringAsFixed(1)} MB',
@@ -726,15 +560,12 @@ class _UpdateStatusBlock extends ConsumerWidget {
                     children: [
                       const Icon(Icons.sync, size: 14),
                       const SizedBox(width: 6),
-                      Text(
-                        switch (state) {
-                          CheckingForUpdate() => 'Checking…',
-                          DownloadingUpdate() => 'Downloading…',
-                          InstallingUpdate() => 'Installing…',
-                          _ => 'Check now',
-                        },
-                        style: uiTextStyle(size: 13, weight: 500),
-                      ),
+                      Text(switch (state) {
+                        CheckingForUpdate() => 'Checking…',
+                        DownloadingUpdate() => 'Downloading…',
+                        InstallingUpdate() => 'Installing…',
+                        _ => 'Check now',
+                      }, style: uiTextStyle(size: 13, weight: 500)),
                     ],
                   ),
                 )

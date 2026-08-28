@@ -151,6 +151,60 @@ void main() {
       }
     });
 
+    test(
+      'restoring canonical state does not import a protected working copy',
+      () async {
+        final first = await WorkspaceStore.openFor(kb);
+        final aldricId = await first.getFileIds().then((ids) async {
+          for (final id in ids) {
+            if ((await first.getFileMeta(id)).path ==
+                'Characters/Aldric.md') {
+              return id;
+            }
+          }
+          throw StateError('fixture is missing Aldric');
+        });
+        final canonical = await first.getFileText(aldricId);
+        await first.flush();
+        final workspaceSavedAt =
+            (await File(first.workspaceBinPath).stat()).modified;
+        await first.close();
+
+        final workingCopy = (await kb.readDocument('Characters/Aldric.md'))
+            .copyWith(
+              blocks: [
+                ParagraphBlock(
+                  id: newId(),
+                  spans: const [
+                    TextSpanNode(text: 'This edit still needs review.'),
+                  ],
+                ),
+              ],
+            );
+        await kb.writeDocument('Characters/Aldric.md', workingCopy);
+        await File(
+          kb.absolutePathFor('Characters/Aldric.md'),
+        ).setLastModified(workspaceSavedAt.add(const Duration(seconds: 2)));
+
+        final restored = await WorkspaceStore.openFor(
+          kb,
+          preserveCanonicalFileIds: {aldricId},
+        );
+        try {
+          expect(await restored.getFileText(aldricId), canonical);
+          expect(
+            await File(
+              kb.absolutePathFor('Characters/Aldric.md'),
+            ).readAsString(),
+            contains('This edit still needs review.'),
+            reason: 'the local working copy must remain available for review',
+          );
+        } finally {
+          await restored.close();
+        }
+      },
+    );
+
     test('Atomic-write recovery: kill mid-write, previous good file survives', () async {
       final store = await WorkspaceStore.openFor(kb);
       await store.flush();

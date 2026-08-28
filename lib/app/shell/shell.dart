@@ -39,7 +39,7 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
-import 'package:dayseven/shared/crdt/crdt_session.dart';
+import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
 
 class DsShell extends ConsumerWidget {
@@ -52,8 +52,7 @@ class DsShell extends ConsumerWidget {
     // first, so the channel's lifetime is the shell's and not a panel's.
     ref.watch(presenceControllerProvider.select((_) => null));
     // Same reasoning: the CRDT session belongs to the open Knowledge Base, not
-    // to whichever screen first asks about collaboration. It is inert unless
-    // the developer flag turns it on.
+    // to whichever screen first asks about collaboration.
     ref.watch(crdtCollaborationProvider.select((_) => null));
     final view = ref.watch(viewProvider);
     final pendingDifferencesCount = ref.watch(
@@ -294,8 +293,41 @@ void _openAppSettings(
     showAppSettingsDialog(
       context,
       developerOptions: _developerOptions,
-      knowledgeBasePanel: const KnowledgeBaseSettingsPanel(),
+      knowledgeBasePanelBuilder: _knowledgeBaseSettingsPanel,
       initialSection: section,
+    ),
+  );
+}
+
+Widget _knowledgeBaseSettingsPanel(WidgetRef ref) {
+  final collaboration = ref.watch(crdtCollaborationProvider);
+  final link = collaboration.linkState;
+  final signing = collaboration.policySigning;
+  final state = collaboration.unavailable != null
+      ? KbConnectionState.error
+      : switch (link.connection) {
+          CrdtConnectionState.disconnected => KbConnectionState.disconnected,
+          CrdtConnectionState.connecting => KbConnectionState.connecting,
+          CrdtConnectionState.connected => KbConnectionState.connected,
+          CrdtConnectionState.error => KbConnectionState.error,
+        };
+
+  return KnowledgeBaseSettingsPanel(
+    collaborationStatus: KbCollaborationStatus(
+      state: state,
+      waitingForPeer: link.waitingForPeer,
+      detail: collaboration.unavailable ?? link.detail,
+      policyDetail: switch (signing.health) {
+        PolicySigningHealth.ready =>
+          'This device holds the key matching the published policy.',
+        PolicySigningHealth.needsRepublish => signing.detail,
+        PolicySigningHealth.notApplicable => null,
+      },
+      republishPolicy: signing.canRepublish
+          ? () => ref.read(crdtCollaborationProvider.notifier).republishPolicy()
+          : null,
+      refusalCount: collaboration.refusalCount,
+      refusalDetail: collaboration.lastRefusal?.detail,
     ),
   );
 }
@@ -304,25 +336,8 @@ AppSettingsDeveloperOptions _developerOptions(WidgetRef ref) {
   final settings =
       ref.watch(developerSettingsProvider).valueOrNull ??
       const DeveloperSettings();
-  final collaboration = ref.watch(crdtCollaborationProvider);
-  final link = collaboration.linkState;
-
-  final health = !settings.crdtCollaboration
-      ? AppSettingsCollaborationHealth.off
-      : collaboration.unavailable != null
-      ? AppSettingsCollaborationHealth.unavailable
-      : switch (link.health) {
-          CrdtLinkHealth.inactive => AppSettingsCollaborationHealth.off,
-          CrdtLinkHealth.connecting =>
-            AppSettingsCollaborationHealth.connecting,
-          CrdtLinkHealth.connected => AppSettingsCollaborationHealth.connected,
-          CrdtLinkHealth.degraded => AppSettingsCollaborationHealth.degraded,
-        };
-
-  final signing = collaboration.policySigning;
   return AppSettingsDeveloperOptions(
     showWorkspaceMetadata: settings.showWorkspaceMetadata,
-    crdtCollaboration: settings.crdtCollaboration,
     setShowWorkspaceMetadata: (enabled) async {
       await ref
           .read(developerSettingsProvider.notifier)
@@ -331,28 +346,6 @@ AppSettingsDeveloperOptions _developerOptions(WidgetRef ref) {
           .read(kbControllerProvider.notifier)
           .setWorkspaceMetadataVisible(enabled);
     },
-    setCrdtCollaboration: (enabled) async {
-      await ref
-          .read(developerSettingsProvider.notifier)
-          .setCrdtCollaboration(enabled);
-      await ref.read(crdtCollaborationProvider.notifier).refresh();
-    },
-    collaborationHealth: health,
-    collaborationDetail: collaboration.unavailable ?? link.detail,
-    cursor: link.cursor,
-    pendingLocalPush: link.pendingLocalPush,
-    queuedInbound: link.queuedInbound,
-    refusalCount: collaboration.refusalCount,
-    refusalDetail: collaboration.lastRefusal?.detail,
-    policyDetail: switch (signing.health) {
-      PolicySigningHealth.ready =>
-        'This device holds the key matching the published policy.',
-      PolicySigningHealth.needsRepublish => signing.detail,
-      PolicySigningHealth.notApplicable => null,
-    },
-    republishPolicy: signing.canRepublish
-        ? () => ref.read(crdtCollaborationProvider.notifier).republishPolicy()
-        : null,
   );
 }
 

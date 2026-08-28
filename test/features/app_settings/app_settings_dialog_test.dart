@@ -123,18 +123,16 @@ void main() {
         );
   });
 
-  testWidgets('shows and changes both developer toggles', (tester) async {
-    bool? crdt;
+  testWidgets('keeps metadata in Developer and removes CRDT diagnostics', (
+    tester,
+  ) async {
     bool? metadata;
     await openDialog(
       tester,
       RecordingController(),
       developerOptions: AppSettingsDeveloperOptions(
         showWorkspaceMetadata: false,
-        crdtCollaboration: false,
         setShowWorkspaceMetadata: (value) async => metadata = value,
-        setCrdtCollaboration: (value) async => crdt = value,
-        collaborationHealth: AppSettingsCollaborationHealth.off,
       ),
     );
 
@@ -142,17 +140,11 @@ void main() {
     expect(find.text('CRDT collaboration'), findsNothing);
     await selectSection(tester, AppSettingsSection.developer);
 
-    expect(find.text('CRDT collaboration'), findsOneWidget);
+    expect(find.text('CRDT collaboration'), findsNothing);
+    expect(find.text('Collaboration'), findsNothing);
+    expect(find.textContaining('Durable cursor'), findsNothing);
     expect(find.text('Show workspace metadata'), findsOneWidget);
 
-    final crdtSwitch = find.descendant(
-      of: find.byKey(const Key('app-settings-crdt-toggle')),
-      matching: find.byType(Switch),
-    );
-    await tester.ensureVisible(crdtSwitch);
-    await tester.pumpAndSettle();
-    await tester.tap(crdtSwitch);
-    await tester.pumpAndSettle();
     final metadataSwitch = find.descendant(
       of: find.byKey(const Key('app-settings-metadata-toggle')),
       matching: find.byType(Switch),
@@ -162,102 +154,7 @@ void main() {
     await tester.tap(metadataSwitch);
     await tester.pumpAndSettle();
 
-    expect(crdt, isTrue);
     expect(metadata, isTrue);
-  });
-
-  testWidgets('shows live link backlog, refusals, and policy recovery', (
-    tester,
-  ) async {
-    var republished = false;
-    await openDialog(
-      tester,
-      RecordingController(),
-      developerOptions: AppSettingsDeveloperOptions(
-        showWorkspaceMetadata: true,
-        crdtCollaboration: true,
-        setShowWorkspaceMetadata: (_) async {},
-        setCrdtCollaboration: (_) async {},
-        collaborationHealth: AppSettingsCollaborationHealth.connected,
-        cursor: 42,
-        pendingLocalPush: true,
-        queuedInbound: 3,
-        refusalCount: 1,
-        refusalDetail: 'role reviewer cannot edit',
-        policyDetail: 'This device does not hold the published key.',
-        republishPolicy: () async => republished = true,
-      ),
-      section: AppSettingsSection.developer,
-    );
-
-    expect(find.text('Connected'), findsOneWidget);
-    expect(find.textContaining('Durable cursor 42'), findsOneWidget);
-    expect(find.textContaining('3 incoming update(s) queued'), findsOneWidget);
-    expect(find.text('Policy signing needs attention'), findsOneWidget);
-    expect(find.text('An incoming update was refused'), findsOneWidget);
-
-    final collabState = find.byKey(const Key('app-settings-collaboration-state'));
-    final policyBlock = find.byKey(const Key('app-settings-policy-signing'));
-    expect(
-      tester.getTopLeft(policyBlock).dy - tester.getBottomLeft(collabState).dy,
-      12.0,
-    );
-
-    final republish = find.byKey(const Key('app-settings-republish-policy'));
-    await tester.ensureVisible(republish);
-    await tester.pumpAndSettle();
-    await tester.tap(republish);
-    await tester.pumpAndSettle();
-    expect(republished, isTrue);
-  });
-
-  testWidgets('a failed policy republish exposes a copyable error', (
-    tester,
-  ) async {
-    String? copied;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-    await openDialog(
-      tester,
-      RecordingController(),
-      developerOptions: AppSettingsDeveloperOptions(
-        showWorkspaceMetadata: true,
-        crdtCollaboration: true,
-        setShowWorkspaceMetadata: (_) async {},
-        setCrdtCollaboration: (_) async {},
-        collaborationHealth: AppSettingsCollaborationHealth.connected,
-        policyDetail: 'This device does not hold the published key.',
-        republishPolicy: () async => throw StateError('policy write refused'),
-      ),
-      section: AppSettingsSection.developer,
-    );
-
-    final republish = find.byKey(
-      const Key('app-settings-republish-policy'),
-    );
-    await tester.ensureVisible(republish);
-    await tester.tap(republish);
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('policy write refused'), findsOneWidget);
-    final copy = find.byKey(const Key('copy-error-message'));
-    await tester.ensureVisible(copy);
-    await tester.pumpAndSettle();
-    await tester.tap(copy);
-    expect(copied, contains('policy write refused'));
   });
 
   group('describeLastChecked', () {
@@ -321,10 +218,7 @@ void main() {
       find.byKey(const Key('app-settings-section-updates')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('app-settings-section-about')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('app-settings-section-about')), findsNothing);
     expect(
       find.byKey(const Key('app-settings-section-knowledgeBase')),
       findsNothing,
@@ -608,10 +502,7 @@ void main() {
       knowledgeBasePanel: const SizedBox.shrink(),
       developerOptions: AppSettingsDeveloperOptions(
         showWorkspaceMetadata: false,
-        crdtCollaboration: false,
         setShowWorkspaceMetadata: (_) async {},
-        setCrdtCollaboration: (_) async {},
-        collaborationHealth: AppSettingsCollaborationHealth.off,
       ),
     );
 
@@ -632,8 +523,7 @@ void main() {
     expect(
       scroll.padding,
       const EdgeInsets.symmetric(horizontal: DsSpace.xl),
-      reason:
-          'the settings view area must have comfortable horizontal breathing room',
+      reason: 'the settings view area must have comfortable horizontal breathing room',
     );
   });
 

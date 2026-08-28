@@ -1,10 +1,9 @@
-/// Live presence: broadcasting where you are, and collecting where everybody
-/// else is.
+/// Live presence over the Knowledge Base's Render relay connection.
 ///
 /// This runs alongside the reviewed-edit model rather than inside it. Nothing
 /// here writes a table, creates a revision, or touches the sync ledger — the
-/// payload is ephemeral, held by Realtime per connection and dropped when the
-/// socket closes. If the whole channel fails, the app behaves exactly as it
+/// payload is ephemeral and dropped when the socket closes. If the relay
+/// fails, the app behaves exactly as it
 /// did before it existed, which is why every failure below is swallowed into a
 /// health value instead of surfacing as an error.
 ///
@@ -16,7 +15,6 @@ library;
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/app/workspace/kb_role.dart';
@@ -25,7 +23,8 @@ import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/blocks/markdown.dart';
-import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/crdt/crdt_session.dart';
+import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
 import 'package:dayseven/shared/presence/peer_presence.dart';
 
 enum PresenceHealth { inactive, connecting, connected, error }
@@ -49,16 +48,15 @@ class PresenceState {
       PresenceState(peers: peers ?? this.peers, health: health ?? this.health);
 }
 
-/// Presence needs the network, so it is off entirely without Supabase — the
-/// same gate the rest of collaboration uses. A Knowledge Base that is only a
-/// folder on one disk broadcasts nothing.
-final presenceEnabledProvider = Provider<bool>((ref) => isSupabaseConfigured);
+/// Test seam retained for the existing controller tests.
+final presenceEnabledProvider = Provider<bool>((ref) => true);
 
 class PresenceController extends StateNotifier<PresenceState> {
   PresenceController(this._ref) : super(const PresenceState()) {
     _ref.listen(kbSessionProvider, (_, _) => unawaited(_bind()));
     _ref.listen(currentUserProvider, (_, _) => unawaited(_bind()));
     _ref.listen(kbRoleProvider, (_, _) => unawaited(_bind()));
+    _ref.listen(crdtCollaborationProvider, (_, _) => unawaited(_bind()));
     _ref.listen(myProfileProvider, (_, _) => _schedulePush());
     _ref.listen<OpenDocument?>(documentControllerProvider, (previous, next) {
       // Only a change of document moves you; a keystroke does not.
@@ -77,7 +75,9 @@ class PresenceController extends StateNotifier<PresenceState> {
 
   final Ref _ref;
 
-  RealtimeChannel? _channel;
+  CrdtSession? _session;
+  StreamSubscription<CrdtPresenceEvent>? _presenceEvents;
+  StreamSubscription<CrdtPeerEvent>? _peerEvents;
   String? _boundKbId;
   String? _boundUserId;
 
@@ -103,6 +103,8 @@ class PresenceController extends StateNotifier<PresenceState> {
     final role = _ref.read(kbRoleProvider).valueOrNull;
     final kbId = session?.kb.manifest.kbId;
     final userId = user?.id;
+    final collaboration = _ref.read(crdtCollaborationProvider);
+    final crdtSession = collaboration.session;
 
     // A Knowledge Base nobody shares has no channel to join. `local` is also
     // what the role resolves to while signed out or offline, so this covers
@@ -113,12 +115,24 @@ class PresenceController extends StateNotifier<PresenceState> {
         userId != null &&
         role != null &&
         role != KbRole.local &&
-        role != KbRole.invited;
+        role != KbRole.invited &&
+        crdtSession != null;
 
     if (wanted &&
         _boundKbId == kbId &&
         _boundUserId == userId &&
-        _channel != null) {
+        identical(_session, crdtSession)) {
+      final nextHealth = _healthFor(collaboration.linkState.connection);
+      if (state.health != nextHealth) {
+        state = state.copyWith(
+          peers: nextHealth == PresenceHealth.connected ? null : const {},
+          health: nextHealth,
+        );
+        if (nextHealth == PresenceHealth.connected) {
+          _lastSent = null;
+          _sendNow();
+        }
+      }
       return;
     }
 
@@ -132,38 +146,29 @@ class PresenceController extends StateNotifier<PresenceState> {
 
     _boundKbId = kbId;
     _boundUserId = userId;
-    state = state.copyWith(peers: const {}, health: PresenceHealth.connecting);
-
-    // A separate topic from `kb:<kbId>`, and separate on purpose: presence is
-    // client-sent, so its topic is the one granted insert on
-    // realtime.messages. The notification bus stays read-only, where a forged
-    // event could otherwise drive a peer's sync. See the presence migration.
-    final channel = supabase.channel(
-      'presence:$kbId',
-      opts: RealtimeChannelConfig(private: true, key: userId),
+    _session = crdtSession;
+    state = state.copyWith(
+      peers: const {},
+      health: _healthFor(collaboration.linkState.connection),
     );
-    _channel = channel;
-
-    channel
-        .onPresenceSync((_) => _absorb(channel))
-        .onPresenceJoin((_) => _absorb(channel))
-        .onPresenceLeave((_) => _absorb(channel))
-        .subscribe((status, error) {
-          if (!mounted || !identical(_channel, channel)) return;
-          state = state.copyWith(
-            health: switch (status) {
-              RealtimeSubscribeStatus.subscribed => PresenceHealth.connected,
-              RealtimeSubscribeStatus.channelError ||
-              RealtimeSubscribeStatus.timedOut => PresenceHealth.error,
-              RealtimeSubscribeStatus.closed => PresenceHealth.inactive,
-            },
-          );
-          if (status == RealtimeSubscribeStatus.subscribed) {
-            _lastSent = null;
-            _sendNow();
-          }
-        });
+    _presenceEvents = crdtSession.presenceEvents.listen(_absorb);
+    _peerEvents = crdtSession.peerEvents.listen((event) {
+      if (!mounted || !identical(_session, crdtSession)) return;
+      if (event.kind == CrdtPeerEventKind.left) {
+        final peers = {...state.peers}..remove(event.userId);
+        state = state.copyWith(peers: peers);
+      }
+    });
+    if (state.health == PresenceHealth.connected) _sendNow();
   }
+
+  PresenceHealth _healthFor(CrdtConnectionState connection) =>
+      switch (connection) {
+        CrdtConnectionState.connected => PresenceHealth.connected,
+        CrdtConnectionState.connecting => PresenceHealth.connecting,
+        CrdtConnectionState.disconnected => PresenceHealth.inactive,
+        CrdtConnectionState.error => PresenceHealth.error,
+      };
 
   Future<void> _teardown() async {
     _sendWindow?.cancel();
@@ -174,37 +179,32 @@ class PresenceController extends StateNotifier<PresenceState> {
     _idle = false;
     _lastSent = null;
 
-    final previous = _channel;
-    _channel = null;
+    await _presenceEvents?.cancel();
+    _presenceEvents = null;
+    await _peerEvents?.cancel();
+    _peerEvents = null;
+    _session = null;
     _boundKbId = null;
     _boundUserId = null;
-    if (previous == null) return;
-    try {
-      await previous.untrack();
-    } on Object {
-      // Leaving is best-effort; the socket closing says the same thing.
-    }
-    try {
-      await supabase.removeChannel(previous);
-    } on Object {
-      // Same.
-    }
   }
 
-  void _absorb(RealtimeChannel channel) {
-    if (!mounted || !identical(_channel, channel)) return;
+  void _absorb(CrdtPresenceEvent event) {
+    if (!mounted || _session == null) return;
     final selfUserId = _boundUserId;
     if (selfUserId == null) return;
     try {
-      final peers = peersFromPresencePayloads(
-        channel.presenceState().map(
-          (entry) => entry.presences.map((presence) => presence.payload),
-        ),
-        selfUserId: selfUserId,
+      final peer = PeerPresence.fromJson({
+        ...event.payload,
+        // Identity comes from the relay's authenticated metadata, never from
+        // the sender-controlled JSON body.
+        'user_id': event.userId,
+      });
+      if (peer == null || peer.userId == selfUserId) return;
+      state = state.copyWith(
+        peers: {...state.peers, peer.userId: peer},
       );
-      state = state.copyWith(peers: peers);
     } on Object {
-      // An unreadable presence state must not replace a good one.
+      // An unreadable presence payload must not replace a good one.
     }
   }
 
@@ -277,7 +277,7 @@ class PresenceController extends StateNotifier<PresenceState> {
   /// Rate-limits sends: one immediately, then at most one per window, with a
   /// trailing send so the last position is never the one that got dropped.
   void _schedulePush() {
-    if (!mounted || _channel == null) return;
+    if (!mounted || _session == null) return;
     _idle = false;
     _restartIdleTimer();
 
@@ -304,8 +304,8 @@ class PresenceController extends StateNotifier<PresenceState> {
   }
 
   void _sendNow() {
-    final channel = _channel;
-    if (!mounted || channel == null) return;
+    final session = _session;
+    if (!mounted || session == null) return;
     final self = _self();
     if (self == null) return;
     // Saying the same thing again costs a round trip and tells nobody
@@ -313,30 +313,30 @@ class PresenceController extends StateNotifier<PresenceState> {
     // nothing at all.
     if (_lastSent != null && _lastSent!.samePositionAs(self)) return;
     _lastSent = self;
-    unawaited(_trackWithCaret(channel, self));
+    unawaited(_trackWithCaret(session, self));
   }
 
   Future<void> _trackWithCaret(
-    RealtimeChannel channel,
+    CrdtSession session,
     PeerPresence self,
   ) async {
     final anchors = await _caretAnchors();
-    if (!mounted || !identical(_channel, channel)) return;
+    if (!mounted || !identical(_session, session)) return;
     final withCaret = self.copyWith(
       cursor: () => anchors.cursor,
       selectionAnchor: () => anchors.anchor,
     );
     _lastSent = withCaret;
-    await _track(channel, withCaret);
+    await _track(session, withCaret);
   }
 
-  Future<void> _track(RealtimeChannel channel, PeerPresence self) async {
+  Future<void> _track(CrdtSession session, PeerPresence self) async {
     try {
-      await channel.track(self.toJson());
+      await session.sendPresence(self.toJson());
     } on Object {
       // Presence failing is a cosmetic loss, never an error the user is shown.
       // Clear the memo so the next attempt is not skipped as a duplicate.
-      if (identical(_channel, channel)) _lastSent = null;
+      if (identical(_session, session)) _lastSent = null;
     }
   }
 

@@ -120,15 +120,6 @@ class AppStore {
   /// debugging sync needs to see that those files exist.
   static const String showWorkspaceMetadata = 'showWorkspaceMetadata';
 
-  /// Turns on CRDT collaboration for Knowledge Bases that have it available.
-  ///
-  /// Off by default and deliberately so: the reviewed-edit path through
-  /// `documents`/`revisions` is what the two people running this app rely on,
-  /// and it stays authoritative until CRDT sync has been proven end to end
-  /// between two real clients. This flag is how that proving happens without
-  /// putting anybody's Knowledge Base behind it first.
-  static const String crdtCollaboration = 'crdtCollaboration';
-
   /// Recent documents are tracked per Knowledge Base, keyed by its id, so
   /// moving a bundle between machines does not lose the list.
   Future<List<String>> recentDocuments(String kbId) async =>
@@ -211,18 +202,14 @@ final appStoreProvider = FutureProvider<AppStore>((ref) => AppStore.open());
 class DeveloperSettings {
   const DeveloperSettings({
     this.showWorkspaceMetadata = false,
-    this.crdtCollaboration = false,
   });
 
   final bool showWorkspaceMetadata;
-  final bool crdtCollaboration;
 
   DeveloperSettings copyWith({
     bool? showWorkspaceMetadata,
-    bool? crdtCollaboration,
   }) => DeveloperSettings(
     showWorkspaceMetadata: showWorkspaceMetadata ?? this.showWorkspaceMetadata,
-    crdtCollaboration: crdtCollaboration ?? this.crdtCollaboration,
   );
 }
 
@@ -248,9 +235,6 @@ class DeveloperSettingsController
           showWorkspaceMetadata: await store.developerFlag(
             AppStore.showWorkspaceMetadata,
           ),
-          crdtCollaboration: await store.developerFlag(
-            AppStore.crdtCollaboration,
-          ),
         ),
       );
     } on Object catch (error, stack) {
@@ -263,12 +247,5 @@ class DeveloperSettingsController
     final store = await _ref.read(appStoreProvider.future);
     await store.setDeveloperFlag(AppStore.showWorkspaceMetadata, enabled);
     state = AsyncValue.data(current.copyWith(showWorkspaceMetadata: enabled));
-  }
-
-  Future<void> setCrdtCollaboration(bool enabled) async {
-    final current = state.valueOrNull ?? const DeveloperSettings();
-    final store = await _ref.read(appStoreProvider.future);
-    await store.setDeveloperFlag(AppStore.crdtCollaboration, enabled);
-    state = AsyncValue.data(current.copyWith(crdtCollaboration: enabled));
   }
 }

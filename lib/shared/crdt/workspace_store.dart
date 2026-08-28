@@ -83,6 +83,7 @@ class WorkspaceStore {
     required String workspaceId,
     int maxWorkspaceBytes = kDefaultMaxWorkspaceBytes,
     Duration debounceDuration = kDefaultSaveDebounce,
+    Set<String> preserveCanonicalFileIds = const {},
   }) async {
     final metadataDir = Directory(p.join(rootPath, kMetadataDirName, kYjsSubdirName));
     if (!await metadataDir.exists()) {
@@ -116,7 +117,10 @@ class WorkspaceStore {
     );
 
     try {
-      await store._scanAndImport(wasRestoredFromBin: wasRestoredFromBin);
+      await store._scanAndImport(
+        wasRestoredFromBin: wasRestoredFromBin,
+        preserveCanonicalFileIds: preserveCanonicalFileIds,
+      );
     } catch (e) {
       await store.close();
       rethrow;
@@ -130,12 +134,14 @@ class WorkspaceStore {
     KnowledgeBase kb, {
     int maxWorkspaceBytes = kDefaultMaxWorkspaceBytes,
     Duration debounceDuration = kDefaultSaveDebounce,
+    Set<String> preserveCanonicalFileIds = const {},
   }) =>
       open(
         rootPath: kb.rootPath,
         workspaceId: kb.manifest.kbId,
         maxWorkspaceBytes: maxWorkspaceBytes,
         debounceDuration: debounceDuration,
+        preserveCanonicalFileIds: preserveCanonicalFileIds,
       );
 
   // -------------------------------------------------------- Path Security --
@@ -216,7 +222,10 @@ class WorkspaceStore {
 
   // ---------------------------------------------------- Scan and Initial Import --
 
-  Future<void> _scanAndImport({required bool wasRestoredFromBin}) async {
+  Future<void> _scanAndImport({
+    required bool wasRestoredFromBin,
+    required Set<String> preserveCanonicalFileIds,
+  }) async {
     final root = Directory(rootPath);
     if (!await root.exists()) return;
 
@@ -266,7 +275,13 @@ class WorkspaceStore {
 
       if (knownById.containsKey(fileId)) {
         final meta = knownById[fileId]!;
-        if (meta.path != relative) {
+        // A protected working copy is deliberately allowed to differ on
+        // disk while its proposal waits for review. When canonical CRDT state
+        // already exists, reopening must not silently promote that newer
+        // Markdown (or its rename) into `workspace.bin` before approval.
+        final preserveCanonical =
+            wasRestoredFromBin && preserveCanonicalFileIds.contains(fileId);
+        if (!preserveCanonical && meta.path != relative) {
           await fileUpsert(
             handle: handle,
             fileId: fileId,
@@ -275,7 +290,9 @@ class WorkspaceStore {
             owners: meta.owners,
           );
         }
-        if (!wasRestoredFromBin) {
+        if (preserveCanonical) {
+          continue;
+        } else if (!wasRestoredFromBin) {
           final currentText = await fileText(handle: handle, fileId: fileId);
           if (currentText != content) {
             await fileSetText(handle: handle, fileId: fileId, next: content);
