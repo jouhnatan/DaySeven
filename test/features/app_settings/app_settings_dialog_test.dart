@@ -123,16 +123,6 @@ void main() {
         );
   });
 
-  testWidgets('shows the running version and build', (tester) async {
-    await openDialog(tester, RecordingController());
-    await selectSection(tester, AppSettingsSection.about);
-
-    // Label left, value right: the name of the thing, then what it is set to.
-    expect(find.text('DaySeven'), findsOneWidget);
-    expect(find.text('1.3.2'), findsOneWidget);
-    expect(find.text('Build 7'), findsOneWidget);
-  });
-
   testWidgets('shows and changes both developer toggles', (tester) async {
     bool? crdt;
     bool? metadata;
@@ -333,7 +323,7 @@ void main() {
     );
     expect(
       find.byKey(const Key('app-settings-section-about')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const Key('app-settings-section-knowledgeBase')),
@@ -415,31 +405,8 @@ void main() {
     expect(find.text('Gradient background'), findsOneWidget);
   });
 
-  // Solway labels regions; it never carries a value. A version and a build
-  // number are values, so they are set in the sans with tabular figures — the
-  // digits have to line up between the rows stacked above and below them.
-  testWidgets('sets every value in the sans, with figures that line up', (
-    tester,
-  ) async {
+  testWidgets('sets dialog title in header font', (tester) async {
     await openDialog(tester, RecordingController());
-    await selectSection(tester, AppSettingsSection.about);
-
-    for (final label in [
-      'DaySeven',
-      '1.3.2',
-      'Build 7',
-    ]) {
-      final style = tester.widget<Text>(find.text(label)).style;
-      expect(style?.fontFamily, kUiFontFamily, reason: '"$label" is not sans');
-    }
-
-    for (final label in ['1.3.2', 'Build 7']) {
-      expect(
-        tester.widget<Text>(find.text(label)).style?.fontFeatures,
-        contains(const FontFeature.tabularFigures()),
-        reason: '"$label" carries digits that have to align',
-      );
-    }
 
     // The dialog title is the one thing here that names a region.
     expect(
@@ -596,9 +563,6 @@ void main() {
 
     expect(find.text('No server configured'), findsOneWidget);
     expect(find.textContaining('published to Supabase'), findsOneWidget);
-    // The version is still worth seeing, now in About.
-    await selectSection(tester, AppSettingsSection.about);
-    expect(find.text('1.3.2'), findsOneWidget);
   });
 
   testWidgets('Done closes the dialog', (tester) async {
@@ -670,6 +634,35 @@ void main() {
       const EdgeInsets.symmetric(horizontal: DsSpace.xl),
       reason:
           'the settings view area must have comfortable horizontal breathing room',
+    );
+  });
+
+  testWidgets('pads the horizontal bar beneath the segmented control buttons', (
+    tester,
+  ) async {
+    await openDialog(tester, RecordingController());
+
+    final headerBox = tester.widget<DecoratedBox>(
+      find
+          .ancestor(
+            of: find.byType(DsSegmented<AppSettingsSection>),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    final headerPadding = tester.widget<Padding>(
+      find
+          .descendant(
+            of: find.byWidget(headerBox),
+            matching: find.byType(Padding),
+          )
+          .first,
+    );
+    expect(
+      (headerPadding.padding as EdgeInsets).bottom,
+      14,
+      reason:
+          'horizontal bar beneath segmented controls must have breathing room',
     );
   });
 

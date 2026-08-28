@@ -69,7 +69,6 @@ enum AppSettingsSection {
   appearance('Appearance'),
   updates('Updates'),
   knowledgeBase('Knowledge Base'),
-  about('About'),
   developer('Developer');
 
   const AppSettingsSection(this.label);
@@ -128,7 +127,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     AppSettingsSection.appearance,
     AppSettingsSection.updates,
     if (widget.knowledgeBasePanel != null) AppSettingsSection.knowledgeBase,
-    AppSettingsSection.about,
     if (widget.developerOptions != null) AppSettingsSection.developer,
   ];
 
@@ -209,7 +207,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                           AppSettingsSection.updates => _updatesSection(),
                           AppSettingsSection.knowledgeBase =>
                             _knowledgeBaseSection(),
-                          AppSettingsSection.about => _aboutSection(),
                           AppSettingsSection.developer => _developerSection(),
                         },
                         if (_settingsError case final message?)
@@ -313,18 +310,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       ),
     ];
   }
-
-  List<Widget> _aboutSection() => [
-    _VersionRow(),
-    Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Text(
-        'A world-building knowledge base editor. '
-        'Updates are published from the release feed and installed on next launch.',
-        style: uiTextStyle(size: 13, color: CF.muted),
-      ),
-    ),
-  ];
 
   List<Widget> _knowledgeBaseSection() => [
     Padding(
@@ -609,7 +594,7 @@ class _Header extends StatelessWidget {
         border: Border(bottom: BorderSide(color: CF.hairline)),
       ),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 12, 12, switcher == null ? 12 : 10),
+        padding: EdgeInsets.fromLTRB(16, 12, 12, switcher == null ? 12 : 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -667,30 +652,6 @@ class _SectionHeading extends StatelessWidget {
       style: uiHeaderTextStyle(size: 16, height: 22 / 16),
     ),
   );
-}
-
-class _VersionRow extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final version = ref.watch(currentVersionProvider);
-
-    // Label left, value right — and the value is tabular, because it is a
-    // number somebody reads off against the one a release note names.
-    return DsSettingRow(
-      key: const Key('app-settings-version'),
-      first: true,
-      label: 'DaySeven',
-      helper: switch (version) {
-        AsyncData(:final value) => 'Build ${value.build}',
-        AsyncError() => 'Version unavailable',
-        _ => 'Reading…',
-      },
-      trailing: Text(switch (version) {
-        AsyncData(:final value) => value.name,
-        _ => '—',
-      }, style: DsType.bodyStrong(tabular: true)),
-    );
-  }
 }
 
 class _UpdateStatusBlock extends ConsumerWidget {
