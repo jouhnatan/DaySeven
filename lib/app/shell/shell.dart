@@ -39,6 +39,7 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
+import 'package:dayseven/features/timeline/ui/timeline_widget.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
 import 'package:dayseven/shared/platform/new_instance.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
@@ -220,6 +221,7 @@ class DsShell extends ConsumerWidget {
                                             DsView.editor => const DsIsland(
                                               editorSurface: true,
                                               child: EditorScreen(
+                                                timelineWidget: TimelineWidget(),
                                                 searchCard: DsSearchBar(
                                                   resultsAbove: true,
                                                 ),
