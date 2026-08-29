@@ -21,7 +21,13 @@ import 'package:dayseven/shared/kb/bundle.dart';
 
 const String kYjsSubdirName = 'yjs';
 const String kWorkspaceBinName = 'workspace.bin';
-const String kWorkspaceTmpName = 'workspace.bin.tmp';
+/// Per-process, so two copies never write the same staging file.
+///
+/// A shared name lets two writers interleave into one temporary and then both
+/// rename it, publishing a spliced `workspace.bin` that will not load at all.
+/// The folder lock is what normally keeps two copies apart; this is the
+/// backstop for where advisory locking does not hold, such as a network share.
+String get kWorkspaceTmpName => 'workspace.bin.$pid.tmp';
 
 /// 50 MB default size limit for a single workspace document.
 const int kDefaultMaxWorkspaceBytes = 50 * 1024 * 1024;

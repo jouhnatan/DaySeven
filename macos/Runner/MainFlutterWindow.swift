@@ -3,6 +3,7 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   private var windowChromeChannel: FlutterMethodChannel?
+  private var newInstanceChannel: FlutterMethodChannel?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -47,6 +48,31 @@ class MainFlutterWindow: NSWindow {
       result(nil)
     }
     windowChromeChannel = channel
+
+    let newInstance = FlutterMethodChannel(
+      name: "dayseven/new_instance",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    newInstance.setMethodCallHandler { call, result in
+      guard call.method == "open" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let arguments = call.arguments as? [String: Any]
+      let fresh = arguments?["fresh"] as? Bool ?? false
+      NewInstance.open(fresh: fresh) { error in
+        if let error = error {
+          result(FlutterError(
+            code: "launch_failed",
+            message: error.localizedDescription,
+            details: nil
+          ))
+        } else {
+          result(nil)
+        }
+      }
+    }
+    newInstanceChannel = newInstance
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 

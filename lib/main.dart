@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dayseven/app/app.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/crdt/generated/frb_generated.dart';
+import 'package:dayseven/shared/platform/app_profile.dart';
 
 Future<void> _initCrdt() async {
   try {
@@ -21,7 +22,15 @@ Future<void> _initCrdt() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initSupabase();
+  // Before anything reads Application Support: a second copy launched to hold
+  // a second account needs its own directory, and its own signed-in session.
+  final profile = await AppProfile.acquire(mode: profileModeFromEnvironment());
+  await initSupabase(auth: profile.authOptions());
   await _initCrdt();
-  runApp(const ProviderScope(child: DaySevenApp()));
+  runApp(
+    ProviderScope(
+      overrides: [appProfileProvider.overrideWithValue(profile)],
+      child: const DaySevenApp(),
+    ),
+  );
 }

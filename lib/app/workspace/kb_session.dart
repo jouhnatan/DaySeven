@@ -12,6 +12,7 @@ import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/shared/blocks/search_index.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/shared/kb/folder_lock.dart';
 import 'package:dayseven/shared/kb/paths.dart';
 
 class KbSession {
@@ -42,6 +43,9 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   /// Held here so every later tree read agrees with the first one.
   bool _showMetadata = false;
 
+  /// Held for as long as this session has the folder open.
+  KbFolderLock? _folderLock;
+
   /// Opens (or creates) the bundle in a folder the user chose through the
   /// system file picker, then rebuilds the search index from the files on disk.
   Future<void> openFolder(String folder, {String? createWithName}) async {
@@ -54,6 +58,25 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
               folder: folder,
               name: createWithName ?? p.basename(folder),
             );
+
+      // Release before acquiring. POSIX locks are per-process and closing any
+      // descriptor on a file drops every lock this process holds on it, so
+      // reopening the same folder must not overlap its own claim.
+      await _folderLock?.release();
+      _folderLock = null;
+      _folderLock = await _ref.read(kbFolderLockProvider)(folder);
+      if (_folderLock == null) {
+        _stopWatching();
+        state.whenData((previous) => previous?.index.close());
+        state = AsyncValue.error(
+          KbFolderBusyException(
+            '"${p.basename(folder)}" is already open in another DaySeven '
+            'window. Close it there, or open a different folder.',
+          ),
+          StackTrace.current,
+        );
+        return;
+      }
 
       final store = await _ref.read(appStoreProvider.future);
       // Read before the index is built and before the tree is walked, so both
@@ -325,6 +348,8 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   void close() {
     _stopWatching();
     state.whenData((session) => session?.index.close());
+    unawaited(_folderLock?.release());
+    _folderLock = null;
     state = const AsyncValue.data(null);
   }
 
@@ -332,8 +357,26 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   void dispose() {
     _stopWatching();
     state.valueOrNull?.index.close();
+    unawaited(_folderLock?.release());
+    _folderLock = null;
     super.dispose();
   }
+}
+
+/// How a folder is claimed. Overridden in tests to stand in for a second copy
+/// of the application without launching one.
+final kbFolderLockProvider = Provider<Future<KbFolderLock?> Function(String)>(
+  (ref) => KbFolderLock.tryAcquire,
+);
+
+/// The folder is open in another window.
+class KbFolderBusyException implements Exception {
+  const KbFolderBusyException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }
 
 final kbControllerProvider =

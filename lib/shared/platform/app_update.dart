@@ -23,6 +23,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:dayseven/shared/backend/supabase_client.dart';
+import 'package:dayseven/shared/platform/app_profile.dart';
 import 'package:dayseven/shared/platform/install_location.dart';
 
 /// A version as the pubspec writes it: `1.3.0+5`.
@@ -274,6 +275,10 @@ class AppUpdateController extends StateNotifier<AppUpdateState> {
   /// the test process exiting.
   Future<void> Function(AppRelease, String) installer = installUpdate;
 
+  /// Whether another copy is running. A field for the same reason [installer]
+  /// is: a test needs to answer it without launching a second application.
+  Future<bool> Function() otherInstancesRunning = () async => false;
+
   Future<void> check() async {
     final platform = currentReleasePlatform;
     // Collaboration needs a server, and so does this; without one there is no
@@ -318,6 +323,18 @@ class AppUpdateController extends StateNotifier<AppUpdateState> {
         release,
         'DaySeven can only update itself from the Applications folder. '
         'Move it there, or download the new version by hand.',
+      );
+      return;
+    }
+
+    // Two copies swapping the application bundle would replace it underneath
+    // each other, and the staging sweep deletes the other's workspace.
+    if (await otherInstancesRunning()) {
+      state = UpdateFailed(
+        release,
+        'Another DaySeven window is open. Close it before installing an '
+        'update, so the two copies do not replace the application underneath '
+        'each other.',
       );
       return;
     }
@@ -708,9 +725,12 @@ Future<void> _run(String executable, List<String> arguments) async {
 
 final appUpdateProvider =
     StateNotifierProvider<AppUpdateController, AppUpdateState>((ref) {
+      final profile = ref.watch(appProfileProvider);
       return AppUpdateController(
         ref.watch(releaseDataSourceProvider),
         ref.watch(currentVersionProvider.future),
         enabled: isSupabaseConfigured,
-      );
+      )..otherInstancesRunning = profile == null
+          ? (() async => false)
+          : profile.otherInstancesRunning;
     });

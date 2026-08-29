@@ -40,11 +40,16 @@ const Duration kSupabaseStorageRequestTimeout = Duration(seconds: 30);
 bool get isSupabaseConfigured =>
     kSupabaseUrl.isNotEmpty && kSupabasePublishableKey.isNotEmpty;
 
-Future<void> initSupabase() async {
+/// [auth] carries the profile's session storage. The default leaves it to the
+/// library, which is what an ordinary single-window installation wants.
+Future<void> initSupabase({
+  FlutterAuthClientOptions auth = const FlutterAuthClientOptions(),
+}) async {
   if (!isSupabaseConfigured) return;
   await Supabase.initialize(
     url: kSupabaseUrl,
     publishableKey: kSupabasePublishableKey,
+    authOptions: auth,
     postgrestOptions: const PostgrestClientOptions(
       // Deliberately no transport-level retry.
       //

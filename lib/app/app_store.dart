@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:dayseven/shared/platform/app_profile.dart';
+
 import 'package:dayseven/shared/kb/paths.dart';
 
 /// Small pieces of app-level state that belong to the installation rather than
@@ -19,8 +21,10 @@ class AppStore {
 
   final File _file;
 
-  static Future<AppStore> open() async {
-    final dir = await getApplicationSupportDirectory();
+  static Future<AppStore> open() async =>
+      AppStore.openIn(await getApplicationSupportDirectory());
+
+  static Future<AppStore> openIn(Directory dir) async {
     await dir.create(recursive: true);
     return AppStore(File(p.join(dir.path, 'dayseven.json')));
   }
@@ -34,8 +38,14 @@ class AppStore {
     }
   }
 
-  Future<void> _write(Map<String, Object?> data) =>
-      _file.writeAsString(jsonEncode(data));
+  /// Temp and rename, because [_read] answers a damaged file with an empty
+  /// map. A write torn by a crash or a full disk would otherwise read back as
+  /// "no settings" and silently reset the whole installation.
+  Future<void> _write(Map<String, Object?> data) async {
+    final temporary = File('${_file.path}.$pid.tmp');
+    await temporary.writeAsString(jsonEncode(data), flush: true);
+    await temporary.rename(_file.path);
+  }
 
   Future<List<String>> recentKbPaths() async =>
       ((await _read())['recentKbPaths'] as List<Object?>? ?? const [])
@@ -197,7 +207,11 @@ class AppStore {
   }
 }
 
-final appStoreProvider = FutureProvider<AppStore>((ref) => AppStore.open());
+final appStoreProvider = FutureProvider<AppStore>((ref) async {
+  final profile = ref.watch(appProfileProvider);
+  final directory = profile?.directory ?? await getApplicationSupportDirectory();
+  return AppStore.openIn(directory);
+});
 
 class DeveloperSettings {
   const DeveloperSettings({

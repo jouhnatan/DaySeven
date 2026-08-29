@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:dayseven/shared/platform/app_profile.dart';
 import 'package:dayseven/shared/security/security_log.dart';
 
 const String kSecurityLogFileName = 'security.log';
@@ -24,7 +25,8 @@ const String kSecurityLogFileName = 'security.log';
 /// application down with it is worse than no log.
 final securityLogProvider = FutureProvider<SecurityLog>((ref) async {
   try {
-    final dir = await getApplicationSupportDirectory();
+    final profile = ref.watch(appProfileProvider);
+    final dir = profile?.directory ?? await getApplicationSupportDirectory();
     await dir.create(recursive: true);
     return SecurityLog(
       sink: SecurityLogFileSink(File(p.join(dir.path, kSecurityLogFileName))),

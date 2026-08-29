@@ -41,6 +41,8 @@ import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
+import 'package:dayseven/shared/platform/new_instance.dart';
+import 'package:dayseven/shared/ui/error_box.dart';
 
 class DsShell extends ConsumerWidget {
   const DsShell({super.key});
@@ -156,6 +158,26 @@ class DsShell extends ConsumerWidget {
                                                   onSelected: DsGlobalSettings
                                                       .toggleGradientBackground,
                                                 ),
+                                                if (canOpenNewWindow) ...[
+                                                  HamburgerMenuEntry.action(
+                                                    label: 'New Window',
+                                                    onSelected: () =>
+                                                        _openNewWindow(
+                                                          context,
+                                                          fresh: false,
+                                                        ),
+                                                  ),
+                                                  HamburgerMenuEntry.action(
+                                                    label:
+                                                        'New Window as '
+                                                        'Different Account…',
+                                                    onSelected: () =>
+                                                        _openNewWindow(
+                                                          context,
+                                                          fresh: true,
+                                                        ),
+                                                  ),
+                                                ],
                                                 // Shown with or without a
                                                 // server: the version is worth
                                                 // seeing either way, and the
@@ -280,6 +302,32 @@ class DsShell extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Opens another copy of DaySeven.
+///
+/// A failure here is worth saying out loud: the person asked for a window and
+/// did not get one, and nothing else on screen would show why.
+void _openNewWindow(BuildContext context, {required bool fresh}) {
+  unawaited(() async {
+    try {
+      await openNewWindow(fresh: fresh);
+    } on NewInstanceException catch (error) {
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          content: DsErrorBox(error.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }());
 }
 
 /// Opens App settings with everything only the composition root can supply:
