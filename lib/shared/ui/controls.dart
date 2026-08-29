@@ -299,6 +299,7 @@ class _DsButtonState extends State<DsButton> {
                 duration: DsMotion.of(context, DsMotion.hover),
                 curve: DsMotion.curve,
                 height: widget.height,
+                alignment: Alignment.center,
                 padding: widget.padding,
                 decoration: BoxDecoration(
                   color: fill,

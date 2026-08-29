@@ -7,11 +7,18 @@ to get right that the code does not enforce on its own.
 
 ## Plan Mode: Basics
 
+- 
 
 
 ## Build Mode: Basics
 
 - Always make sure to read .documents/STYLE.md if your change involves UI changes.
+
+
+## On Completion of Task
+
+- Make a pull request and commit the change.
+- Ensure the build of the app is updated so the user can test it and review the changes.
 
 
 ## Committing
@@ -23,7 +30,7 @@ into one commit — one commit per change, with a message that says what it does
 and why.
 
 "Finished" means `flutter analyze`, `flutter test` and `./scripts/check_layers.sh`
-all pass. A commit that does not build is worse than no commit.
+all pass. 
 
 A commit on its own does not bump the version and does not tag. That is the
 release step, and it is not optional either: committing is the first half of
