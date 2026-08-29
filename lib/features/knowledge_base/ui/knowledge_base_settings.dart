@@ -851,135 +851,142 @@ class _PendingInvitesCard extends StatelessWidget {
       children: [
         Text(
           'Invite',
-          style: uiTextStyle(size: 15, weight: 500, color: colors.text),
+          style: uiHeaderTextStyle(size: 16, weight: 500, color: colors.text),
         ),
         const SizedBox(height: 8),
-        DsCard(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Pending Invites',
-                  style: uiTextStyle(size: 13, weight: 600, color: colors.text),
+        Container(
+          decoration: BoxDecoration(
+            color: colors.island,
+            border: Border.all(color: colors.surfaceOutline),
+            borderRadius: const BorderRadius.all(DsRadius.island),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Pending Invites',
+                style: uiHeaderTextStyle(
+                  size: 14.5,
+                  weight: 500,
+                  color: colors.text,
                 ),
-                const SizedBox(height: 8),
-                invitations.when(
-                  loading: () => const LinearProgressIndicator(),
-                  error: (error, _) => DsErrorBox(describeError(error)),
-                  data: (items) {
-                    if (items.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          'No pending invitations',
-                          style: uiTextStyle(size: 13, color: colors.muted),
-                        ),
-                      );
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var i = 0; i < items.length; i++) ...[
-                          if (i > 0)
-                            Divider(
-                              height: 12,
-                              thickness: 1,
-                              color: colors.border,
-                            ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: colors.sage,
-                                  child: Text(
-                                    items[i].name.isEmpty
-                                        ? '?'
-                                        : items[i].name[0].toUpperCase(),
-                                    style: uiTextStyle(
-                                      size: 12,
-                                      weight: 500,
-                                      color: colors.text,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        items[i].name,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: uiTextStyle(
-                                          size: 13,
-                                          weight: 500,
-                                          color: colors.text,
-                                        ),
-                                      ),
-                                      Text(
-                                        'Owned by ${items[i].ownerName} · ${items[i].role.label}',
-                                        overflow: TextOverflow.ellipsis,
-                                        style: uiTextStyle(
-                                          size: 11,
-                                          color: colors.muted,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                DsButton(
-                                  variant: DsButtonVariant.secondary,
-                                  height: 28,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                  ),
-                                  semanticLabel:
-                                      'Accept invitation to ${items[i].name}',
-                                  onPressed: () => onAccept(items[i]),
-                                  child: Text(
-                                    'Accept',
-                                    style: uiTextStyle(
-                                      size: 12,
-                                      weight: 500,
-                                      color: colors.text,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                DsButton(
-                                  variant: DsButtonVariant.secondary,
-                                  height: 28,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                  ),
-                                  semanticLabel:
-                                      'Decline invitation to ${items[i].name}',
-                                  onPressed: () => onDecline(items[i]),
-                                  child: Text(
-                                    'Decline',
-                                    style: uiTextStyle(
-                                      size: 12,
-                                      weight: 500,
-                                      color: colors.danger,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
+              ),
+              const SizedBox(height: 12),
+              invitations.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: LinearProgressIndicator(),
+                ),
+                error: (error, _) => DsErrorBox(describeError(error)),
+                data: (items) {
+                  if (items.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'No pending invitations',
+                        style: uiTextStyle(size: 12.5, color: colors.muted),
+                      ),
                     );
-                  },
-                ),
-              ],
-            ),
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < items.length; i++) ...[
+                        if (i > 0)
+                          Divider(
+                            height: 16,
+                            thickness: 1,
+                            color: colors.border,
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 14,
+                                backgroundColor: colors.sage,
+                                child: Text(
+                                  items[i].name.isEmpty
+                                      ? '?'
+                                      : items[i].name[0].toUpperCase(),
+                                  style: uiTextStyle(
+                                    size: 12.5,
+                                    color: colors.onSage,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      items[i].name,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: uiTextStyle(
+                                        size: 13.5,
+                                        color: colors.text,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Owned by ${items[i].ownerName} · ${items[i].role.label}',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: uiTextStyle(
+                                        size: 12.5,
+                                        color: colors.muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              DsButton(
+                                variant: DsButtonVariant.secondary,
+                                height: 32,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                                semanticLabel:
+                                    'Accept invitation to ${items[i].name}',
+                                onPressed: () => onAccept(items[i]),
+                                child: Text(
+                                  'Accept',
+                                  style: uiTextStyle(
+                                    size: 13.5,
+                                    color: colors.text,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              DsButton(
+                                variant: DsButtonVariant.secondary,
+                                height: 32,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                                semanticLabel:
+                                    'Decline invitation to ${items[i].name}',
+                                onPressed: () => onDecline(items[i]),
+                                child: Text(
+                                  'Decline',
+                                  style: uiTextStyle(
+                                    size: 13.5,
+                                    color: colors.danger,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
         ),
       ],
