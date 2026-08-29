@@ -26,10 +26,38 @@ class TimelineTrack extends ConsumerStatefulWidget {
 class _TimelineTrackState extends ConsumerState<TimelineTrack> {
   final ScrollController _scrollController = ScrollController();
 
+  String? _draggingItemId;
+  double? _draggedStartYear;
+  double? _draggedEndYear;
+  double _dragOffsetDx = 0.0;
+
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollLeft() {
+    if (!_scrollController.hasClients) return;
+    final target = math.max(0.0, _scrollController.offset - 320);
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _scrollRight() {
+    if (!_scrollController.hasClients) return;
+    final target = math.min(
+      _scrollController.position.maxScrollExtent,
+      _scrollController.offset + 320,
+    );
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -47,15 +75,21 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
     final maxYear = (rawMax + pad).ceilToDouble();
     final totalSpan = maxYear - minYear;
 
-    // 2. Pixel density: at least 1000px total width
-    const minTrackWidth = 900.0;
-    const pixelsPerYear = 6.0;
+    // 2. Pixel density and canvas margins
+    const edgePadding = 120.0;
+    const minTrackWidth = 1000.0;
+    const pixelsPerYear = 8.0;
     final trackWidth = math.max(minTrackWidth, totalSpan * pixelsPerYear);
 
-    // 3. Coordinate conversion helper
+    // 3. Coordinate conversion helpers
     double xForYear(double year) {
       final fraction = (year - minYear) / totalSpan;
-      return (fraction * (trackWidth - 120)) + 60;
+      return (fraction * (trackWidth - (edgePadding * 2))) + edgePadding;
+    }
+
+    double yearForX(double x) {
+      final fraction = (x - edgePadding) / (trackWidth - (edgePadding * 2));
+      return minYear + (fraction * totalSpan);
     }
 
     // 4. Generate interval ticks
@@ -66,75 +100,140 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
       ticks.add(t);
     }
 
-    return SizedBox(
-      height: widget.trackHeight,
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: trackWidth,
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Horizontal Scrollable Axis
+        SizedBox(
           height: widget.trackHeight,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Continuous horizontal axis line
-              Positioned(
-                left: 20,
-                right: 20,
-                top: widget.trackHeight / 2,
-                child: Container(
-                  height: 2,
-                  color: colors.border,
-                ),
-              ),
-
-              // Periodic Ticks & Year Labels
-              for (final tick in ticks) ...[
-                Positioned(
-                  left: xForYear(tick) - 0.5,
-                  top: (widget.trackHeight / 2) - 6,
-                  child: Container(
-                    width: 1,
-                    height: 14,
-                    color: colors.border,
-                  ),
-                ),
-                Positioned(
-                  left: xForYear(tick) - 30,
-                  top: (widget.trackHeight / 2) + 12,
-                  width: 60,
-                  child: Text(
-                    tick.toInt().toString(),
-                    textAlign: TextAlign.center,
-                    style: uiTextStyle(
-                      size: 11,
-                      color: colors.muted,
-                      tabular: true,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: trackWidth,
+              height: widget.trackHeight,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Continuous horizontal axis line
+                  Positioned(
+                    left: 30,
+                    right: 30,
+                    top: widget.trackHeight / 2,
+                    child: Container(
+                      height: 2,
+                      color: colors.border,
                     ),
                   ),
-                ),
-              ],
 
-              // Periods / Ages (rendered as bracketed pills)
-              for (final item in items)
-                if (item is TimelinePeriodItem)
-                  _buildPeriodWidget(
-                    context,
-                    item,
-                    xForYear,
-                    isSelected: item.id == selectedId,
-                  ),
+                  // Periodic Ticks & Year Labels
+                  for (final tick in ticks) ...[
+                    Positioned(
+                      left: xForYear(tick) - 0.5,
+                      top: (widget.trackHeight / 2) - 6,
+                      child: Container(
+                        width: 1,
+                        height: 14,
+                        color: colors.border,
+                      ),
+                    ),
+                    Positioned(
+                      left: xForYear(tick) - 30,
+                      top: (widget.trackHeight / 2) + 12,
+                      width: 60,
+                      child: Text(
+                        tick.toInt().toString(),
+                        textAlign: TextAlign.center,
+                        style: uiTextStyle(
+                          size: 11,
+                          color: colors.muted,
+                          tabular: true,
+                        ),
+                      ),
+                    ),
+                  ],
 
-              // Point Events (rendered as nodes + blurbs)
-              for (final item in items)
-                if (item is TimelineEventItem)
-                  _buildPointEventWidget(
-                    context,
-                    item,
-                    xForYear,
-                    isSelected: item.id == selectedId,
-                  ),
-            ],
+                  // Periods / Ages (rendered as bracketed pills)
+                  for (final item in items)
+                    if (item is TimelinePeriodItem)
+                      _buildPeriodWidget(
+                        context,
+                        item,
+                        xForYear,
+                        yearForX,
+                        isSelected: item.id == selectedId,
+                      ),
+
+                  // Point Events (rendered as nodes + blurbs)
+                  for (final item in items)
+                    if (item is TimelineEventItem)
+                      _buildPointEventWidget(
+                        context,
+                        item,
+                        xForYear,
+                        yearForX,
+                        isSelected: item.id == selectedId,
+                      ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Left Caret Scroll Button (‹)
+        Positioned(
+          left: 8,
+          child: _buildCaretButton(
+            context,
+            icon: Icons.chevron_left,
+            tooltip: 'Scroll left',
+            onPressed: _scrollLeft,
+          ),
+        ),
+
+        // Right Caret Scroll Button (›)
+        Positioned(
+          right: 8,
+          child: _buildCaretButton(
+            context,
+            icon: Icons.chevron_right,
+            tooltip: 'Scroll right',
+            onPressed: _scrollRight,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCaretButton(
+    BuildContext context, {
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    final colors = context.ds;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: colors.island,
+        elevation: 1,
+        shadowColor: colors.border,
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.all(DsRadius.control),
+          side: BorderSide(color: colors.surfaceOutline),
+        ),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: const BorderRadius.all(DsRadius.control),
+          child: Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            child: Icon(
+              icon,
+              size: 18,
+              color: colors.text,
+            ),
           ),
         ),
       ),
@@ -152,78 +251,173 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
   Widget _buildPeriodWidget(
     BuildContext context,
     TimelinePeriodItem item,
-    double Function(double) xForYear, {
+    double Function(double) xForYear,
+    double Function(double) yearForX, {
     required bool isSelected,
   }) {
     final colors = context.ds;
     final itemColor = item.color.color;
-    final startX = xForYear(item.startYear);
-    final endX = xForYear(item.endYear);
+    final isDragging = _draggingItemId == item.id;
+
+    final displayStartYear =
+        (isDragging && _draggedStartYear != null)
+            ? _draggedStartYear!
+            : item.startYear;
+    final displayEndYear =
+        (isDragging && _draggedEndYear != null)
+            ? _draggedEndYear!
+            : item.endYear;
+
+    final startX = xForYear(displayStartYear);
+    final endX = xForYear(displayEndYear);
     final width = math.max(70.0, endX - startX);
     final left = startX;
     final containerHeight = (widget.trackHeight / 2) + 5; // Bottom at 85px (center at 81px)
 
-    return Positioned(
+    return AnimatedPositioned(
+      duration: isDragging
+          ? const Duration(milliseconds: 50)
+          : const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
       left: left,
       top: 0,
       width: width,
-      height: containerHeight,
+      height: widget.trackHeight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
           ref.read(timelineActionControllerProvider).selectItem(item.id);
         },
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // Blurb pill
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: isSelected ? itemColor : colors.cardSurface,
-                  borderRadius: const BorderRadius.all(DsRadius.row),
-                  border: Border.all(
-                    color: isSelected ? itemColor : itemColor.withAlpha(160),
-                    width: isSelected ? 1.5 : 1,
+        onHorizontalDragStart: (details) {
+          setState(() {
+            _draggingItemId = item.id;
+            _draggedStartYear = item.startYear;
+            _draggedEndYear = item.endYear;
+            _dragOffsetDx = 0.0;
+          });
+          ref.read(timelineActionControllerProvider).selectItem(item.id);
+        },
+        onHorizontalDragUpdate: (details) {
+          _dragOffsetDx += details.delta.dx;
+          final currentStartX = xForYear(item.startYear) + _dragOffsetDx;
+          final snappedStart = yearForX(currentStartX).roundToDouble();
+          final duration = item.endYear - item.startYear;
+          setState(() {
+            _draggedStartYear = snappedStart;
+            _draggedEndYear = snappedStart + duration;
+          });
+        },
+        onHorizontalDragEnd: (details) {
+          if (_draggingItemId == item.id && _draggedStartYear != null) {
+            final newStart = _draggedStartYear!.roundToDouble();
+            final newEnd = (_draggedEndYear ?? (newStart + (item.endYear - item.startYear))).roundToDouble();
+            ref.read(timelineActionControllerProvider).updateItem(
+                  item.copyWith(
+                    startYear: newStart,
+                    startDateLabel: '${newStart.toInt()}',
+                    endYear: newEnd,
+                    endDateLabel: '${newEnd.toInt()}',
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                );
+          }
+          setState(() {
+            _draggingItemId = null;
+            _draggedStartYear = null;
+            _draggedEndYear = null;
+            _dragOffsetDx = 0.0;
+          });
+        },
+        child: MouseRegion(
+          cursor: isDragging ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Period blurb & bracket bar
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: containerHeight,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (item.isDocumentLink) ...[
-                      Icon(
-                        Icons.link,
-                        size: 13,
-                        color: isSelected ? colors.onFern : colors.link,
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                    Flexible(
-                      child: Text(
-                        item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: uiTextStyle(
-                          size: 12,
-                          weight: 500,
-                          color: isSelected ? colors.onFern : colors.text,
+                    // Blurb pill
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: isSelected ? itemColor : colors.cardSurface,
+                        borderRadius: const BorderRadius.all(DsRadius.row),
+                        border: Border.all(
+                          color: isSelected ? itemColor : itemColor.withAlpha(160),
+                          width: isSelected ? 1.5 : 1,
                         ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (item.isDocumentLink) ...[
+                            Icon(
+                              Icons.link,
+                              size: 13,
+                              color: isSelected ? colors.onFern : colors.link,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Flexible(
+                            child: Text(
+                              item.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: uiTextStyle(
+                                size: 12,
+                                weight: 500,
+                                color: isSelected ? colors.onFern : colors.text,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Span bracket bar flush on the axis
+                    Container(
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: isSelected ? itemColor : itemColor.withAlpha(200),
+                        borderRadius: const BorderRadius.all(Radius.circular(4)),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 6),
-              // Span bracket bar flush on the axis
-              Container(
-                height: 8,
-                decoration: BoxDecoration(
-                  color: isSelected ? itemColor : itemColor.withAlpha(200),
-                  borderRadius: const BorderRadius.all(Radius.circular(4)),
+
+              // Live Floating Year Bubble (Appears beneath during drag)
+              if (isDragging)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: (widget.trackHeight / 2) + 14,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: itemColor,
+                        borderRadius: const BorderRadius.all(DsRadius.control),
+                        border: Border.all(color: colors.surfaceOutline),
+                        boxShadow: cfMenuShadow,
+                      ),
+                      child: Text(
+                        '${displayStartYear.toInt()} → ${displayEndYear.toInt()}',
+                        style: uiTextStyle(
+                          size: 11,
+                          weight: 600,
+                          color: colors.onFern,
+                          tabular: true,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -234,93 +428,177 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
   Widget _buildPointEventWidget(
     BuildContext context,
     TimelineEventItem item,
-    double Function(double) xForYear, {
+    double Function(double) xForYear,
+    double Function(double) yearForX, {
     required bool isSelected,
   }) {
     final colors = context.ds;
     final itemColor = item.color.color;
-    final centerX = xForYear(item.startYear);
+    final isDragging = _draggingItemId == item.id;
+
+    final displayStartYear =
+        (isDragging && _draggedStartYear != null)
+            ? _draggedStartYear!
+            : item.startYear;
+
+    final centerX = xForYear(displayStartYear);
     final containerHeight = (widget.trackHeight / 2) + 8; // Bottom at 88px (center at 81px)
 
-    return Positioned(
+    return AnimatedPositioned(
+      duration: isDragging
+          ? const Duration(milliseconds: 50)
+          : const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
       left: centerX - 60,
       top: 0,
       width: 120,
-      height: containerHeight,
+      height: widget.trackHeight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
           ref.read(timelineActionControllerProvider).selectItem(item.id);
         },
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Blurb pill above the point
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isSelected ? itemColor : colors.island,
-                  borderRadius: const BorderRadius.all(DsRadius.row),
-                  border: Border.all(
-                    color: isSelected ? itemColor : itemColor.withAlpha(160),
-                    width: isSelected ? 1.5 : 1,
+        onHorizontalDragStart: (details) {
+          setState(() {
+            _draggingItemId = item.id;
+            _draggedStartYear = item.startYear;
+            _dragOffsetDx = 0.0;
+          });
+          ref.read(timelineActionControllerProvider).selectItem(item.id);
+        },
+        onHorizontalDragUpdate: (details) {
+          _dragOffsetDx += details.delta.dx;
+          final currentX = xForYear(item.startYear) + _dragOffsetDx;
+          final snappedStart = yearForX(currentX).roundToDouble();
+          setState(() {
+            _draggedStartYear = snappedStart;
+          });
+        },
+        onHorizontalDragEnd: (details) {
+          if (_draggingItemId == item.id && _draggedStartYear != null) {
+            final newStart = _draggedStartYear!.roundToDouble();
+            ref.read(timelineActionControllerProvider).updateItem(
+                  item.copyWith(
+                    startYear: newStart,
+                    startDateLabel: '${newStart.toInt()}',
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                );
+          }
+          setState(() {
+            _draggingItemId = null;
+            _draggedStartYear = null;
+            _dragOffsetDx = 0.0;
+          });
+        },
+        child: MouseRegion(
+          cursor: isDragging ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Point blurb and node
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: containerHeight,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    if (item.isDocumentLink) ...[
-                      Icon(
-                        Icons.link,
-                        size: 12,
-                        color: isSelected ? colors.onFern : colors.link,
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                    Flexible(
-                      child: Text(
-                        item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: uiTextStyle(
-                          size: 11.5,
-                          weight: 500,
-                          color: isSelected ? colors.onFern : colors.text,
+                    // Blurb pill above the point
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isSelected ? itemColor : colors.island,
+                        borderRadius: const BorderRadius.all(DsRadius.row),
+                        border: Border.all(
+                          color: isSelected ? itemColor : itemColor.withAlpha(160),
+                          width: isSelected ? 1.5 : 1,
                         ),
                       ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (item.isDocumentLink) ...[
+                            Icon(
+                              Icons.link,
+                              size: 12,
+                              color: isSelected ? colors.onFern : colors.link,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Flexible(
+                            child: Text(
+                              item.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: uiTextStyle(
+                                size: 11.5,
+                                weight: 500,
+                                color: isSelected ? colors.onFern : colors.text,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Circular node flush on the axis line
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isSelected ? itemColor : colors.island,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: itemColor,
+                          width: 2.5,
+                        ),
+                      ),
+                      child: isSelected
+                          ? Center(
+                              child: Container(
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: colors.onFern,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            )
+                          : null,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 6),
-              // Circular node flush on the axis line
-              Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: isSelected ? itemColor : colors.island,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: itemColor,
-                    width: 2.5,
+
+              // Live Floating Year Bubble (Appears beneath during drag)
+              if (isDragging)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: (widget.trackHeight / 2) + 14,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: itemColor,
+                        borderRadius: const BorderRadius.all(DsRadius.control),
+                        border: Border.all(color: colors.surfaceOutline),
+                        boxShadow: cfMenuShadow,
+                      ),
+                      child: Text(
+                        '${displayStartYear.toInt()}',
+                        style: uiTextStyle(
+                          size: 11,
+                          weight: 600,
+                          color: colors.onFern,
+                          tabular: true,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                child: isSelected
-                    ? Center(
-                        child: Container(
-                          width: 4,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: colors.onFern,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
             ],
           ),
         ),

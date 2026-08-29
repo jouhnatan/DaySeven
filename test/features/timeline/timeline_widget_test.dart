@@ -8,6 +8,7 @@ import 'package:dayseven/features/timeline/ui/timeline_color_picker.dart';
 import 'package:dayseven/features/timeline/ui/timeline_inspector.dart';
 import 'package:dayseven/features/timeline/ui/timeline_popover.dart';
 import 'package:dayseven/features/timeline/ui/timeline_toolbar_button.dart';
+import 'package:dayseven/features/timeline/ui/timeline_track.dart';
 import 'package:dayseven/features/timeline/ui/timeline_widget.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -164,6 +165,86 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(selected, TimelineColor.blue);
+    });
+
+    testWidgets('TimelineTrack renders left and right caret buttons and scrolls', (
+      tester,
+    ) async {
+      final section = TimelineSection(
+        startIndex: 0,
+        endIndex: 5,
+        description: 'Epic History',
+        items: [
+          const TimelinePeriodItem(
+            id: 'p1',
+            title: 'Ancient Epoch',
+            startYear: 1000,
+            startDateLabel: '1000',
+            endYear: 1200,
+            endDateLabel: '1200',
+          ),
+          const TimelineEventItem(
+            id: 'e1',
+            title: 'Grand Coronation',
+            startYear: 1250,
+            startDateLabel: '1250',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        buildApp(
+          TimelineTrack(section: section),
+        ),
+      );
+
+      expect(find.byIcon(Icons.chevron_left), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+
+      // Tap right caret button
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      await tester.pumpAndSettle();
+
+      // Tap left caret button
+      await tester.tap(find.byIcon(Icons.chevron_left));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('TimelineTrack shows floating year bubble during event drag', (
+      tester,
+    ) async {
+      final section = TimelineSection(
+        startIndex: 0,
+        endIndex: 5,
+        description: 'Epic History',
+        items: [
+          const TimelineEventItem(
+            id: 'e1',
+            title: 'Great Expedition',
+            startYear: 1820,
+            startDateLabel: '1820',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        buildApp(
+          TimelineTrack(section: section),
+        ),
+      );
+
+      expect(find.text('Great Expedition'), findsOneWidget);
+
+      // Drag event horizontally
+      final gesture = await tester.startGesture(tester.getCenter(find.text('Great Expedition')));
+      await gesture.moveBy(const Offset(60, 0));
+      await tester.pump();
+
+      // Year bubble should appear
+      expect(find.textContaining('18'), findsWidgets);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
     });
   });
 }
