@@ -35,6 +35,36 @@ User _signedInUser() => User(
   createdAt: DateTime.utc(2026, 8, 20).toIso8601String(),
 );
 
+class _InvitationsKbRepository extends KbRepository {
+  _InvitationsKbRepository({
+    this.invitationsList = const [],
+  });
+
+  final List<KbInvitation> invitationsList;
+  String? lastAcceptedKbId;
+  String? lastDeclinedKbId;
+  int invitationsCallCount = 0;
+
+  @override
+  Future<List<KbInvitation>> invitations() async {
+    invitationsCallCount++;
+    return invitationsList;
+  }
+
+  @override
+  Future<List<KbCollaborator>> collaborators(String kbId) async => const [];
+
+  @override
+  Future<void> acceptInvitation(String kbId) async {
+    lastAcceptedKbId = kbId;
+  }
+
+  @override
+  Future<void> declineInvitation(String kbId) async {
+    lastDeclinedKbId = kbId;
+  }
+}
+
 class _DocumentRepositoryStub extends DocumentRepository {
   _DocumentRepositoryStub(this.rows);
 
@@ -930,7 +960,10 @@ void main() {
       // Header is present, and Invite sits under the last collaborator as an
       // underscored link. Sync keeps its own control; Retry is gone.
       expect(find.text('Collaborators'), findsOneWidget);
-      expect(find.text('Invite'), findsOneWidget);
+      expect(
+        find.byKey(const Key('invite-collaborator-button')),
+        findsOneWidget,
+      );
       expect(find.text('Retry'), findsNothing);
       expect(find.text('Sync this knowledge base'), findsOneWidget);
       expect(find.text('Select a knowledge base'), findsOneWidget);
@@ -964,7 +997,9 @@ void main() {
         findsOneWidget,
       );
       expect(
-        tester.getTopLeft(find.text('Invite')).dy,
+        tester
+            .getTopLeft(find.byKey(const Key('invite-collaborator-button')))
+            .dy,
         greaterThan(tester.getBottomLeft(find.text('Carol Reviewer')).dy),
       );
 
@@ -1299,4 +1334,247 @@ void main() {
     });
     expect(recent, isEmpty);
   });
+
+  testWidgets('Pending Invites renders "No pending invitations" when empty', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final repo = _InvitationsKbRepository(invitationsList: const []);
+
+    await tester.runAsync(() async {
+      container.dispose();
+      container = ProviderContainer(
+        overrides: [
+          currentUserProvider.overrideWithValue(_signedInUser()),
+          kbRoleProvider.overrideWith((ref) async => KbRole.owner),
+          recentKbPathsProvider.overrideWith((ref) async => const []),
+          kbRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
+      await container.read(kbControllerProvider.notifier).openFolder(temp.path);
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: const Scaffold(
+            body: SingleChildScrollView(child: KnowledgeBaseSettingsPanel()),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('kb-pending-invites-card')), findsOneWidget);
+    expect(find.text('Pending Invites'), findsOneWidget);
+    expect(find.text('No pending invitations'), findsOneWidget);
+  });
+
+  testWidgets('Pending Invites renders each invitation with KB name and owner', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    const invite1 = KbInvitation(
+      kbId: '01a01830-9749-7398-9626-dab25d46040e',
+      name: 'Awayside',
+      role: CollaborationRole.coOwner,
+      ownerName: 'Haoyu',
+    );
+    const invite2 = KbInvitation(
+      kbId: '01a01830-9749-7398-9626-dab25d46040f',
+      name: 'Eldermere',
+      role: CollaborationRole.editor,
+      ownerName: 'Aldric',
+    );
+
+    final repo = _InvitationsKbRepository(
+      invitationsList: const [invite1, invite2],
+    );
+
+    await tester.runAsync(() async {
+      container.dispose();
+      container = ProviderContainer(
+        overrides: [
+          currentUserProvider.overrideWithValue(_signedInUser()),
+          kbRoleProvider.overrideWith((ref) async => KbRole.owner),
+          recentKbPathsProvider.overrideWith((ref) async => const []),
+          kbRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
+      await container.read(kbControllerProvider.notifier).openFolder(temp.path);
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: const Scaffold(
+            body: SingleChildScrollView(child: KnowledgeBaseSettingsPanel()),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Awayside'), findsOneWidget);
+    expect(find.text('Owned by Haoyu · Co-Owner'), findsOneWidget);
+    expect(find.text('Eldermere'), findsOneWidget);
+    expect(find.text('Owned by Aldric · Editor'), findsOneWidget);
+    expect(find.text('Accept'), findsNWidgets(2));
+    expect(find.text('Decline'), findsNWidgets(2));
+  });
+
+  test('SharingController.acceptInvitationIntoFolder accepts and opens', () async {
+    final downloadDir = await Directory.systemTemp.createTemp(
+      'dayseven_download_unit',
+    );
+    addTearDown(() async {
+      if (await downloadDir.exists()) await downloadDir.delete(recursive: true);
+    });
+
+    const invite = KbInvitation(
+      kbId: '01a01830-9749-7398-9626-dab25d46040e',
+      name: 'Awayside',
+      role: CollaborationRole.coOwner,
+      ownerName: 'Haoyu',
+    );
+
+    final repo = _InvitationsKbRepository(invitationsList: const [invite]);
+    final docRepo = _SyncDocumentRepository();
+
+    final testContainer = ProviderContainer(
+      overrides: [
+        currentUserProvider.overrideWithValue(_signedInUser()),
+        kbRoleProvider.overrideWith((ref) async => KbRole.owner),
+        recentKbPathsProvider.overrideWith((ref) async => const []),
+        kbRepositoryProvider.overrideWithValue(repo),
+        documentRepositoryProvider.overrideWithValue(docRepo),
+        assetRepositoryProvider.overrideWithValue(_SyncAssetRepository()),
+      ],
+    );
+    addTearDown(testContainer.dispose);
+
+    await testContainer
+        .read(sharingControllerProvider)
+        .acceptInvitationIntoFolder(invite, downloadDir.path);
+
+    expect(repo.lastAcceptedKbId, '01a01830-9749-7398-9626-dab25d46040e');
+    expect(
+      File('${downloadDir.path}/.settings/dayseven.kb.json').existsSync(),
+      isTrue,
+    );
+  });
+
+  testWidgets(
+    'Pending Invites Decline calls declineInvitation and invalidates providers',
+    (tester) async {
+      tester.view.physicalSize = const Size(700, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      const invite = KbInvitation(
+        kbId: '01a01830-9749-7398-9626-dab25d46040e',
+        name: 'Awayside',
+        role: CollaborationRole.coOwner,
+        ownerName: 'Haoyu',
+      );
+
+      final repo = _InvitationsKbRepository(invitationsList: const [invite]);
+
+      await tester.runAsync(() async {
+        container.dispose();
+        container = ProviderContainer(
+          overrides: [
+            currentUserProvider.overrideWithValue(_signedInUser()),
+            kbRoleProvider.overrideWith((ref) async => KbRole.owner),
+            recentKbPathsProvider.overrideWith((ref) async => const []),
+            kbRepositoryProvider.overrideWithValue(repo),
+          ],
+        );
+        await container
+            .read(kbControllerProvider.notifier)
+            .openFolder(temp.path);
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: dsTheme(),
+            home: const Scaffold(
+              body: SingleChildScrollView(child: KnowledgeBaseSettingsPanel()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final declineButton = find.widgetWithText(DsButton, 'Decline');
+      expect(declineButton, findsOneWidget);
+
+      final declineWidget = tester.widget<DsButton>(declineButton);
+      await tester.runAsync(() async {
+        final dynamic invoke = declineWidget.onPressed!;
+        await invoke();
+      });
+      await tester.pumpAndSettle();
+
+      expect(repo.lastDeclinedKbId, '01a01830-9749-7398-9626-dab25d46040e');
+    },
+  );
+
+  testWidgets(
+    'Opening KnowledgeBaseSettingsPanel invalidates kbInvitationsProvider',
+    (tester) async {
+      tester.view.physicalSize = const Size(700, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final repo = _InvitationsKbRepository(invitationsList: const []);
+
+      await tester.runAsync(() async {
+        container.dispose();
+        container = ProviderContainer(
+          overrides: [
+            currentUserProvider.overrideWithValue(_signedInUser()),
+            kbRoleProvider.overrideWith((ref) async => KbRole.owner),
+            recentKbPathsProvider.overrideWith((ref) async => const []),
+            kbRepositoryProvider.overrideWithValue(repo),
+          ],
+        );
+        await container
+            .read(kbControllerProvider.notifier)
+            .openFolder(temp.path);
+      });
+
+      // Initial read
+      await container.read(kbInvitationsProvider.future);
+      expect(repo.invitationsCallCount, 1);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: dsTheme(),
+            home: const Scaffold(
+              body: SingleChildScrollView(child: KnowledgeBaseSettingsPanel()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Opening panel invalidates and refetches kbInvitationsProvider
+      expect(repo.invitationsCallCount, greaterThanOrEqualTo(2));
+    },
+  );
 }

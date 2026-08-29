@@ -54,10 +54,12 @@ class KbInvitation {
     required this.kbId,
     required this.name,
     required this.role,
+    this.ownerName = 'Unknown owner',
   });
   final String kbId;
   final String name;
   final CollaborationRole role;
+  final String ownerName;
 }
 
 enum SyncHealth { inactive, checking, active, offline, unauthorized, error }
@@ -101,6 +103,9 @@ class KbRepository {
 
   Future<void> acceptInvitation(String kbId) =>
       supabase.rpc('accept_kb_invitation', params: {'p_kb_id': kbId});
+
+  Future<void> declineInvitation(String kbId) =>
+      supabase.rpc('decline_kb_invitation', params: {'p_kb_id': kbId});
 
   Future<void> setRole({
     required String kbId,
@@ -164,19 +169,60 @@ class KbRepository {
     if (user == null) return const [];
     final rows = await supabase
         .from('kb_members')
-        .select('kb_id, role, knowledge_bases(name)')
+        .select('kb_id, role, knowledge_bases(name, owner_id)')
         .eq('user_id', user.id)
         .isFilter('accepted_at', null);
+    final members = rows.cast<Map<String, Object?>>();
+    if (members.isEmpty) return const [];
+
+    final ownerIds = members
+        .map(
+          (row) =>
+              (row['knowledge_bases'] as Map<String, Object?>?)?['owner_id']
+                  as String?,
+        )
+        .whereType<String>()
+        .toSet()
+        .toList();
+
+    final profiles = <String, Map<String, Object?>>{};
+    if (ownerIds.isNotEmpty) {
+      try {
+        final profileRows = await supabase
+            .from('profiles')
+            .select('id, username, display_name')
+            .inFilter('id', ownerIds);
+        for (final row in profileRows.cast<Map<String, Object?>>()) {
+          profiles[row['id'] as String] = row;
+        }
+      } catch (_) {
+        // Best-effort lookup; falls back if profiles query fails.
+      }
+    }
+
     return [
-      for (final row in rows.cast<Map<String, Object?>>())
-        KbInvitation(
-          kbId: row['kb_id'] as String,
-          name:
-              (row['knowledge_bases'] as Map<String, Object?>?)?['name']
-                  as String? ??
-              'Shared Knowledge Base',
-          role: CollaborationRoleValue.fromDatabase(row['role'] as String),
-        ),
+      for (final row in members)
+        () {
+          final kb = row['knowledge_bases'] as Map<String, Object?>?;
+          final ownerId = kb?['owner_id'] as String?;
+          final profile = ownerId == null ? null : profiles[ownerId];
+          final displayName = (profile?['display_name'] as String?)?.trim();
+          final username = (profile?['username'] as String?)?.trim();
+          final ownerName = (displayName != null && displayName.isNotEmpty)
+              ? displayName
+              : (username != null && username.isNotEmpty)
+                  ? username
+                  : 'Unknown owner';
+
+          return KbInvitation(
+            kbId: row['kb_id'] as String,
+            name:
+                (kb?['name'] as String?) ??
+                'Shared Knowledge Base',
+            role: CollaborationRoleValue.fromDatabase(row['role'] as String),
+            ownerName: ownerName,
+          );
+        }(),
     ];
   }
 
@@ -210,8 +256,8 @@ final kbCollaboratorsProvider =
     );
 
 final kbInvitationsProvider = FutureProvider<List<KbInvitation>>((ref) {
-  ref.watch(currentUserProvider);
-  if (!isSupabaseConfigured) return Future.value(const []);
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return Future.value(const []);
   return ref.read(kbRepositoryProvider).invitations();
 });
 

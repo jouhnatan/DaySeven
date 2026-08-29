@@ -261,6 +261,12 @@ class SharingController {
     await _ref.read(crdtCollaborationProvider.notifier).refresh();
   }
 
+  Future<void> declineInvitation(String kbId) async {
+    await _ref.read(kbRepositoryProvider).declineInvitation(kbId);
+    _ref.invalidate(kbInvitationsProvider);
+    _ref.invalidate(kbRoleProvider);
+  }
+
   Future<void> acceptInvitationIntoFolder(
     KbInvitation invitation,
     String folder,

@@ -23,6 +23,7 @@ import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
 import 'package:dayseven/features/knowledge_base/ui/invite_dialog.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_sync_button.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 
 const double kKnowledgeBaseControlHeight = 38;
@@ -114,6 +115,79 @@ class _KnowledgeBaseSettingsPanelState
     extends ConsumerState<KnowledgeBaseSettingsPanel> {
   bool _working = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.invalidate(kbInvitationsProvider);
+      }
+    });
+  }
+
+  Future<void> _acceptInvitation(KbInvitation invitation) async {
+    final folder = await getDirectoryPath(
+      confirmButtonText: 'Download Knowledge Base',
+    );
+    if (folder == null) return;
+
+    setState(() {
+      _working = true;
+      _error = null;
+    });
+
+    try {
+      await ref
+          .read(sharingControllerProvider)
+          .acceptInvitationIntoFolder(invitation, folder);
+      ref.invalidate(kbInvitationsProvider);
+      ref.invalidate(kbRoleProvider);
+      if (!mounted) return;
+      setState(() => _working = false);
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(
+            DsNotificationKind.share,
+            'Joined "${invitation.name}".',
+          );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _working = false;
+        _error = describeError(error);
+      });
+    }
+  }
+
+  Future<void> _declineInvitation(KbInvitation invitation) async {
+    setState(() {
+      _working = true;
+      _error = null;
+    });
+
+    try {
+      await ref
+          .read(sharingControllerProvider)
+          .declineInvitation(invitation.kbId);
+      ref.invalidate(kbInvitationsProvider);
+      ref.invalidate(kbRoleProvider);
+      if (!mounted) return;
+      setState(() => _working = false);
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(
+            DsNotificationKind.share,
+            'Declined invitation to "${invitation.name}".',
+          );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _working = false;
+        _error = describeError(error);
+      });
+    }
+  }
 
   Future<void> _setRole(
     String kbId,
@@ -244,6 +318,7 @@ class _KnowledgeBaseSettingsPanelState
     final session = ref.watch(kbSessionProvider);
     final canManage = user != null && session != null;
     final kbId = session?.kb.manifest.kbId;
+    final invitations = ref.watch(kbInvitationsProvider);
     final collaborators = kbId == null
         ? const AsyncValue<List<KbCollaborator>>.data([])
         : ref.watch(kbCollaboratorsProvider(kbId));
@@ -264,6 +339,12 @@ class _KnowledgeBaseSettingsPanelState
           onPick: (path) async {
             await ref.read(kbControllerProvider.notifier).openFolder(path);
           },
+        ),
+        const SizedBox(height: 24),
+        _PendingInvitesCard(
+          invitations: invitations,
+          onAccept: _acceptInvitation,
+          onDecline: _declineInvitation,
         ),
         const SizedBox(height: 24),
         if (kbId != null) ...[
@@ -745,6 +826,162 @@ class _CollaboratorsCard extends StatelessWidget {
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _PendingInvitesCard extends StatelessWidget {
+  const _PendingInvitesCard({
+    required this.invitations,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  final AsyncValue<List<KbInvitation>> invitations;
+  final Future<void> Function(KbInvitation) onAccept;
+  final Future<void> Function(KbInvitation) onDecline;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    return Column(
+      key: const Key('kb-pending-invites-card'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Invite',
+          style: uiTextStyle(size: 15, weight: 500, color: colors.text),
+        ),
+        const SizedBox(height: 8),
+        DsCard(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Pending Invites',
+                  style: uiTextStyle(size: 13, weight: 600, color: colors.text),
+                ),
+                const SizedBox(height: 8),
+                invitations.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (error, _) => DsErrorBox(describeError(error)),
+                  data: (items) {
+                    if (items.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(
+                          'No pending invitations',
+                          style: uiTextStyle(size: 13, color: colors.muted),
+                        ),
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var i = 0; i < items.length; i++) ...[
+                          if (i > 0)
+                            Divider(
+                              height: 12,
+                              thickness: 1,
+                              color: colors.border,
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: colors.sage,
+                                  child: Text(
+                                    items[i].name.isEmpty
+                                        ? '?'
+                                        : items[i].name[0].toUpperCase(),
+                                    style: uiTextStyle(
+                                      size: 12,
+                                      weight: 500,
+                                      color: colors.text,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        items[i].name,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: uiTextStyle(
+                                          size: 13,
+                                          weight: 500,
+                                          color: colors.text,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Owned by ${items[i].ownerName} · ${items[i].role.label}',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: uiTextStyle(
+                                          size: 11,
+                                          color: colors.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                DsButton(
+                                  variant: DsButtonVariant.secondary,
+                                  height: 28,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  semanticLabel:
+                                      'Accept invitation to ${items[i].name}',
+                                  onPressed: () => onAccept(items[i]),
+                                  child: Text(
+                                    'Accept',
+                                    style: uiTextStyle(
+                                      size: 12,
+                                      weight: 500,
+                                      color: colors.text,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                DsButton(
+                                  variant: DsButtonVariant.secondary,
+                                  height: 28,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  semanticLabel:
+                                      'Decline invitation to ${items[i].name}',
+                                  onPressed: () => onDecline(items[i]),
+                                  child: Text(
+                                    'Decline',
+                                    style: uiTextStyle(
+                                      size: 12,
+                                      weight: 500,
+                                      color: colors.danger,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
