@@ -54,7 +54,6 @@ class DsAppSettings {
     this.fontFamily = kDefaultFontFamily,
     this.uiTextSize = kDefaultUiTextSize,
     this.editorTextSize = kDefaultEditorTextSize,
-    this.gradientBackgroundEnabled = false,
   });
 
   /// The typeface for document content. Application chrome does not follow it.
@@ -66,21 +65,14 @@ class DsAppSettings {
   /// The base size for document titles, prose, headings, tables, and code.
   final double editorTextSize;
 
-  /// Whether the gradient also fills the outer background of non-Home views.
-  /// Home always uses the gradient; pane and editor surfaces stay opaque.
-  final bool gradientBackgroundEnabled;
-
   DsAppSettings copyWith({
     String? fontFamily,
     double? uiTextSize,
     double? editorTextSize,
-    bool? gradientBackgroundEnabled,
   }) => DsAppSettings(
     fontFamily: fontFamily ?? this.fontFamily,
     uiTextSize: uiTextSize ?? this.uiTextSize,
     editorTextSize: editorTextSize ?? this.editorTextSize,
-    gradientBackgroundEnabled:
-        gradientBackgroundEnabled ?? this.gradientBackgroundEnabled,
   );
 
   @override
@@ -88,16 +80,10 @@ class DsAppSettings {
       other is DsAppSettings &&
       other.fontFamily == fontFamily &&
       other.uiTextSize == uiTextSize &&
-      other.editorTextSize == editorTextSize &&
-      other.gradientBackgroundEnabled == gradientBackgroundEnabled;
+      other.editorTextSize == editorTextSize;
 
   @override
-  int get hashCode => Object.hash(
-    fontFamily,
-    uiTextSize,
-    editorTextSize,
-    gradientBackgroundEnabled,
-  );
+  int get hashCode => Object.hash(fontFamily, uiTextSize, editorTextSize);
 }
 
 /// Owns settings that apply to the whole application and rebuilds the app when
@@ -127,14 +113,6 @@ abstract final class DsGlobalSettings {
   static void setEditorTextSize(double size) {
     _validateTextSize(size, 'size');
     _settings.value = value.copyWith(editorTextSize: size);
-  }
-
-  static void setGradientBackgroundEnabled(bool enabled) {
-    _settings.value = value.copyWith(gradientBackgroundEnabled: enabled);
-  }
-
-  static void toggleGradientBackground() {
-    setGradientBackgroundEnabled(!value.gradientBackgroundEnabled);
   }
 
   static void reset() => _settings.value = const DsAppSettings();

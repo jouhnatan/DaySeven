@@ -37,7 +37,6 @@ class AppSettingsDeveloperOptions {
 
 /// The sibling regions of App settings, in the order the switcher lists them.
 enum AppSettingsSection {
-  appearance('Appearance'),
   updates('Updates'),
   knowledgeBase('Knowledge Base'),
   developer('Developer');
@@ -53,7 +52,7 @@ Future<void> showAppSettingsDialog(
   AppSettingsDeveloperOptionsBuilder? developerOptions,
   Widget? knowledgeBasePanel,
   AppSettingsPanelBuilder? knowledgeBasePanelBuilder,
-  AppSettingsSection initialSection = AppSettingsSection.appearance,
+  AppSettingsSection initialSection = AppSettingsSection.updates,
 }) => showDialog<void>(
   context: context,
   builder: (context) => Consumer(
@@ -71,7 +70,7 @@ class AppSettingsDialog extends ConsumerStatefulWidget {
     super.key,
     this.developerOptions,
     this.knowledgeBasePanel,
-    this.initialSection = AppSettingsSection.appearance,
+    this.initialSection = AppSettingsSection.updates,
   });
 
   final AppSettingsDeveloperOptions? developerOptions;
@@ -97,7 +96,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   /// are absent in an ordinary build, and there is no Knowledge Base section
   /// until one is open.
   List<AppSettingsSection> get _sections => [
-    AppSettingsSection.appearance,
     AppSettingsSection.updates,
     if (widget.knowledgeBasePanel != null) AppSettingsSection.knowledgeBase,
     if (widget.developerOptions != null) AppSettingsSection.developer,
@@ -108,7 +106,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     super.initState();
     // Deep-linking to a section the build does not have would leave the
     // switcher with nothing selected.
-    if (!_sections.contains(_section)) _section = AppSettingsSection.appearance;
+    if (!_sections.contains(_section)) _section = AppSettingsSection.updates;
     // Check on open, so the hero is answering rather than guessing. Without a
     // server there is no feed and nothing to ask; the controller already knows
     // whether there is one, so that is where the question goes.
@@ -174,7 +172,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         // the heading underneath the cell it was chosen from.
                         const SizedBox(height: 18),
                         ...switch (_section) {
-                          AppSettingsSection.appearance => _appearanceSection(),
                           AppSettingsSection.updates => _updatesSection(),
                           AppSettingsSection.knowledgeBase =>
                             _knowledgeBaseSection(),
@@ -198,20 +195,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       ),
     );
   }
-
-  List<Widget> _appearanceSection() => [
-    DsSettingRow(
-      first: true,
-      label: 'Gradient background',
-      helper: 'Soft pools behind Home and other views',
-      trailing: Switch(value: true, onChanged: (_) {}),
-    ),
-    DsSettingRow(
-      label: 'Window chrome',
-      helper: 'Uses the system theme for the title bar',
-      trailing: Switch(value: true, onChanged: null),
-    ),
-  ];
 
   List<Widget> _updatesSection() {
     final state = ref.watch(appUpdateProvider);

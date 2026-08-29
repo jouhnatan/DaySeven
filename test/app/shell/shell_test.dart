@@ -1,7 +1,6 @@
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
-import 'package:dayseven/features/gradient_background/ui/gradient_background.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
@@ -18,8 +17,6 @@ Widget harness({List<Override> overrides = const []}) => ProviderScope(
 );
 
 void main() {
-  tearDown(DsGlobalSettings.reset);
-
   testWidgets('opens to Home, showing the greeting and both cards', (
     tester,
   ) async {
@@ -31,7 +28,7 @@ void main() {
     expect(find.text('User Settings'), findsOneWidget);
     expect(
       find.ancestor(
-        of: find.byKey(const Key('home-gradient')),
+        of: find.byKey(const Key('home-workspace')),
         matching: find.byType(DsIsland),
       ),
       findsNothing,
@@ -51,7 +48,7 @@ void main() {
     expect(find.text('Differences'), findsOneWidget);
   });
 
-  testWidgets('Home changes the shell background without changing Editor', (
+  testWidgets('every workspace uses the standard shell background', (
     tester,
   ) async {
     await tester.pumpWidget(harness());
@@ -59,8 +56,14 @@ void main() {
 
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-      kGradientShellBackground,
+      DsColors.cream.appBackground,
     );
+
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    expect(find.text('Gradient on Other Views'), findsNothing);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Editor'));
     await tester.pumpAndSettle();
@@ -69,39 +72,6 @@ void main() {
       tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
       DsColors.cream.appBackground,
     );
-  });
-
-  testWidgets('the hamburger adds the gradient to other workspace views', (
-    tester,
-  ) async {
-    await tester.pumpWidget(harness());
-    await tester.pump();
-
-    expect(find.byKey(const Key('gradient-background-base')), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Menu'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Gradient on Other Views'), findsOneWidget);
-    expect(
-      find.byKey(const Key('hamburger-menu-toggle-check-1')),
-      findsNothing,
-    );
-
-    await tester.tap(find.byKey(const Key('hamburger-menu-toggle-1')));
-    await tester.pumpAndSettle();
-
-    expect(DsGlobalSettings.value.gradientBackgroundEnabled, isTrue);
-    expect(find.byKey(const Key('gradient-background-base')), findsOneWidget);
-
-    await tester.tap(find.text('Editor'));
-    await tester.pumpAndSettle();
-
-    expect(
-      tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-      kGradientShellBackground,
-    );
-    expect(find.byKey(const Key('gradient-background-base')), findsOneWidget);
     expect(
       tester
           .widget<DsIsland>(
@@ -111,32 +81,6 @@ void main() {
           )
           .editorSurface,
       isTrue,
-      reason: 'the gradient belongs behind the editor pane, not inside it',
-    );
-
-    await tester.tap(find.byTooltip('Menu'));
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('hamburger-menu-toggle-check-1')),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.byKey(const Key('hamburger-menu-toggle-1')));
-    await tester.pumpAndSettle();
-
-    expect(DsGlobalSettings.value.gradientBackgroundEnabled, isFalse);
-    expect(find.byKey(const Key('gradient-background-base')), findsNothing);
-    expect(
-      tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-      DsColors.cream.appBackground,
-    );
-
-    await tester.tap(find.text('Home'));
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('gradient-background-base')),
-      findsOneWidget,
-      reason: 'Home keeps its default gradient independently of the toggle',
     );
   });
 
@@ -232,10 +176,8 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Run updates'), findsNothing);
 
-    // The two toggles are addressed by index elsewhere in this file, so the
-    // new entry has to have been appended rather than inserted.
     expect(find.byKey(const Key('hamburger-menu-toggle-0')), findsOneWidget);
-    expect(find.byKey(const Key('hamburger-menu-toggle-1')), findsOneWidget);
+    expect(find.byKey(const Key('hamburger-menu-toggle-1')), findsNothing);
   });
 
   testWidgets('the hamburger slides the Knowledge Base out and back in', (
@@ -251,7 +193,7 @@ void main() {
       tester.element(find.byType(DsShell)),
     );
     final workspaceBefore = tester.getRect(
-      find.byKey(const Key('home-gradient')),
+      find.byKey(const Key('home-workspace')),
     );
     final panelBefore = tester.getRect(
       find.byKey(const Key('knowledge-base-pane')),
@@ -275,7 +217,9 @@ void main() {
     final panelMid = tester.getRect(
       find.byKey(const Key('knowledge-base-pane')),
     );
-    final workspaceMid = tester.getRect(find.byKey(const Key('home-gradient')));
+    final workspaceMid = tester.getRect(
+      find.byKey(const Key('home-workspace')),
+    );
     expect(slideMid.width, greaterThan(0));
     expect(slideMid.width, lessThan(panelBefore.width + DsSpace.islandGap));
     expect(panelMid.left, greaterThan(panelBefore.left));
@@ -284,7 +228,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final workspaceHidden = tester.getRect(
-      find.byKey(const Key('home-gradient')),
+      find.byKey(const Key('home-workspace')),
     );
     final slideHidden = tester.getSize(
       find.byKey(const Key('knowledge-base-slide-region')),
@@ -318,7 +262,7 @@ void main() {
       panelBefore,
     );
     expect(
-      tester.getRect(find.byKey(const Key('home-gradient'))),
+      tester.getRect(find.byKey(const Key('home-workspace'))),
       workspaceBefore,
     );
 
@@ -380,7 +324,7 @@ void main() {
       await pumpWide(tester);
 
       final rail = tester.getRect(find.byType(DsIsland).at(0));
-      final editor = tester.getRect(find.byKey(const Key('home-gradient')));
+      final editor = tester.getRect(find.byKey(const Key('home-workspace')));
 
       expect(editor.left - rail.right, DsSpace.islandGap);
     });
@@ -402,7 +346,7 @@ void main() {
       final homeKnowledgeBaseMenu = tester.getRect(
         find.byType(KnowledgeBaseMenu),
       );
-      final workspace = tester.getRect(find.byKey(const Key('home-gradient')));
+      final workspace = tester.getRect(find.byKey(const Key('home-workspace')));
       final notifications = tester.getRect(find.byType(NotificationsPanel));
 
       expect(workspace.top, views.top);

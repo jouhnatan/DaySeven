@@ -11,21 +11,16 @@ void main() {
     DsGlobalSettings.setFontFamily('Georgia');
     DsGlobalSettings.setUiTextSize(16);
     DsGlobalSettings.setEditorTextSize(18);
-    DsGlobalSettings.setGradientBackgroundEnabled(true);
 
     expect(DsGlobalSettings.value.fontFamily, 'Georgia');
     expect(DsGlobalSettings.value.uiTextSize, 16);
     expect(DsGlobalSettings.value.editorTextSize, 18);
-    expect(DsGlobalSettings.value.gradientBackgroundEnabled, isTrue);
     // The picker is a document preference. Chrome keeps its own face so that
     // controls, menus and labels read the same whatever a document is set in.
     expect(editorTextStyle(weight: 600).fontFamily, 'Georgia');
     expect(uiTextStyle(weight: 600).fontFamily, kUiFontFamily);
     expect(uiTextStyle(weight: 600).fontVariations, isNull);
     expect(uiHeaderTextStyle().fontFamily, kUiHeaderFontFamily);
-
-    DsGlobalSettings.toggleGradientBackground();
-    expect(DsGlobalSettings.value.gradientBackgroundEnabled, isFalse);
 
     DsGlobalSettings.reset();
     expect(DsGlobalSettings.value, const DsAppSettings());

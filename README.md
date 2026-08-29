@@ -106,11 +106,6 @@ There is one palette. The system is light and has no dark variant, and one must
 not be added; a dark title bar, sidebar or footer is not something this
 interface has. Fern is allowed to be the only dark mass on screen.
 
-The one deliberate departure is the **gradient background** on Home, which the
-system otherwise forbids. It is kept because it is wanted, and kept quiet so it
-reads as atmosphere: it stands on the same recessed cream as everything else and
-draws only in colours the palette already contains.
-
 ## How a document is stored
 
 Each document is a Markdown file — one block per paragraph, with stable block
@@ -411,7 +406,7 @@ DaySeven is a folder of files — an `.app` bundle on macOS, a directory of
 executables on Windows — and updating is replacing that folder.
 
 **Menu -> Settings** is the one place settings live. A rail down its left
-side lists the regions this build actually has: *General*, which is the version
+side lists the regions this build actually has: *Updates*, which is the version
 and updates; *Knowledge Base*, which is sharing and collaborators for the open
 folder; and *Developer*, when a build has developer options. The gear beside
 the Knowledge Base tree opens the same dialog on its own section rather than a

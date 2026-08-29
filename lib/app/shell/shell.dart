@@ -21,7 +21,6 @@ import 'package:dayseven/app/shell/pane_widths.dart';
 import 'package:dayseven/features/app_settings/ui/app_settings_dialog.dart';
 import 'package:dayseven/features/auth/ui/auth_button.dart';
 import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
-import 'package:dayseven/features/gradient_background/ui/gradient_background.dart';
 import 'package:dayseven/features/hamburger_menu/ui/hamburger_menu_button.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/controls.dart';
@@ -60,244 +59,201 @@ class DsShell extends ConsumerWidget {
     final pendingDifferencesCount = ref.watch(
       differencesStateProvider.select((state) => state.pendingCount),
     );
-    final colors = context.ds;
 
-    return ValueListenableBuilder<DsAppSettings>(
-      valueListenable: DsGlobalSettings.listenable,
-      builder: (context, settings, _) {
-        final showGradient =
-            view == DsView.home || settings.gradientBackgroundEnabled;
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+          unawaited(publishOpenDocumentFromShortcut(context, ref));
+        },
+        const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () {
+          unawaited(publishOpenDocumentFromShortcut(context, ref));
+        },
+      },
+      child: Scaffold(
+        backgroundColor: context.ds.appBackground,
+        body: Column(
+          children: [
+            Expanded(
+              child: Padding(
+                // The bottom bar supplies the gap beneath the islands, so that
+                // it matches the gap between them.
+                padding: const EdgeInsets.fromLTRB(
+                  DsSpace.pane,
+                  DsSpace.pane,
+                  DsSpace.pane,
+                  0,
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final widths = ref.watch(paneWidthsProvider);
+                    final panes = ref.read(paneWidthsProvider.notifier);
+                    final visibility = ref.watch(paneVisibilityProvider);
+                    final paneVisibility = ref.read(
+                      paneVisibilityProvider.notifier,
+                    );
+                    final fullyOpenAvailable =
+                        constraints.maxWidth - DsSpace.islandGap * 2;
 
-        return CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
-              unawaited(publishOpenDocumentFromShortcut(context, ref));
-            },
-            const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () {
-              unawaited(publishOpenDocumentFromShortcut(context, ref));
-            },
-          },
-          child: Scaffold(
-            backgroundColor: showGradient
-                ? gradientShellBackground()
-                : colors.appBackground,
-            body: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (showGradient) const GradientBackground(),
-                Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        // The bottom bar supplies the gap beneath the islands, so that
-                        // it matches the gap between them.
-                        padding: const EdgeInsets.fromLTRB(
-                          DsSpace.pane,
-                          DsSpace.pane,
-                          DsSpace.pane,
-                          0,
-                        ),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final widths = ref.watch(paneWidthsProvider);
-                            final panes = ref.read(paneWidthsProvider.notifier);
-                            final visibility = ref.watch(
-                              paneVisibilityProvider,
-                            );
-                            final paneVisibility = ref.read(
-                              paneVisibilityProvider.notifier,
-                            );
-                            final fullyOpenAvailable =
-                                constraints.maxWidth - DsSpace.islandGap * 2;
+                    return TweenAnimationBuilder<double>(
+                      tween: Tween<double>(
+                        begin: 1,
+                        end: visibility.knowledgeBase ? 1 : 0,
+                      ),
+                      duration: DsMotion.pane,
+                      curve: Curves.easeInOutCubic,
+                      builder: (context, panelProgress, _) {
+                        final available =
+                            constraints.maxWidth -
+                            DsSpace.islandGap * (1 + panelProgress);
 
-                            return TweenAnimationBuilder<double>(
-                              tween: Tween<double>(
-                                begin: 1,
-                                end: visibility.knowledgeBase ? 1 : 0,
-                              ),
-                              duration: DsMotion.pane,
-                              curve: Curves.easeInOutCubic,
-                              builder: (context, panelProgress, _) {
-                                final available =
-                                    constraints.maxWidth -
-                                    DsSpace.islandGap * (1 + panelProgress);
-
-                                return Column(
+                        return Column(
+                          children: [
+                            SizedBox(
+                              height: kSearchHeight,
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    SizedBox(
-                                      height: kSearchHeight,
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            // Collaboration needs a server; without
-                                            // one there is nothing to sign in to.
-                                            if (isSupabaseConfigured) ...[
-                                              const AuthButton(),
-                                              const SizedBox(
-                                                width: DsSpace.controlGap,
-                                              ),
-                                            ],
-                                            HamburgerMenuButton(
-                                              entries: [
-                                                HamburgerMenuEntry.toggle(
-                                                  label: 'Knowledge Base',
-                                                  checked:
-                                                      visibility.knowledgeBase,
-                                                  onSelected: paneVisibility
-                                                      .toggleKnowledgeBase,
-                                                ),
-                                                HamburgerMenuEntry.toggle(
-                                                  label:
-                                                      'Gradient on Other Views',
-                                                  checked: settings
-                                                      .gradientBackgroundEnabled,
-                                                  onSelected: DsGlobalSettings
-                                                      .toggleGradientBackground,
-                                                ),
-                                                if (canOpenNewWindow) ...[
-                                                  HamburgerMenuEntry.action(
-                                                    label: 'New Window',
-                                                    onSelected: () =>
-                                                        _openNewWindow(
-                                                          context,
-                                                          fresh: false,
-                                                        ),
-                                                  ),
-                                                  HamburgerMenuEntry.action(
-                                                    label:
-                                                        'New Window as '
-                                                        'Different Account…',
-                                                    onSelected: () =>
-                                                        _openNewWindow(
-                                                          context,
-                                                          fresh: true,
-                                                        ),
-                                                  ),
-                                                ],
-                                                // Shown with or without a
-                                                // server: the version is worth
-                                                // seeing either way, and the
-                                                // dialog says so itself when
-                                                // there is nothing to check
-                                                // against.
-                                                HamburgerMenuEntry.action(
-                                                  label: 'Settings',
-                                                  onSelected: () =>
-                                                      _openAppSettings(context),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
+                                    // Collaboration needs a server; without
+                                    // one there is nothing to sign in to.
+                                    if (isSupabaseConfigured) ...[
+                                      const AuthButton(),
+                                      const SizedBox(width: DsSpace.controlGap),
+                                    ],
+                                    HamburgerMenuButton(
+                                      entries: [
+                                        HamburgerMenuEntry.toggle(
+                                          label: 'Knowledge Base',
+                                          checked: visibility.knowledgeBase,
+                                          onSelected: paneVisibility
+                                              .toggleKnowledgeBase,
                                         ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: DsSpace.islandGap),
-                                    Expanded(
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          SizedBox(
-                                            width: widths.rail,
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.stretch,
-                                              children: [
-                                                Expanded(
-                                                  child: ViewsMenu(
-                                                    pendingDifferencesCount:
-                                                        pendingDifferencesCount,
-                                                  ),
-                                                ),
-                                                const SizedBox(
-                                                  height: DsSpace.islandGap,
-                                                ),
-                                                const DsMenuHeader(
-                                                  'Notifications',
-                                                ),
-                                                const SizedBox(
-                                                  height: DsSpace.islandGap,
-                                                ),
-                                                const Expanded(
-                                                  child: NotificationsPanel(),
-                                                ),
-                                              ],
+                                        if (canOpenNewWindow) ...[
+                                          HamburgerMenuEntry.action(
+                                            label: 'New Window',
+                                            onSelected: () => _openNewWindow(
+                                              context,
+                                              fresh: false,
                                             ),
                                           ),
-                                          _ResizeHandle(
-                                            onDrag: (dx) => panes.dragRail(
-                                              dx,
-                                              available,
-                                              reservedPanelWidth:
-                                                  widths.panel * panelProgress,
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.stretch,
-                                              children: [
-                                                // Side-menu surfaces sit below a heading.
-                                                // Reserve the same header row here so
-                                                // every workspace starts at one height.
-                                                const DsMenuHeader.spacer(),
-                                                const SizedBox(
-                                                  height: DsSpace.islandGap,
-                                                ),
-                                                Expanded(
-                                                  child: switch (view) {
-                                                    // The shell supplies Home's
-                                                    // optional full-window backdrop.
-                                                    DsView.home =>
-                                                      const HomeScreen(),
-                                                    DsView.editor =>
-                                                      const DsIsland(
-                                                        editorSurface: true,
-                                                        child: EditorScreen(
-                                                          searchCard:
-                                                              DsSearchBar(
-                                                                resultsAbove:
-                                                                    true,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    DsView.differences =>
-                                                      const DifferencesWorkspace(),
-                                                  },
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          _SlidingKnowledgeBasePane(
-                                            progress: panelProgress,
-                                            panelWidth: widths.panel,
-                                            visible: visibility.knowledgeBase,
-                                            onDrag: (dx) => panes.dragPanel(
-                                              dx,
-                                              fullyOpenAvailable,
+                                          HamburgerMenuEntry.action(
+                                            label:
+                                                'New Window as '
+                                                'Different Account…',
+                                            onSelected: () => _openNewWindow(
+                                              context,
+                                              fresh: true,
                                             ),
                                           ),
                                         ],
-                                      ),
+                                        // Shown with or without a
+                                        // server: the version is worth
+                                        // seeing either way, and the
+                                        // dialog says so itself when
+                                        // there is nothing to check
+                                        // against.
+                                        HamburgerMenuEntry.action(
+                                          label: 'Settings',
+                                          onSelected: () =>
+                                              _openAppSettings(context),
+                                        ),
+                                      ],
                                     ),
                                   ],
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    const _BottomBar(),
-                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: DsSpace.islandGap),
+                            Expanded(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    width: widths.rail,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Expanded(
+                                          child: ViewsMenu(
+                                            pendingDifferencesCount:
+                                                pendingDifferencesCount,
+                                          ),
+                                        ),
+                                        const SizedBox(
+                                          height: DsSpace.islandGap,
+                                        ),
+                                        const DsMenuHeader('Notifications'),
+                                        const SizedBox(
+                                          height: DsSpace.islandGap,
+                                        ),
+                                        const Expanded(
+                                          child: NotificationsPanel(),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _ResizeHandle(
+                                    onDrag: (dx) => panes.dragRail(
+                                      dx,
+                                      available,
+                                      reservedPanelWidth:
+                                          widths.panel * panelProgress,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        // Side-menu surfaces sit below a heading.
+                                        // Reserve the same header row here so
+                                        // every workspace starts at one height.
+                                        const DsMenuHeader.spacer(),
+                                        const SizedBox(
+                                          height: DsSpace.islandGap,
+                                        ),
+                                        Expanded(
+                                          child: switch (view) {
+                                            DsView.home => const HomeScreen(),
+                                            DsView.editor => const DsIsland(
+                                              editorSurface: true,
+                                              child: EditorScreen(
+                                                searchCard: DsSearchBar(
+                                                  resultsAbove: true,
+                                                ),
+                                              ),
+                                            ),
+                                            DsView.differences =>
+                                              const DifferencesWorkspace(),
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _SlidingKnowledgeBasePane(
+                                    progress: panelProgress,
+                                    panelWidth: widths.panel,
+                                    visible: visibility.knowledgeBase,
+                                    onDrag: (dx) =>
+                                        panes.dragPanel(dx, fullyOpenAvailable),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
                 ),
-              ],
+              ),
             ),
-          ),
-        );
-      },
+            const _BottomBar(),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -333,7 +289,7 @@ void _openNewWindow(BuildContext context, {required bool fresh}) {
 /// feature App settings is not allowed to import.
 void _openAppSettings(
   BuildContext context, {
-  AppSettingsSection section = AppSettingsSection.appearance,
+  AppSettingsSection section = AppSettingsSection.updates,
 }) {
   unawaited(
     showAppSettingsDialog(
