@@ -106,13 +106,19 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
         final desc = contentLines.join('\n').trim();
         final link = currentLink;
 
+        final double fallbackYear = items.isEmpty
+            ? 1800.0
+            : (items.last is TimelinePeriodItem
+                ? (items.last as TimelinePeriodItem).endYear + 10.0
+                : items.last.startYear + 10.0);
+
         final item = _constructItem(
           id: currentItemId ?? _uuid.v7(),
           title: title,
           dateLine: dateLine,
           description: desc,
           link: link,
-          fallbackOrder: items.length.toDouble() * 10,
+          fallbackYear: fallbackYear,
         );
         items.add(item);
       }
@@ -142,10 +148,14 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
         }
 
         final plain = block.plainText.trim();
-        if (currentDateLine == null && _looksLikeDateLine(plain)) {
-          currentDateLine = plain;
-        } else if (plain.isNotEmpty && !plain.startsWith('<timeline_desc>')) {
-          contentLines.add(plain);
+        if (plain.isNotEmpty && !plain.startsWith('<timeline_desc>')) {
+          if (currentDateLine == null) {
+            // The first non-empty block under the item heading is ALWAYS the date line
+            currentDateLine = plain;
+          } else {
+            // Subsequent blocks under the heading are description lines
+            contentLines.add(plain);
+          }
         }
       }
       i++;
@@ -155,22 +165,13 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
     return (description, items);
   }
 
-  bool _looksLikeDateLine(String text) {
-    final cleaned = text.replaceAll('*', '').trim();
-    return cleaned.contains('→') ||
-        cleaned.contains('->') ||
-        cleaned.contains('Year') ||
-        cleaned.contains('Month') ||
-        RegExp(r'\b\d{4}\b').hasMatch(cleaned);
-  }
-
   TimelineItem _constructItem({
     required String id,
     required String title,
     required String dateLine,
     required String description,
     required String? link,
-    required double fallbackOrder,
+    required double fallbackYear,
   }) {
     final cleanDate = dateLine.replaceAll('*', '').trim();
     final isRange = cleanDate.contains('→') || cleanDate.contains('->');
@@ -182,21 +183,21 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
       final startLabel = parts.first.trim();
       final endLabel = parts.length > 1 ? parts[1].trim() : '';
 
-      final startYear = parseDateScalar(startLabel) ?? fallbackOrder;
+      final startYear = parseDateScalar(startLabel) ?? fallbackYear;
       final endYear = parseDateScalar(endLabel) ?? (startYear + 10);
 
       return TimelinePeriodItem(
         id: id,
         title: title,
         startYear: startYear,
-        startDateLabel: startLabel,
+        startDateLabel: startLabel.isEmpty ? 'Year ${startYear.toInt()}' : startLabel,
         endYear: endYear,
-        endDateLabel: endLabel,
+        endDateLabel: endLabel.isEmpty ? 'Year ${endYear.toInt()}' : endLabel,
         description: description,
         kbDocumentPath: link,
       );
     } else {
-      final startYear = parseDateScalar(cleanDate) ?? fallbackOrder;
+      final startYear = parseDateScalar(cleanDate) ?? fallbackYear;
       return TimelineEventItem(
         id: id,
         title: title,
@@ -209,17 +210,20 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
   }
 
   /// Parses numeric year coordinates from a date string.
-  /// Handles "20 Month 13, Year 1803", "1803-13-20", "Year 1803", or "1803".
+  /// Handles "20 Month 13, Year 1803", "1803-13-20", "Year 1803", "1803", "500 BCE", etc.
   static double? parseDateScalar(String raw) {
-    if (raw.trim().isEmpty) return null;
+    final text = raw.replaceAll('*', '').trim();
+    if (text.isEmpty) return null;
 
-    // 1. Check for Year <number>
-    final yearMatch = RegExp(r'Year\s+(\d+(?:\.\d+)?)', caseSensitive: false)
-        .firstMatch(raw);
+    final isBce = RegExp(r'\b(bce|bc)\b', caseSensitive: false).hasMatch(text);
+
+    // 1. Check for Year <number> (e.g. "Year 1803", "Year 1803.5", "Year -500")
+    final yearMatch = RegExp(r'Year\s+(-?\d+(?:\.\d+)?)', caseSensitive: false)
+        .firstMatch(text);
     final monthMatch = RegExp(r'Month\s+(\d+)', caseSensitive: false)
-        .firstMatch(raw);
+        .firstMatch(text);
     final dayMatch = RegExp(r'(\d+)\s+Month', caseSensitive: false)
-        .firstMatch(raw);
+        .firstMatch(text);
 
     if (yearMatch != null) {
       final y = double.tryParse(yearMatch.group(1)!);
@@ -233,13 +237,13 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
           final d = double.tryParse(dayMatch.group(1)!) ?? 1;
           scalar += (d.clamp(0, 31) / 365);
         }
-        return scalar;
+        return isBce && scalar > 0 ? -scalar : scalar;
       }
     }
 
-    // 2. Check for YYYY-MM-DD or YYYY
-    final isoMatch = RegExp(r'(\d{1,6})(?:-(\d{1,2}))?(?:-(\d{1,2}))?')
-        .firstMatch(raw);
+    // 2. Check for ISO or YYYY-MM-DD or YYYY/MM/DD
+    final isoMatch = RegExp(r'^(-?\d{1,6})(?:[-/](\d{1,2}))?(?:[-/](\d{1,2}))?')
+        .firstMatch(text);
     if (isoMatch != null) {
       final y = double.tryParse(isoMatch.group(1)!);
       if (y != null) {
@@ -248,14 +252,17 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
         final d = double.tryParse(isoMatch.group(3) ?? '');
         if (m != null) scalar += ((m - 1) / 12);
         if (d != null) scalar += (d / 365);
-        return scalar;
+        return isBce && scalar > 0 ? -scalar : scalar;
       }
     }
 
     // 3. Fallback to any number in string
-    final numMatch = RegExp(r'\d+').firstMatch(raw);
+    final numMatch = RegExp(r'(-?\d+(?:\.\d+)?)').firstMatch(text);
     if (numMatch != null) {
-      return double.tryParse(numMatch.group(0)!);
+      final y = double.tryParse(numMatch.group(1)!);
+      if (y != null) {
+        return isBce && y > 0 ? -y : y;
+      }
     }
 
     return null;

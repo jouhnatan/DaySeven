@@ -129,9 +129,9 @@ class TimelineSection extends CustomSection {
   final String description;
   final List<TimelineItem> items;
 
-  /// The earliest year among all items (defaults to 0 if empty).
+  /// The earliest year among all items (defaults to 1800 if empty).
   double get minYear {
-    if (items.isEmpty) return 0;
+    if (items.isEmpty) return 1800;
     var min = items.first.startYear;
     for (final item in items) {
       if (item.startYear < min) min = item.startYear;
@@ -139,9 +139,9 @@ class TimelineSection extends CustomSection {
     return min;
   }
 
-  /// The latest year among all items (defaults to 100 if empty).
+  /// The latest year among all items (defaults to 1850 if empty).
   double get maxYear {
-    if (items.isEmpty) return 100;
+    if (items.isEmpty) return 1850;
     var max = items.first.startYear;
     for (final item in items) {
       final y = item is TimelinePeriodItem ? item.endYear : item.startYear;

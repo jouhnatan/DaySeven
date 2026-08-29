@@ -112,7 +112,8 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
 
   void _onStartDateChanged(TimelineItem item, String text) {
     if (text == item.startDateLabel) return;
-    final year = TimelineParser.parseDateScalar(text) ?? item.startYear;
+    final parsedYear = TimelineParser.parseDateScalar(text);
+    final year = parsedYear ?? item.startYear;
     ref.read(timelineActionControllerProvider).updateItem(
           item.copyWith(
             startDateLabel: text,
@@ -123,7 +124,8 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
 
   void _onEndDateChanged(TimelinePeriodItem item, String text) {
     if (text == item.endDateLabel) return;
-    final year = TimelineParser.parseDateScalar(text) ?? item.endYear;
+    final parsedYear = TimelineParser.parseDateScalar(text);
+    final year = parsedYear ?? item.endYear;
     ref.read(timelineActionControllerProvider).updateItem(
           item.copyWith(
             endDateLabel: text,
