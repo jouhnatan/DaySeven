@@ -2,6 +2,7 @@
 library;
 
 import 'package:dayseven/shared/blocks/custom_section.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 /// An item on the timeline: either a point event or a period/span.
 sealed class TimelineItem {
@@ -10,6 +11,7 @@ sealed class TimelineItem {
     required this.title,
     required this.startYear,
     required this.startDateLabel,
+    this.color = TimelineColor.fern,
     this.description = '',
     this.kbDocumentPath,
   });
@@ -18,6 +20,7 @@ sealed class TimelineItem {
   final String title;
   final double startYear;
   final String startDateLabel;
+  final TimelineColor color;
   final String description;
   final String? kbDocumentPath;
 
@@ -27,11 +30,45 @@ sealed class TimelineItem {
   bool get isDocumentLink =>
       kbDocumentPath != null && kbDocumentPath!.trim().isNotEmpty;
 
+  /// Converts this item into a period duration stretching over time.
+  TimelinePeriodItem toPeriod({
+    double? endYear,
+    String? endDateLabel,
+  }) {
+    final end = endYear ?? (startYear + 20.0);
+    final endLabel = endDateLabel ?? '${end.toInt()}';
+    return TimelinePeriodItem(
+      id: id,
+      title: title,
+      startYear: startYear,
+      startDateLabel: startDateLabel,
+      endYear: end,
+      endDateLabel: endLabel,
+      color: color,
+      description: description,
+      kbDocumentPath: kbDocumentPath,
+    );
+  }
+
+  /// Converts this item into a point event.
+  TimelineEventItem toPoint() {
+    return TimelineEventItem(
+      id: id,
+      title: title,
+      startYear: startYear,
+      startDateLabel: startDateLabel,
+      color: color,
+      description: description,
+      kbDocumentPath: kbDocumentPath,
+    );
+  }
+
   TimelineItem copyWith({
     String? id,
     String? title,
     double? startYear,
     String? startDateLabel,
+    TimelineColor? color,
     String? description,
     String? kbDocumentPath,
     bool clearKbDocumentPath = false,
@@ -45,6 +82,7 @@ class TimelineEventItem extends TimelineItem {
     required super.title,
     required super.startYear,
     required super.startDateLabel,
+    super.color = TimelineColor.fern,
     super.description,
     super.kbDocumentPath,
   });
@@ -58,6 +96,7 @@ class TimelineEventItem extends TimelineItem {
     String? title,
     double? startYear,
     String? startDateLabel,
+    TimelineColor? color,
     String? description,
     String? kbDocumentPath,
     bool clearKbDocumentPath = false,
@@ -66,6 +105,7 @@ class TimelineEventItem extends TimelineItem {
     title: title ?? this.title,
     startYear: startYear ?? this.startYear,
     startDateLabel: startDateLabel ?? this.startDateLabel,
+    color: color ?? this.color,
     description: description ?? this.description,
     kbDocumentPath: clearKbDocumentPath
         ? null
@@ -82,6 +122,7 @@ class TimelinePeriodItem extends TimelineItem {
     required super.startDateLabel,
     required this.endYear,
     required this.endDateLabel,
+    super.color = TimelineColor.fern,
     super.description,
     super.kbDocumentPath,
   });
@@ -100,6 +141,7 @@ class TimelinePeriodItem extends TimelineItem {
     String? startDateLabel,
     double? endYear,
     String? endDateLabel,
+    TimelineColor? color,
     String? description,
     String? kbDocumentPath,
     bool clearKbDocumentPath = false,
@@ -110,6 +152,7 @@ class TimelinePeriodItem extends TimelineItem {
     startDateLabel: startDateLabel ?? this.startDateLabel,
     endYear: endYear ?? this.endYear,
     endDateLabel: endDateLabel ?? this.endDateLabel,
+    color: color ?? this.color,
     description: description ?? this.description,
     kbDocumentPath: clearKbDocumentPath
         ? null

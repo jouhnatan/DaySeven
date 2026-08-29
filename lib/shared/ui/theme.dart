@@ -236,6 +236,33 @@ class DsPresence {
   static const blockMarkerWidth = 2.0;
 }
 
+/// Palette colors for Timeline milestone items and period spans.
+enum TimelineColor {
+  fern('fern', 'Fern', Color(0xFF1C3A26)),
+  blue('blue', 'Sapphire', Color(0xFF3E6FA8)),
+  amber('amber', 'Amber', Color(0xFF9A5B22)),
+  green('green', 'Emerald', Color(0xFF3A6E4C)),
+  violet('violet', 'Violet', Color(0xFF7A4F94)),
+  rose('rose', 'Rose', Color(0xFF9C4550)),
+  teal('teal', 'Teal', Color(0xFF2A7076)),
+  slate('slate', 'Slate', Color(0xFF3E5A56));
+
+  const TimelineColor(this.id, this.label, this.color);
+
+  final String id;
+  final String label;
+  final Color color;
+
+  static TimelineColor fromId(String? id) {
+    if (id == null) return TimelineColor.fern;
+    final clean = id.toLowerCase().trim();
+    return TimelineColor.values.firstWhere(
+      (c) => c.id == clean,
+      orElse: () => TimelineColor.fern,
+    );
+  }
+}
+
 /// Spacing, on a 4pt base. A value outside this scale is not invented.
 class DsSpace {
   static const xxs = 2.0;

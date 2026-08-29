@@ -156,6 +156,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
     required bool isSelected,
   }) {
     final colors = context.ds;
+    final itemColor = item.color.color;
     final startX = xForYear(item.startYear);
     final endX = xForYear(item.endYear);
     final width = math.max(70.0, endX - startX);
@@ -181,10 +182,11 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: isSelected ? colors.fern : colors.cardSurface,
+                  color: isSelected ? itemColor : colors.cardSurface,
                   borderRadius: const BorderRadius.all(DsRadius.row),
                   border: Border.all(
-                    color: isSelected ? colors.fern : colors.surfaceOutline,
+                    color: isSelected ? itemColor : itemColor.withAlpha(160),
+                    width: isSelected ? 1.5 : 1,
                   ),
                 ),
                 child: Row(
@@ -218,7 +220,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
               Container(
                 height: 8,
                 decoration: BoxDecoration(
-                  color: isSelected ? colors.fern : colors.surfaceOutline,
+                  color: isSelected ? itemColor : itemColor.withAlpha(200),
                   borderRadius: const BorderRadius.all(Radius.circular(4)),
                 ),
               ),
@@ -236,6 +238,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
     required bool isSelected,
   }) {
     final colors = context.ds;
+    final itemColor = item.color.color;
     final centerX = xForYear(item.startYear);
     final containerHeight = (widget.trackHeight / 2) + 8; // Bottom at 88px (center at 81px)
 
@@ -259,10 +262,11 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isSelected ? colors.fern : colors.island,
+                  color: isSelected ? itemColor : colors.island,
                   borderRadius: const BorderRadius.all(DsRadius.row),
                   border: Border.all(
-                    color: isSelected ? colors.fern : colors.surfaceOutline,
+                    color: isSelected ? itemColor : itemColor.withAlpha(160),
+                    width: isSelected ? 1.5 : 1,
                   ),
                 ),
                 child: Row(
@@ -297,11 +301,11 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
                 width: 14,
                 height: 14,
                 decoration: BoxDecoration(
-                  color: isSelected ? colors.fern : colors.island,
+                  color: isSelected ? itemColor : colors.island,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: isSelected ? colors.fern : colors.surfaceOutline,
-                    width: 2,
+                    color: itemColor,
+                    width: 2.5,
                   ),
                 ),
                 child: isSelected

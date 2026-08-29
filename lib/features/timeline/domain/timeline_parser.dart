@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/blocks/custom_section.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/timeline/domain/timeline_model.dart';
 
 const Uuid _uuid = Uuid();
@@ -173,7 +174,17 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
     required String? link,
     required double fallbackYear,
   }) {
-    final cleanDate = dateLine.replaceAll('*', '').trim();
+    final colorMatch = RegExp(
+      r'<!--\s*color:?\s*([a-zA-Z]+)\s*-->|\|\s*([a-zA-Z]+)',
+    ).firstMatch(dateLine);
+    final colorId = colorMatch?.group(1) ?? colorMatch?.group(2);
+    final color = TimelineColor.fromId(colorId);
+
+    final cleanDate = dateLine
+        .replaceAll(RegExp(r'<!--.*?-->'), '')
+        .replaceAll(RegExp(r'\|.*$'), '')
+        .replaceAll('*', '')
+        .trim();
     final isRange = cleanDate.contains('→') || cleanDate.contains('->');
 
     if (isRange) {
@@ -193,6 +204,7 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
         startDateLabel: startLabel.isEmpty ? '${startYear.toInt()}' : startLabel,
         endYear: endYear,
         endDateLabel: endLabel.isEmpty ? '${endYear.toInt()}' : endLabel,
+        color: color,
         description: description,
         kbDocumentPath: link,
       );
@@ -203,6 +215,7 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
         title: title,
         startYear: startYear,
         startDateLabel: cleanDate.isEmpty ? '${startYear.toInt()}' : cleanDate,
+        color: color,
         description: description,
         kbDocumentPath: link,
       );
@@ -306,15 +319,20 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
         ),
       );
 
-      // Date paragraph (bold)
+      // Date paragraph (bold) with optional color tag
+      final dateText = item is TimelinePeriodItem
+          ? '${item.startDateLabel} → ${item.endDateLabel}'
+          : item.startDateLabel;
+      final colorTag = item.color != TimelineColor.fern
+          ? ' <!-- color:${item.color.id} -->'
+          : '';
+
       blocks.add(
         ParagraphBlock(
           id: _uuid.v7(),
           spans: [
             TextSpanNode(
-              text: item is TimelinePeriodItem
-                  ? '${item.startDateLabel} → ${item.endDateLabel}'
-                  : item.startDateLabel,
+              text: '$dateText$colorTag',
               bold: true,
             ),
           ],

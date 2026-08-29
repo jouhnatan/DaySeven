@@ -4,6 +4,7 @@ import 'package:dayseven/features/timeline/domain/timeline_model.dart';
 import 'package:dayseven/features/timeline/domain/timeline_parser.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/blocks/markdown.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 void main() {
   group('TimelineParser', () {
@@ -192,6 +193,67 @@ Art and sciences flourished.
       expect(TimelineParser.parseDateScalar('2024-06-15'), closeTo(2024.45, 0.1));
       expect(TimelineParser.parseDateScalar('10 Month 5, Year 1920'), closeTo(1920.35, 0.1));
       expect(TimelineParser.parseDateScalar(''), isNull);
+    });
+
+    test('parses and serializes TimelineColor tags', () {
+      const markdown = '''
+<!-- d7 h2 -->
+# Timeline
+
+<!-- d7 h3 -->
+### Sapphire Age
+<!-- d7 p1 -->
+1800 → 1850 <!-- color:blue -->
+
+<!-- d7 p2 -->
+An era of maritime exploration.
+
+<!-- d7 h4 -->
+### Amber Treaty
+<!-- d7 p3 -->
+1825 <!-- color:amber -->
+
+<!-- d7 p4 -->
+Signed in gold.
+
+<!-- d7 h5 -->
+# Timeline
+''';
+
+      final doc = decodeMarkdown(markdown);
+      final section = parser.findFirst(doc);
+
+      expect(section, isNotNull);
+      expect(section!.items.length, 2);
+
+      final period = section.items[0] as TimelinePeriodItem;
+      expect(period.title, 'Sapphire Age');
+      expect(period.color, TimelineColor.blue);
+      expect(period.startDateLabel, '1800');
+      expect(period.endDateLabel, '1850');
+
+      final event = section.items[1] as TimelineEventItem;
+      expect(event.title, 'Amber Treaty');
+      expect(event.color, TimelineColor.amber);
+      expect(event.startDateLabel, '1825');
+
+      // Test toPoint and toPeriod transformations
+      final convertedToPoint = period.toPoint();
+      expect(convertedToPoint.isPeriod, isFalse);
+      expect(convertedToPoint.color, TimelineColor.blue);
+      expect(convertedToPoint.title, 'Sapphire Age');
+
+      final convertedToPeriod = event.toPeriod(endYear: 1840, endDateLabel: '1840');
+      expect(convertedToPeriod.isPeriod, isTrue);
+      expect(convertedToPeriod.color, TimelineColor.amber);
+      expect(convertedToPeriod.endYear, 1840.0);
+      expect(convertedToPeriod.endDateLabel, '1840');
+
+      // Test serialization preserves color tags
+      final serialized = parser.serializeSection(section);
+      final reparsed = parser.findFirst(BlockDocument(id: 'd', title: 't', blocks: serialized));
+      expect(reparsed!.items[0].color, TimelineColor.blue);
+      expect(reparsed.items[1].color, TimelineColor.amber);
     });
   });
 }

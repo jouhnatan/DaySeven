@@ -41,10 +41,19 @@ class TimelinePopover extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: Title and Close button
+          // Header: Title, Color dot, and Close button
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.only(top: 5, right: 8),
+                decoration: BoxDecoration(
+                  color: item.color.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

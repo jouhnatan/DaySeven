@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dayseven/features/timeline/application/timeline_controller.dart';
 import 'package:dayseven/features/timeline/domain/timeline_model.dart';
+import 'package:dayseven/features/timeline/ui/timeline_color_picker.dart';
 import 'package:dayseven/features/timeline/ui/timeline_inspector.dart';
 import 'package:dayseven/features/timeline/ui/timeline_popover.dart';
 import 'package:dayseven/features/timeline/ui/timeline_toolbar_button.dart';
@@ -132,6 +133,37 @@ void main() {
 
       expect(find.text('Timeline'), findsOneWidget);
       expect(find.byIcon(Icons.timeline), findsOneWidget);
+    });
+
+    testWidgets('TimelineColorPicker renders and triggers selection', (
+      tester,
+    ) async {
+      TimelineColor? selected;
+
+      await tester.pumpWidget(
+        buildApp(
+          TimelineColorPicker(
+            selectedColor: TimelineColor.fern,
+            onColorSelected: (c) => selected = c,
+          ),
+        ),
+      );
+
+      expect(find.byType(TimelineColorPicker), findsOneWidget);
+
+      // Open popup menu
+      await tester.tap(find.byType(TimelineColorPicker));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sapphire'), findsOneWidget);
+      expect(find.text('Amber'), findsOneWidget);
+      expect(find.text('Rose'), findsOneWidget);
+
+      // Tap Sapphire
+      await tester.tap(find.text('Sapphire'));
+      await tester.pumpAndSettle();
+
+      expect(selected, TimelineColor.blue);
     });
   });
 }

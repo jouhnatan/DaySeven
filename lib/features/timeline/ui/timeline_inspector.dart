@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dayseven/features/timeline/application/timeline_controller.dart';
 import 'package:dayseven/features/timeline/domain/timeline_model.dart';
 import 'package:dayseven/features/timeline/domain/timeline_parser.dart';
+import 'package:dayseven/features/timeline/ui/timeline_color_picker.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/menu.dart';
@@ -261,9 +262,18 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
                 ),
               ),
             ),
+            const SizedBox(width: 6),
+
+            // 4. Color Palette Picker Button (🎨)
+            TimelineColorPicker(
+              selectedColor: selectedItem.color,
+              onColorSelected: (color) {
+                actions.updateItem(selectedItem.copyWith(color: color));
+              },
+            ),
             const SizedBox(width: 8),
 
-            // 4. Start Date Field
+            // 5. Start Date Field
             Expanded(
               flex: 3,
               child: Container(
@@ -301,7 +311,7 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
               ),
             ),
 
-            // 5. Arrow & End Date (if Period)
+            // 6. End Date (if Period) OR "+ End date" button (if Event)
             if (selectedItem is TimelinePeriodItem) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -339,6 +349,38 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
                           ),
                         ),
                       ),
+                      Tooltip(
+                        message: 'Make point event',
+                        child: GestureDetector(
+                          onTap: () => actions.updateItem(selectedItem.toPoint()),
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Icon(Icons.close, size: 14, color: colors.muted),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else ...[
+              const SizedBox(width: 4),
+              Tooltip(
+                message: 'Stretch event over a period of time',
+                child: DsButton(
+                  variant: DsButtonVariant.secondary,
+                  height: 32,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  onPressed: () => actions.updateItem(selectedItem.toPeriod()),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.linear_scale, size: 14, color: colors.muted),
+                      const SizedBox(width: 4),
+                      Text(
+                        '+ End date',
+                        style: uiTextStyle(size: 11.5, color: colors.muted),
+                      ),
                     ],
                   ),
                 ),
@@ -346,7 +388,7 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
             ],
             const SizedBox(width: 8),
 
-            // 6. Delete Button (🗑)
+            // 7. Delete Button (🗑)
             Tooltip(
               message: 'Delete item',
               child: DsButton(
