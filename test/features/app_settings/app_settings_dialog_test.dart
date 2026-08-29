@@ -75,7 +75,7 @@ Future<void> openDialog(
   AppUpdateController controller, {
   AppSettingsDeveloperOptions? developerOptions,
   Widget? knowledgeBasePanel,
-  AppSettingsSection section = AppSettingsSection.appearance,
+  AppSettingsSection section = AppSettingsSection.updates,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -100,13 +100,18 @@ Future<void> selectSection(
   WidgetTester tester,
   AppSettingsSection section,
 ) async {
-  await tester.tap(find.byKey(Key('app-settings-section-${section.name}')));
+  final sectionButton = find.byKey(Key('app-settings-section-${section.name}'));
+  if (sectionButton.evaluate().isEmpty) {
+    expect(section, AppSettingsSection.updates);
+    expect(find.byType(DsSegmented<AppSettingsSection>), findsNothing);
+    return;
+  }
+  await tester.tap(sectionButton);
   await tester.pumpAndSettle();
 }
 
 void main() {
   setUpAll(loadTestFonts);
-  tearDown(DsGlobalSettings.reset);
 
   setUp(() {
     // The dialog reads the running build's version through package_info_plus,
@@ -210,13 +215,11 @@ void main() {
   ) async {
     await openDialog(tester, RecordingController());
 
+    expect(find.byType(DsSegmented<AppSettingsSection>), findsNothing);
+    expect(find.text('Install updates automatically'), findsOneWidget);
     expect(
       find.byKey(const Key('app-settings-section-appearance')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('app-settings-section-updates')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.byKey(const Key('app-settings-section-about')), findsNothing);
     expect(
@@ -230,6 +233,10 @@ void main() {
       knowledgeBasePanel: const Text('kb panel'),
     );
 
+    expect(
+      find.byKey(const Key('app-settings-section-updates')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('app-settings-section-knowledgeBase')),
       findsOneWidget,
@@ -251,12 +258,12 @@ void main() {
     );
 
     expect(find.text('kb panel'), findsNothing);
-    expect(find.text('Gradient background'), findsOneWidget);
+    expect(find.text('Install updates automatically'), findsOneWidget);
 
     await selectSection(tester, AppSettingsSection.knowledgeBase);
 
     expect(find.text('kb panel'), findsOneWidget);
-    expect(find.text('Gradient background'), findsNothing);
+    expect(find.text('Install updates automatically'), findsNothing);
 
     // The strip itself holds the answer to "where am I": its raised cell is
     // the section on screen.
@@ -285,7 +292,7 @@ void main() {
     expect(find.text('kb panel'), findsOneWidget);
   });
 
-  testWidgets('falls back to Appearance when a section is not in this build', (
+  testWidgets('falls back to Updates when a section is not in this build', (
     tester,
   ) async {
     await openDialog(
@@ -296,7 +303,7 @@ void main() {
 
     // Nothing supplied a Knowledge Base panel, so that section does not exist
     // and the switcher would otherwise have had nothing selected.
-    expect(find.text('Gradient background'), findsOneWidget);
+    expect(find.text('Install updates automatically'), findsOneWidget);
   });
 
   testWidgets('sets dialog title in header font', (tester) async {
@@ -530,7 +537,11 @@ void main() {
   testWidgets('pads the horizontal bar beneath the segmented control buttons', (
     tester,
   ) async {
-    await openDialog(tester, RecordingController());
+    await openDialog(
+      tester,
+      RecordingController(),
+      knowledgeBasePanel: const SizedBox.shrink(),
+    );
 
     final headerBox = tester.widget<DecoratedBox>(
       find
