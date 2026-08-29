@@ -84,6 +84,7 @@ class TimelineActionController {
 
     final updatedDoc = _parser.insertSection(open.document, newSection);
     _ref.read(documentControllerProvider.notifier).edit(updatedDoc);
+    _ref.read(isTimelineCollapsedProvider.notifier).state = false;
     _ref.read(selectedTimelineItemIdProvider.notifier).state =
         newSection.items.first.id;
   }

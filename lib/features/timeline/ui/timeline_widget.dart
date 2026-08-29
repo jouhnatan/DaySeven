@@ -9,6 +9,7 @@ import 'package:dayseven/features/timeline/ui/timeline_inspector.dart';
 import 'package:dayseven/features/timeline/ui/timeline_popover.dart';
 import 'package:dayseven/features/timeline/ui/timeline_track.dart';
 import 'package:dayseven/shared/ui/controls.dart';
+import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class TimelineWidget extends ConsumerWidget {
@@ -98,6 +99,36 @@ class TimelineWidget extends ConsumerWidget {
                     ),
                   ),
                 ),
+                const SizedBox(width: 4),
+                // Remove Timeline button
+                Tooltip(
+                  message: 'Remove timeline from document',
+                  child: DsButton(
+                    variant: DsButtonVariant.quiet,
+                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    onPressed: () => _confirmRemoveTimeline(context, ref),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.delete_outline,
+                          size: 16,
+                          color: colors.danger,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Remove',
+                          style: uiTextStyle(
+                            size: 12,
+                            weight: 500,
+                            color: colors.danger,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -133,5 +164,42 @@ class TimelineWidget extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmRemoveTimeline(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => DsDialog(
+        title: Text(
+          'Remove Timeline',
+          style: uiHeaderTextStyle(size: 16),
+        ),
+        actions: [
+          DsDialogAction(
+            label: 'Cancel',
+            tone: DsDialogActionTone.muted,
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          DsDialogAction(
+            label: 'Remove Timeline',
+            tone: DsDialogActionTone.danger,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+        children: [
+          Text(
+            'Are you sure you want to remove the timeline from this document? The timeline section and all its milestones will be deleted.',
+            style: uiTextStyle(size: 13, color: context.ds.muted),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      ref.read(timelineActionControllerProvider).removeTimeline();
+    }
   }
 }
