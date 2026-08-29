@@ -283,8 +283,11 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
 
     final startX = xForYear(displayStartYear);
     final endX = xForYear(displayEndYear);
-    final width = math.max(70.0, endX - startX);
-    final left = startX;
+    final spanWidth = math.max(6.0, endX - startX);
+    final centerX = (startX + endX) / 2;
+    const minContainerWidth = 140.0;
+    final containerWidth = math.max(minContainerWidth, spanWidth + 24.0);
+    final left = centerX - (containerWidth / 2);
     final containerHeight = (widget.trackHeight / 2) + 5; // Bottom at 85px (center at 81px)
 
     return AnimatedPositioned(
@@ -294,7 +297,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
       curve: Curves.easeOutCubic,
       left: left,
       top: 0,
-      width: width,
+      width: containerWidth,
       height: widget.trackHeight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -353,6 +356,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
                 height: containerHeight,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     // Blurb pill
                     Container(
@@ -392,8 +396,9 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    // Span bracket bar flush on the axis
+                    // Span bracket bar flush on the axis (accurately sized to spanWidth)
                     Container(
+                      width: spanWidth,
                       height: 8,
                       decoration: BoxDecoration(
                         color: isSelected ? itemColor : itemColor.withAlpha(200),
