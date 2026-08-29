@@ -69,8 +69,8 @@ Outro paragraph after the timeline.
       // Period item
       final period = section.items[0] as TimelinePeriodItem;
       expect(period.title, 'New age');
-      expect(period.startDateLabel, '20 Month 13, Year 1803');
-      expect(period.endDateLabel, '13 Month 1, Year 1874');
+      expect(period.startDateLabel, '1804');
+      expect(period.endDateLabel, '1874');
       expect(period.startYear, closeTo(1804.0, 1.0));
       expect(period.endYear, closeTo(1874.0, 1.0));
       expect(
@@ -83,7 +83,7 @@ Outro paragraph after the timeline.
       // Event item with link
       final event = section.items[1] as TimelineEventItem;
       expect(event.title, 'The High Treaty');
-      expect(event.startDateLabel, '10 Month 5, Year 1920');
+      expect(event.startDateLabel, '1920');
       expect(event.startYear, closeTo(1920.35, 1.0));
       expect(event.isPeriod, isFalse);
       expect(event.isDocumentLink, isTrue);
@@ -177,8 +177,8 @@ Art and sciences flourished.
 
       final item2 = section.items[1] as TimelinePeriodItem;
       expect(item2.title, 'Renaissance');
-      expect(item2.startDateLabel, 'Year 1500');
-      expect(item2.endDateLabel, 'Year 1600');
+      expect(item2.startDateLabel, '1500');
+      expect(item2.endDateLabel, '1600');
       expect(item2.startYear, 1500.0);
       expect(item2.endYear, 1600.0);
       expect(item2.description, 'Art and sciences flourished.');

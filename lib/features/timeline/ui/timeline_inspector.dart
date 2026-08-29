@@ -48,9 +48,9 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
     if (_lastItemId != item.id) {
       _lastItemId = item.id;
       _titleController.text = item.title;
-      _startController.text = item.startDateLabel;
+      _startController.text = item.startDateLabel.replaceAll(RegExp(r'[^\d-]'), '');
       if (item is TimelinePeriodItem) {
-        _endController.text = item.endDateLabel;
+        _endController.text = item.endDateLabel.replaceAll(RegExp(r'[^\d-]'), '');
       } else {
         _endController.clear();
       }
@@ -113,24 +113,26 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
   }
 
   void _onStartDateChanged(TimelineItem item, String text) {
-    if (text == item.startDateLabel) return;
-    final parsedYear = TimelineParser.parseDateScalar(text);
+    final cleanText = text.replaceAll(RegExp(r'[^\d-]'), '');
+    if (cleanText == item.startDateLabel) return;
+    final parsedYear = TimelineParser.parseDateScalar(cleanText);
     final year = parsedYear ?? item.startYear;
     ref.read(timelineActionControllerProvider).updateItem(
           item.copyWith(
-            startDateLabel: text,
+            startDateLabel: cleanText,
             startYear: year,
           ),
         );
   }
 
   void _onEndDateChanged(TimelinePeriodItem item, String text) {
-    if (text == item.endDateLabel) return;
-    final parsedYear = TimelineParser.parseDateScalar(text);
+    final cleanText = text.replaceAll(RegExp(r'[^\d-]'), '');
+    if (cleanText == item.endDateLabel) return;
+    final parsedYear = TimelineParser.parseDateScalar(cleanText);
     final year = parsedYear ?? item.endYear;
     ref.read(timelineActionControllerProvider).updateItem(
           item.copyWith(
-            endDateLabel: text,
+            endDateLabel: cleanText,
             endYear: year,
           ),
         );
