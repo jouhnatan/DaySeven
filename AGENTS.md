@@ -122,6 +122,33 @@ so that every version anyone runs corresponds to a build that exists.
   old build cannot sign in. Nothing client-side may write it; publishing goes
   through `publish_release`, granted to `service_role` alone.
 
+## Orphaned code
+
+**When something stops being used, delete it in the same change that orphaned
+it.** Not later, not behind a note, not "left for now" — the change that
+removed the last caller is the change that removes the code. Dead code reads
+as load-bearing to whoever finds it next, and the person best placed to know
+it is dead is the one who just killed it.
+
+Removing a feature means following it all the way out:
+
+- the Dart that implemented it, and its tests
+- Rust modules it owned, then regenerate the bridge with
+  `flutter_rust_bridge_codegen generate` at the version pinned in
+  `pubspec.yaml` and `rust/Cargo.toml` — never hand-edit generated files.
+  Codegen leaves a removed module's Dart file behind; delete it yourself
+- dependencies nothing else uses, in `pubspec.yaml` and `rust/Cargo.toml`
+- helpers, constants and types left with no caller, including production code
+  that only tests still reach
+
+Grep for each symbol before concluding it is still used. A single hit is
+usually its own declaration.
+
+The one exception is anything holding data: dropping a column or a table
+destroys what is in it and does not come back. Write the migration, say
+plainly what it deletes, and let the human decide. Deleting dead source is
+not the same act as deleting someone's rows.
+
 ## Secrets
 
 `SUPABASE_SERVICE_ROLE_KEY` is a GitHub repository secret used only by the
