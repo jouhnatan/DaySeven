@@ -190,9 +190,9 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
         id: id,
         title: title,
         startYear: startYear,
-        startDateLabel: startLabel.isEmpty ? 'Year ${startYear.toInt()}' : startLabel,
+        startDateLabel: startLabel.isEmpty ? '${startYear.toInt()}' : startLabel,
         endYear: endYear,
-        endDateLabel: endLabel.isEmpty ? 'Year ${endYear.toInt()}' : endLabel,
+        endDateLabel: endLabel.isEmpty ? '${endYear.toInt()}' : endLabel,
         description: description,
         kbDocumentPath: link,
       );
@@ -202,7 +202,7 @@ class TimelineParser extends CustomSectionParser<TimelineSection> {
         id: id,
         title: title,
         startYear: startYear,
-        startDateLabel: cleanDate.isEmpty ? 'Year ${startYear.toInt()}' : cleanDate,
+        startDateLabel: cleanDate.isEmpty ? '${startYear.toInt()}' : cleanDate,
         description: description,
         kbDocumentPath: link,
       );

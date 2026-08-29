@@ -67,16 +67,16 @@ class TimelineActionController {
           id: _uuid.v7(),
           title: 'New age',
           startYear: 1800,
-          startDateLabel: 'Year 1800',
+          startDateLabel: '1800',
           endYear: 1850,
-          endDateLabel: 'Year 1850',
+          endDateLabel: '1850',
           description: 'Description of the new age...',
         ),
         TimelineEventItem(
           id: _uuid.v7(),
           title: 'New event',
           startYear: 1825,
-          startDateLabel: 'Year 1825',
+          startDateLabel: '1825',
           description: 'Description of the event...',
         ),
       ],
@@ -103,7 +103,7 @@ class TimelineActionController {
     final double startY = section.items.isEmpty
         ? 1800
         : section.maxYear + 10;
-    final String startLabel = 'Year ${startY.toInt()}';
+    final String startLabel = '${startY.toInt()}';
 
     final TimelineItem newItem = isPeriod
         ? TimelinePeriodItem(
@@ -112,7 +112,7 @@ class TimelineActionController {
             startYear: startY,
             startDateLabel: startLabel,
             endYear: startY + 20,
-            endDateLabel: 'Year ${(startY + 20).toInt()}',
+            endDateLabel: '${(startY + 20).toInt()}',
             description: '',
           )
         : TimelineEventItem(

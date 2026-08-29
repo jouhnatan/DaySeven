@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/features/timeline/application/timeline_controller.dart';
@@ -281,6 +282,10 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
                       child: TextField(
                         controller: _startController,
                         onChanged: (text) => _onStartDateChanged(selectedItem, text),
+                        keyboardType: const TextInputType.numberWithOptions(signed: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*')),
+                        ],
                         style: uiTextStyle(size: 12, color: colors.text, tabular: true),
                         cursorColor: colors.fern,
                         decoration: InputDecoration(
@@ -320,6 +325,10 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
                         child: TextField(
                           controller: _endController,
                           onChanged: (text) => _onEndDateChanged(selectedItem, text),
+                          keyboardType: const TextInputType.numberWithOptions(signed: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'^-?\d*')),
+                          ],
                           style: uiTextStyle(size: 12, color: colors.text, tabular: true),
                           cursorColor: colors.fern,
                           decoration: InputDecoration(

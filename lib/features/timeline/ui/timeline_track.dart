@@ -160,12 +160,13 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
     final endX = xForYear(item.endYear);
     final width = math.max(70.0, endX - startX);
     final left = startX;
-    const top = 18.0;
+    final containerHeight = (widget.trackHeight / 2) + 5; // Bottom at 85px (center at 81px)
 
     return Positioned(
       left: left,
-      top: top,
+      top: 0,
       width: width,
+      height: containerHeight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
@@ -174,7 +175,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
               // Blurb pill
               Container(
@@ -213,7 +214,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
                 ),
               ),
               const SizedBox(height: 6),
-              // Span bracket bar on the axis
+              // Span bracket bar flush on the axis
               Container(
                 height: 8,
                 decoration: BoxDecoration(
@@ -236,12 +237,13 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
   }) {
     final colors = context.ds;
     final centerX = xForYear(item.startYear);
-    const top = 22.0;
+    final containerHeight = (widget.trackHeight / 2) + 8; // Bottom at 88px (center at 81px)
 
     return Positioned(
-      left: centerX - 45,
-      top: top,
-      width: 90,
+      left: centerX - 60,
+      top: 0,
+      width: 120,
+      height: containerHeight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
@@ -250,7 +252,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Blurb pill above the point
@@ -289,8 +291,8 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
-              // Circular node on the axis
+              const SizedBox(height: 6),
+              // Circular node flush on the axis line
               Container(
                 width: 14,
                 height: 14,
