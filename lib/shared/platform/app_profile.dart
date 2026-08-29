@@ -88,8 +88,8 @@ class AppProfile {
     required this.slot,
     required this.directory,
     required this.root,
-    RandomAccessFile? lock,
-  }) : _lock = lock;
+    this.lock,
+  });
 
   final int slot;
 
@@ -102,8 +102,7 @@ class AppProfile {
 
   /// Held open for the life of the process. Never closed: closing it is what
   /// releases the claim.
-  // ignore: unused_field
-  final RandomAccessFile? _lock;
+  final RandomAccessFile? lock;
 
   bool get isPrimary => slot == 0;
 

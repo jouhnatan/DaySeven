@@ -299,7 +299,6 @@ class _DsButtonState extends State<DsButton> {
                 duration: DsMotion.of(context, DsMotion.hover),
                 curve: DsMotion.curve,
                 height: widget.height,
-                alignment: Alignment.center,
                 padding: widget.padding,
                 decoration: BoxDecoration(
                   color: fill,
@@ -309,11 +308,15 @@ class _DsButtonState extends State<DsButton> {
                 // Children that state their own colour keep it; those that do
                 // not follow the button, so a toggled-on button reads correctly
                 // without every caller restating it.
-                child: IconTheme.merge(
-                  data: IconThemeData(color: foreground),
-                  child: DefaultTextStyle.merge(
-                    style: TextStyle(color: foreground),
-                    child: widget.child,
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: IconTheme.merge(
+                    data: IconThemeData(color: foreground),
+                    child: DefaultTextStyle.merge(
+                      style: TextStyle(color: foreground),
+                      child: widget.child,
+                    ),
                   ),
                 ),
               ),

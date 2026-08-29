@@ -58,6 +58,30 @@ void main() {
     expect(buttonFill(tester), custom);
   });
 
+  testWidgets('a button hugs its content rather than expanding to maxWidth', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: dsTheme(),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topRight,
+            child: DsButton(
+              onPressed: () {},
+              child: const Text('Small'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final buttonSize = tester.getSize(find.byType(DsButton));
+    // The scaffold is 800 wide, but the button should only be as wide as its label + padding.
+    expect(buttonSize.width, lessThan(200));
+  });
+
   testWidgets('a toggled-on button is a fern block, not a hover', (
     tester,
   ) async {

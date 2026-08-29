@@ -134,9 +134,7 @@ class DsShell extends ConsumerWidget {
                                             // Collaboration needs a server; without
                                             // one there is nothing to sign in to.
                                             if (isSupabaseConfigured) ...[
-                                              const Flexible(
-                                                child: AuthButton(),
-                                              ),
+                                              const AuthButton(),
                                               const SizedBox(
                                                 width: DsSpace.controlGap,
                                               ),

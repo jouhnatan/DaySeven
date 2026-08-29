@@ -61,18 +61,17 @@ abstract interface class CrdtTransport {
 class CrdtSyncService implements CrdtTransport {
   CrdtSyncService({
     required this.roomId,
-    required CrdtAccessTokenProvider accessTokenProvider,
+    required this.accessTokenProvider,
     CrdtSocketFactory? socketFactory,
     Uri? relayOrigin,
     math.Random? random,
-  }) : _accessTokenProvider = accessTokenProvider,
-       _socketFactory = socketFactory ?? _openDesktopSocket,
+  }) : _socketFactory = socketFactory ?? _openDesktopSocket,
        _relayOrigin = relayOrigin ?? Uri.parse(kCrdtRelayOrigin),
        _random = random ?? math.Random.secure();
 
   @override
   final String roomId;
-  final CrdtAccessTokenProvider _accessTokenProvider;
+  final CrdtAccessTokenProvider accessTokenProvider;
   final CrdtSocketFactory _socketFactory;
   final Uri _relayOrigin;
   final math.Random _random;
@@ -126,7 +125,7 @@ class CrdtSyncService implements CrdtTransport {
     final generation = ++_generation;
     _emit(CrdtConnectionState.connecting);
     try {
-      final token = await _accessTokenProvider();
+      final token = await accessTokenProvider();
       if (token == null || token.trim().isEmpty) {
         throw StateError('A signed-in Supabase session is required.');
       }
