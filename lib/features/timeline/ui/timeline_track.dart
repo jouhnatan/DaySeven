@@ -75,24 +75,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
     final maxYear = (rawMax + pad).ceilToDouble();
     final totalSpan = maxYear - minYear;
 
-    // 2. Pixel density and canvas margins
-    const edgePadding = 120.0;
-    const minTrackWidth = 1000.0;
-    const pixelsPerYear = 8.0;
-    final trackWidth = math.max(minTrackWidth, totalSpan * pixelsPerYear);
-
-    // 3. Coordinate conversion helpers
-    double xForYear(double year) {
-      final fraction = (year - minYear) / totalSpan;
-      return (fraction * (trackWidth - (edgePadding * 2))) + edgePadding;
-    }
-
-    double yearForX(double x) {
-      final fraction = (x - edgePadding) / (trackWidth - (edgePadding * 2));
-      return minYear + (fraction * totalSpan);
-    }
-
-    // 4. Generate interval ticks
+    // 2. Interval ticks calculation
     final tickInterval = _computeNiceInterval(totalSpan);
     final firstTick = (minYear / tickInterval).ceil() * tickInterval;
     final ticks = <double>[];
@@ -100,108 +83,138 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
       ticks.add(t);
     }
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Horizontal Scrollable Axis
-        SizedBox(
-          height: widget.trackHeight,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: trackWidth,
-              height: widget.trackHeight,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // Continuous horizontal axis line
-                  Positioned(
-                    left: 30,
-                    right: 30,
-                    top: widget.trackHeight / 2,
-                    child: Container(
-                      height: 2,
-                      color: colors.border,
-                    ),
-                  ),
-
-                  // Periodic Ticks & Year Labels
-                  for (final tick in ticks) ...[
-                    Positioned(
-                      left: xForYear(tick) - 0.5,
-                      top: (widget.trackHeight / 2) - 6,
-                      child: Container(
-                        width: 1,
-                        height: 14,
-                        color: colors.border,
-                      ),
-                    ),
-                    Positioned(
-                      left: xForYear(tick) - 30,
-                      top: (widget.trackHeight / 2) + 12,
-                      width: 60,
-                      child: Text(
-                        tick.toInt().toString(),
-                        textAlign: TextAlign.center,
-                        style: uiTextStyle(
-                          size: 11,
-                          color: colors.muted,
-                          tabular: true,
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  // Periods / Ages (rendered as bracketed pills)
-                  for (final item in items)
-                    if (item is TimelinePeriodItem)
-                      _buildPeriodWidget(
-                        context,
-                        item,
-                        xForYear,
-                        yearForX,
-                        isSelected: item.id == selectedId,
-                      ),
-
-                  // Point Events (rendered as nodes + blurbs)
-                  for (final item in items)
-                    if (item is TimelineEventItem)
-                      _buildPointEventWidget(
-                        context,
-                        item,
-                        xForYear,
-                        yearForX,
-                        isSelected: item.id == selectedId,
-                      ),
-                ],
-              ),
+    return SizedBox(
+      height: widget.trackHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Left Caret Scroll Button (‹)
+          Padding(
+            padding: const EdgeInsets.only(left: 8, right: 4),
+            child: _buildCaretButton(
+              context,
+              icon: Icons.chevron_left,
+              tooltip: 'Scroll left',
+              onPressed: _scrollLeft,
             ),
           ),
-        ),
 
-        // Left Caret Scroll Button (‹)
-        Positioned(
-          left: 8,
-          child: _buildCaretButton(
-            context,
-            icon: Icons.chevron_left,
-            tooltip: 'Scroll left',
-            onPressed: _scrollLeft,
-          ),
-        ),
+          // Center Scrollable Viewport (perfectly bounded & centered)
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final availableWidth = constraints.maxWidth;
+                const edgePadding = 80.0;
+                const pixelsPerYear = 8.0;
+                final contentWidth = math.max(
+                  availableWidth,
+                  totalSpan * pixelsPerYear + (edgePadding * 2),
+                );
 
-        // Right Caret Scroll Button (›)
-        Positioned(
-          right: 8,
-          child: _buildCaretButton(
-            context,
-            icon: Icons.chevron_right,
-            tooltip: 'Scroll right',
-            onPressed: _scrollRight,
+                // Coordinate conversion helpers
+                double xForYear(double year) {
+                  final fraction = (year - minYear) / totalSpan;
+                  return (fraction * (contentWidth - (edgePadding * 2))) +
+                      edgePadding;
+                }
+
+                double yearForX(double x) {
+                  final fraction =
+                      (x - edgePadding) / (contentWidth - (edgePadding * 2));
+                  return minYear + (fraction * totalSpan);
+                }
+
+                return ClipRect(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    scrollDirection: Axis.horizontal,
+                    physics: const ClampingScrollPhysics(),
+                    child: SizedBox(
+                      width: contentWidth,
+                      height: widget.trackHeight,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Continuous horizontal axis line
+                          Positioned(
+                            left: 20,
+                            right: 20,
+                            top: widget.trackHeight / 2,
+                            child: Container(
+                              height: 2,
+                              color: colors.border,
+                            ),
+                          ),
+
+                          // Periodic Ticks & Year Labels
+                          for (final tick in ticks) ...[
+                            Positioned(
+                              left: xForYear(tick) - 0.5,
+                              top: (widget.trackHeight / 2) - 6,
+                              child: Container(
+                                width: 1,
+                                height: 14,
+                                color: colors.border,
+                              ),
+                            ),
+                            Positioned(
+                              left: xForYear(tick) - 30,
+                              top: (widget.trackHeight / 2) + 12,
+                              width: 60,
+                              child: Text(
+                                tick.toInt().toString(),
+                                textAlign: TextAlign.center,
+                                style: uiTextStyle(
+                                  size: 11,
+                                  color: colors.muted,
+                                  tabular: true,
+                                ),
+                              ),
+                            ),
+                          ],
+
+                          // Periods / Ages (rendered as bracketed pills)
+                          for (final item in items)
+                            if (item is TimelinePeriodItem)
+                              _buildPeriodWidget(
+                                context,
+                                item,
+                                xForYear,
+                                yearForX,
+                                isSelected: item.id == selectedId,
+                              ),
+
+                          // Point Events (rendered as nodes + blurbs)
+                          for (final item in items)
+                            if (item is TimelineEventItem)
+                              _buildPointEventWidget(
+                                context,
+                                item,
+                                xForYear,
+                                yearForX,
+                                isSelected: item.id == selectedId,
+                              ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
-        ),
-      ],
+
+          // Right Caret Scroll Button (›)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, right: 8),
+            child: _buildCaretButton(
+              context,
+              icon: Icons.chevron_right,
+              tooltip: 'Scroll right',
+              onPressed: _scrollRight,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
