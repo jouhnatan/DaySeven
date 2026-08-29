@@ -4,7 +4,12 @@ Read `README.md` first — it describes the architecture, the document model,
 and the release mechanism in full. This file covers only what an agent needs
 to get right that the code does not enforce on its own.
 
-## Implementation Overview
+
+## Plan Mode: Basics
+
+
+
+## Build Mode: Basics
 
 - Always make sure to read .documents/STYLE.md if your change involves UI changes.
 
