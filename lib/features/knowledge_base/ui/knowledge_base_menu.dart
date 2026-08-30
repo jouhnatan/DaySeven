@@ -20,7 +20,7 @@ import 'package:dayseven/shared/ui/presence_dots.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
-import 'package:dayseven/shared/ui/menu.dart';
+import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/documents/documents.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
@@ -160,74 +160,50 @@ class _KbDropdownState extends ConsumerState<_KbDropdown> {
         : ref.read(kbRoleProvider).valueOrNull;
     if (!mounted) return;
 
-    final colors = context.ds;
-    final choice = await showDsMenu<Object>(
-      context: context,
-      items: [
-        for (final path in recents)
-          DsMenuItem<Object>(
-            value: path,
-            height: kDsMenuItemHeight,
-            child: Text(
-              p.basename(path),
-              style: uiTextStyle(size: 13, color: colors.text),
-            ),
-          ),
-        if (recents.isNotEmpty) const DsMenuDivider(),
-        DsMenuItem<Object>(
-          value: _KbAction.openFolder,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'Open folder…',
-            style: uiTextStyle(size: 13, color: colors.text),
-          ),
-        ),
-        if (ref.read(kbSessionProvider) != null) ...[
-          if (role != KbRole.reviewer)
-            DsMenuItem<Object>(
-              value: _KbAction.importDocument,
-              height: kDsMenuItemHeight,
-              child: Text(
-                'Import .docx or .odt…',
-                style: uiTextStyle(size: 13, color: colors.text),
-              ),
-            ),
-          // Connection creation and deletion live behind the adjacent gear.
-          // The owner's invite and a member's acceptance stay with the active
-          // Knowledge Base because they are ordinary workspace actions.
-          if (role != null && role != KbRole.local) ...[
-            const DsMenuDivider(),
-            DsMenuItem<Object>(
-              value: switch (role) {
-                KbRole.local => null,
-                KbRole.owner => _KbAction.invite,
-                KbRole.coOwner => _KbAction.invite,
-                KbRole.invited => _KbAction.accept,
-                KbRole.editor || KbRole.reviewer => null,
-              },
-              enabled: role != KbRole.editor,
-              height: kDsMenuItemHeight,
-              child: Text(
-                switch (role) {
-                  KbRole.local => '',
-                  KbRole.owner => 'Invite a collaborator…',
-                  KbRole.coOwner => 'Invite a collaborator…',
-                  KbRole.invited => 'Accept invitation',
-                  KbRole.editor => 'Your edits are proposed for review',
-                  KbRole.reviewer => 'Reviewer access is read-only',
-                },
-                style: uiTextStyle(
-                  size: 13,
-                  color: role == KbRole.editor || role == KbRole.reviewer
-                      ? colors.muted
-                      : colors.text,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ],
+    final menu = DsDropdownMenuList<Object>();
+    for (final path in recents) {
+      menu.pushItem(
+        value: path,
+        label: p.basename(path),
+      );
+    }
+    if (recents.isNotEmpty) menu.pushDivider();
+    menu.pushItem(
+      value: _KbAction.openFolder,
+      label: 'Open folder…',
     );
+
+    if (ref.read(kbSessionProvider) != null) {
+      if (role != KbRole.reviewer) {
+        menu.pushItem(
+          value: _KbAction.importDocument,
+          label: 'Import .docx or .odt…',
+        );
+      }
+      if (role != null && role != KbRole.local) {
+        menu.pushDivider();
+        menu.pushItem(
+          value: switch (role) {
+            KbRole.local => null,
+            KbRole.owner => _KbAction.invite,
+            KbRole.coOwner => _KbAction.invite,
+            KbRole.invited => _KbAction.accept,
+            KbRole.editor || KbRole.reviewer => null,
+          },
+          enabled: role != KbRole.editor,
+          label: switch (role) {
+            KbRole.local => '',
+            KbRole.owner => 'Invite a collaborator…',
+            KbRole.coOwner => 'Invite a collaborator…',
+            KbRole.invited => 'Accept invitation',
+            KbRole.editor => 'Your edits are proposed for review',
+            KbRole.reviewer => 'Reviewer access is read-only',
+          },
+        );
+      }
+    }
+
+    final choice = await menu.show(context);
 
     if (choice == null) return;
 
@@ -335,29 +311,17 @@ class _KbTree extends ConsumerWidget {
     Offset position,
   ) async {
     if (ref.read(kbRoleProvider).valueOrNull == KbRole.reviewer) return;
-    final colors = context.ds;
-    final choice = await showDsMenu<_HierarchyAction>(
-      context: context,
-      position: position,
-      items: [
-        DsMenuItem<_HierarchyAction>(
-          value: _HierarchyAction.newFile,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'New file',
-            style: uiTextStyle(size: 13, color: colors.text),
-          ),
-        ),
-        DsMenuItem<_HierarchyAction>(
-          value: _HierarchyAction.newFolder,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'New folder…',
-            style: uiTextStyle(size: 13, color: colors.text),
-          ),
-        ),
-      ],
+    final menu = DsDropdownMenuList<_HierarchyAction>();
+    menu.pushItem(
+      value: _HierarchyAction.newFile,
+      label: 'New file',
     );
+    menu.pushItem(
+      value: _HierarchyAction.newFolder,
+      label: 'New folder…',
+    );
+
+    final choice = await menu.show(context, position: position);
     if (choice == null || !context.mounted) return;
 
     switch (choice) {
@@ -460,42 +424,24 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
   /// organised without moving files around in Finder or Explorer.
   Future<void> _showFolderMenu(Offset position, KbFolder folder) async {
     if (ref.read(kbRoleProvider).valueOrNull == KbRole.reviewer) return;
-    final colors = context.ds;
 
-    final choice = await showDsMenu<_FolderAction>(
-      context: context,
-      position: position,
-      items: [
-        DsMenuItem<_FolderAction>(
-          value: _FolderAction.newFile,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'New file here',
-            style: uiTextStyle(size: 13, color: colors.text),
-          ),
-        ),
-        DsMenuItem<_FolderAction>(
-          value: _FolderAction.newFolder,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'New folder here…',
-            style: uiTextStyle(size: 13, color: colors.text),
-          ),
-        ),
-        const DsMenuDivider(),
-        DsMenuItem<_FolderAction>(
-          value: _FolderAction.delete,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'Delete…',
-            style: uiTextStyle(
-              size: 13,
-              color: Theme.of(context).colorScheme.error,
-            ),
-          ),
-        ),
-      ],
+    final menu = DsDropdownMenuList<_FolderAction>();
+    menu.pushItem(
+      value: _FolderAction.newFile,
+      label: 'New file here',
     );
+    menu.pushItem(
+      value: _FolderAction.newFolder,
+      label: 'New folder here…',
+    );
+    menu.pushDivider();
+    menu.pushItem(
+      value: _FolderAction.delete,
+      label: 'Delete…',
+      isDestructive: true,
+    );
+
+    final choice = await menu.show(context, position: position);
     if (choice == null || !mounted) return;
 
     switch (choice) {
@@ -515,33 +461,20 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
 
   Future<void> _showDocumentMenu(Offset position, KbFile file) async {
     if (ref.read(kbRoleProvider).valueOrNull == KbRole.reviewer) return;
-    final colors = context.ds;
-    final choice = await showDsMenu<_DocumentAction>(
-      context: context,
-      position: position,
-      items: [
-        DsMenuItem<_DocumentAction>(
-          value: _DocumentAction.rename,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'Rename…',
-            style: uiTextStyle(size: 13, color: colors.text),
-          ),
-        ),
-        const DsMenuDivider(),
-        DsMenuItem<_DocumentAction>(
-          value: _DocumentAction.delete,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'Delete…',
-            style: uiTextStyle(
-              size: 13,
-              color: Theme.of(context).colorScheme.error,
-            ),
-          ),
-        ),
-      ],
+
+    final menu = DsDropdownMenuList<_DocumentAction>();
+    menu.pushItem(
+      value: _DocumentAction.rename,
+      label: 'Rename…',
     );
+    menu.pushDivider();
+    menu.pushItem(
+      value: _DocumentAction.delete,
+      label: 'Delete…',
+      isDestructive: true,
+    );
+
+    final choice = await menu.show(context, position: position);
     if (choice == null || !mounted) return;
 
     switch (choice) {

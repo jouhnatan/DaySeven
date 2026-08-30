@@ -33,6 +33,10 @@ class DsDropdownMenuItem<T> extends DsDropdownMenuEntry<T> {
     this.value,
     this.icon,
     this.iconPosition = DsDropdownIconPosition.leading,
+    this.leading,
+    this.trailing,
+    this.textStyle,
+    this.tooltip,
     this.onTap,
     this.enabled = true,
     this.isDestructive = false,
@@ -51,6 +55,10 @@ class DsDropdownMenuItem<T> extends DsDropdownMenuEntry<T> {
   final T? value;
   final Widget? icon;
   final DsDropdownIconPosition iconPosition;
+  final Widget? leading;
+  final Widget? trailing;
+  final TextStyle? textStyle;
+  final String? tooltip;
   final VoidCallback? onTap;
   final bool enabled;
   final bool isDestructive;
@@ -68,47 +76,64 @@ class DsDropdownMenuItem<T> extends DsDropdownMenuEntry<T> {
       (true, false) => colors.text,
     };
 
-    final TextStyle labelStyle = uiTextStyle(
-      size: 13,
-      color: textColor,
-    );
+    final TextStyle labelStyle = textStyle ??
+        uiTextStyle(
+          size: 13,
+          color: textColor,
+        );
 
-    Widget? leadingSlot;
-    Widget? trailingSlot;
+    Widget? leadingSlot = leading;
+    Widget? trailingSlot = trailing;
 
-    if (isChecked != null) {
-      leadingSlot = SizedBox(
-        width: 16,
-        child: isChecked!
-            ? Icon(
-                Icons.check,
-                key: leadingKey,
-                size: 14,
-                color: colors.fern,
-              )
-            : null,
-      );
-    } else if (icon != null && iconPosition == DsDropdownIconPosition.leading) {
-      leadingSlot = IconTheme.merge(
-        data: IconThemeData(
-          size: 16,
-          color: isDestructive ? colors.danger : colors.muted,
-        ),
-        child: leadingKey != null
-            ? KeyedSubtree(key: leadingKey, child: icon!)
-            : icon!,
-      );
+    if (leadingSlot == null) {
+      if (isChecked != null) {
+        leadingSlot = SizedBox(
+          width: 16,
+          child: isChecked!
+              ? Icon(
+                  Icons.check,
+                  key: leadingKey,
+                  size: 14,
+                  color: colors.fern,
+                )
+              : null,
+        );
+      } else if (icon != null && iconPosition == DsDropdownIconPosition.leading) {
+        leadingSlot = IconTheme.merge(
+          data: IconThemeData(
+            size: 16,
+            color: isDestructive ? colors.danger : colors.muted,
+          ),
+          child: leadingKey != null
+              ? KeyedSubtree(key: leadingKey, child: icon!)
+              : icon!,
+        );
+      }
     }
 
-    if (icon != null && iconPosition == DsDropdownIconPosition.trailing) {
-      trailingSlot = IconTheme.merge(
-        data: IconThemeData(
-          size: 16,
-          color: isDestructive ? colors.danger : colors.muted,
-        ),
-        child: trailingKey != null
-            ? KeyedSubtree(key: trailingKey, child: icon!)
-            : icon!,
+    if (trailingSlot == null) {
+      if (icon != null && iconPosition == DsDropdownIconPosition.trailing) {
+        trailingSlot = IconTheme.merge(
+          data: IconThemeData(
+            size: 16,
+            color: isDestructive ? colors.danger : colors.muted,
+          ),
+          child: trailingKey != null
+              ? KeyedSubtree(key: trailingKey, child: icon!)
+              : icon!,
+        );
+      }
+    }
+
+    Widget labelContent = Text(
+      label,
+      style: labelStyle,
+      overflow: TextOverflow.ellipsis,
+    );
+    if (tooltip != null) {
+      labelContent = Tooltip(
+        message: tooltip!,
+        child: labelContent,
       );
     }
 
@@ -125,11 +150,7 @@ class DsDropdownMenuItem<T> extends DsDropdownMenuEntry<T> {
             const SizedBox(width: 8),
           ],
           Expanded(
-            child: Text(
-              label,
-              style: labelStyle,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: labelContent,
           ),
           if (shortcut != null) ...[
             const SizedBox(width: 8),
@@ -182,6 +203,37 @@ class DsDropdownMenuHeader<T> extends DsDropdownMenuEntry<T> {
   }
 }
 
+/// A custom widget entry in a dropdown menu.
+class DsDropdownMenuCustom<T> extends DsDropdownMenuEntry<T> {
+  const DsDropdownMenuCustom({
+    required this.child,
+    this.value,
+    this.enabled = true,
+    this.height = kDsMenuItemHeight,
+    this.padding,
+    this.key,
+  });
+
+  final Key? key;
+  final Widget child;
+  final T? value;
+  final bool enabled;
+  final double height;
+  final EdgeInsets? padding;
+
+  @override
+  PopupMenuEntry<T> build(BuildContext context) {
+    return PopupMenuItem<T>(
+      key: key,
+      value: value,
+      enabled: enabled,
+      height: height,
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 12),
+      child: child,
+    );
+  }
+}
+
 /// A configurable list structure representing a dropdown menu.
 ///
 /// Supports stack operations [push] and [pop], index access, and builds
@@ -204,12 +256,20 @@ class DsDropdownMenuList<T> {
   /// Pushes a new entry to the end of the menu list.
   void push(DsDropdownMenuEntry<T> entry) => _entries.add(entry);
 
+  /// Pushes multiple entries to the end of the menu list.
+  void pushAll(Iterable<DsDropdownMenuEntry<T>> entries) =>
+      _entries.addAll(entries);
+
   /// Pushes a selectable item to the end of the menu list.
   void pushItem({
     required String label,
     T? value,
     Widget? icon,
     DsDropdownIconPosition iconPosition = DsDropdownIconPosition.leading,
+    Widget? leading,
+    Widget? trailing,
+    TextStyle? textStyle,
+    String? tooltip,
     VoidCallback? onTap,
     bool enabled = true,
     bool isDestructive = false,
@@ -229,12 +289,37 @@ class DsDropdownMenuList<T> {
         value: value,
         icon: icon,
         iconPosition: iconPosition,
+        leading: leading,
+        trailing: trailing,
+        textStyle: textStyle,
+        tooltip: tooltip,
         onTap: onTap,
         enabled: enabled,
         isDestructive: isDestructive,
         isChecked: isChecked,
         height: height,
         shortcut: shortcut,
+      ),
+    );
+  }
+
+  /// Pushes a custom widget entry to the end of the menu list.
+  void pushCustom(
+    Widget child, {
+    T? value,
+    bool enabled = true,
+    double height = kDsMenuItemHeight,
+    EdgeInsets? padding,
+    Key? key,
+  }) {
+    _entries.add(
+      DsDropdownMenuCustom<T>(
+        key: key,
+        value: value,
+        enabled: enabled,
+        height: height,
+        padding: padding,
+        child: child,
       ),
     );
   }

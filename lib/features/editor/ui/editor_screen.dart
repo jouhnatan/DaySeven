@@ -33,7 +33,7 @@ import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
-import 'package:dayseven/shared/ui/menu.dart';
+import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 
@@ -991,230 +991,278 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   /// Everything the toolbar does not carry: colour, highlight, font, spacing,
   /// images and export.
   Future<void> _showBlockMenu(Offset position, Block block) async {
-    final colors = context.ds;
     final isParagraph = block is ParagraphBlock;
+    final menu = DsDropdownMenuList<VoidCallback>();
 
-    DsMenuItem<VoidCallback> item(
-      String label,
-      VoidCallback action, {
-      bool enabled = true,
-    }) => DsMenuItem<VoidCallback>(
-      value: action,
+    if (isParagraph) {
+      menu.pushItem(
+        label: 'Bold',
+        value: () => _toggle(block.id, EditingFormat.bold),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Italic',
+        value: () => _toggle(block.id, EditingFormat.italic),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Strikethrough',
+        value: () => _toggle(block.id, EditingFormat.strikethrough),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Underline',
+        value: () => _toggle(block.id, EditingFormat.underline),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Link…',
+        value: () => _setLink(block.id),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushDivider();
+      menu.pushCustom(
+        _Swatches(
+          label: 'Text',
+          colors: kTextColors,
+          onPick: (c) => _setColor(block.id, c, highlight: false),
+        ),
+      );
+      menu.pushCustom(
+        _Swatches(
+          label: 'Highlight',
+          colors: kHighlightColors,
+          onPick: (c) => _setColor(block.id, c, highlight: true),
+        ),
+      );
+      menu.pushDivider();
+      for (final font in kAvailableFonts) {
+        menu.pushItem(
+          label: font,
+          value: () => _setFont(block.id, font),
+          height: kDsCompactMenuItemHeight,
+        );
+      }
+      menu.pushDivider();
+    }
+
+    menu.pushItem(
+      label: 'Align left',
+      value: () => _updateBlock(
+        block.id,
+        (b) => b.copyWithCommon(align: BlockAlign.left),
+      ),
       height: kDsCompactMenuItemHeight,
-      enabled: enabled,
-      child: Text(
-        label,
-        style: uiTextStyle(
-          size: 13,
-          color: enabled ? colors.text : colors.muted,
+    );
+    menu.pushItem(
+      label: 'Align centre',
+      value: () => _updateBlock(
+        block.id,
+        (b) => b.copyWithCommon(align: BlockAlign.center),
+      ),
+      height: kDsCompactMenuItemHeight,
+    );
+    menu.pushItem(
+      label: 'Align right',
+      value: () => _updateBlock(
+        block.id,
+        (b) => b.copyWithCommon(align: BlockAlign.right),
+      ),
+      height: kDsCompactMenuItemHeight,
+    );
+    menu.pushDivider();
+    menu.pushItem(
+      label: block.spaceBefore > 0 ? 'No space before' : 'Space before',
+      value: () => _updateBlock(
+        block.id,
+        (b) => b.copyWithCommon(
+          spaceBefore: b.spaceBefore > 0 ? 0 : DsSpace.blockBefore,
         ),
       ),
+      height: kDsCompactMenuItemHeight,
     );
 
-    final action = await showDsMenu<VoidCallback>(
-      context: context,
-      position: position,
-      items: [
-        if (isParagraph) ...[
-          item('Bold', () => _toggle(block.id, EditingFormat.bold)),
-          item('Italic', () => _toggle(block.id, EditingFormat.italic)),
-          item(
-            'Strikethrough',
-            () => _toggle(block.id, EditingFormat.strikethrough),
-          ),
-          item('Underline', () => _toggle(block.id, EditingFormat.underline)),
-          item('Link…', () => _setLink(block.id)),
-          const DsMenuDivider(),
-          PopupMenuItem<VoidCallback>(
-            height: kDsMenuItemHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: _Swatches(
-              label: 'Text',
-              colors: kTextColors,
-              onPick: (c) => _setColor(block.id, c, highlight: false),
-            ),
-          ),
-          PopupMenuItem<VoidCallback>(
-            height: kDsMenuItemHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: _Swatches(
-              label: 'Highlight',
-              colors: kHighlightColors,
-              onPick: (c) => _setColor(block.id, c, highlight: true),
-            ),
-          ),
-          const DsMenuDivider(),
-          for (final font in kAvailableFonts)
-            item(font, () => _setFont(block.id, font)),
-          const DsMenuDivider(),
-        ],
-        item(
-          'Align left',
-          () => _updateBlock(
+    if (block is ImageBlock) {
+      menu.pushDivider();
+      menu.pushCustom(
+        _ImageWidthPresets(
+          current: block.widthFraction,
+          onPick: (fraction) => _updateBlock(
             block.id,
-            (b) => b.copyWithCommon(align: BlockAlign.left),
+            (b) => (b as ImageBlock).copyWith(
+              widthFraction: fraction,
+              clearWidthFraction: fraction == null,
+            ),
           ),
         ),
-        item(
-          'Align centre',
-          () => _updateBlock(
+      );
+    }
+
+    if (block is TextBlock) {
+      menu.pushDivider();
+      menu.pushItem(
+        label: 'Body text',
+        value: () => _convertBlock(
+          block.id,
+          (b) => ParagraphBlock(
+            id: b.id,
+            spans: b.spans,
+            align: b.align,
+            spaceBefore: b.spaceBefore,
+          ),
+        ),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Bulleted list',
+        value: () => _convertBlock(
+          block.id,
+          (b) => ListItemBlock(
+            id: b.id,
+            spans: b.spans,
+            align: b.align,
+            spaceBefore: b.spaceBefore,
+          ),
+        ),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Numbered list',
+        value: () => _convertBlock(
+          block.id,
+          (b) => ListItemBlock(
+            id: b.id,
+            spans: b.spans,
+            style: ListStyle.ordered,
+            align: b.align,
+            spaceBefore: b.spaceBefore,
+          ),
+        ),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Task',
+        value: () => _convertBlock(
+          block.id,
+          (b) => ListItemBlock(
+            id: b.id,
+            spans: b.spans,
+            checked: false,
+            align: b.align,
+            spaceBefore: b.spaceBefore,
+          ),
+        ),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Quote',
+        value: () => _convertBlock(
+          block.id,
+          (b) => QuoteBlock(
+            id: b.id,
+            spans: b.spans,
+            align: b.align,
+            spaceBefore: b.spaceBefore,
+          ),
+        ),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Code block',
+        value: () => _convertBlock(
+          block.id,
+          (b) => CodeBlock(
+            id: b.id,
+            text: b.plainText,
+            align: b.align,
+            spaceBefore: b.spaceBefore,
+          ),
+        ),
+        height: kDsCompactMenuItemHeight,
+      );
+      if (block is ListItemBlock && block.depth < 8) {
+        menu.pushItem(
+          label: 'Indent',
+          value: () => _updateBlock(
             block.id,
-            (b) => b.copyWithCommon(align: BlockAlign.center),
+            (b) => (b as ListItemBlock).copyWith(depth: b.depth + 1),
           ),
-        ),
-        item(
-          'Align right',
-          () => _updateBlock(
+          height: kDsCompactMenuItemHeight,
+        );
+      }
+      if (block is ListItemBlock && block.depth > 0) {
+        menu.pushItem(
+          label: 'Outdent',
+          value: () => _updateBlock(
             block.id,
-            (b) => b.copyWithCommon(align: BlockAlign.right),
+            (b) => (b as ListItemBlock).copyWith(depth: b.depth - 1),
           ),
-        ),
-        const DsMenuDivider(),
-        item(
-          block.spaceBefore > 0 ? 'No space before' : 'Space before',
-          () => _updateBlock(
-            block.id,
-            (b) => b.copyWithCommon(
-              spaceBefore: b.spaceBefore > 0 ? 0 : DsSpace.blockBefore,
-            ),
-          ),
-        ),
-        if (block is ImageBlock) ...[
-          const DsMenuDivider(),
-          PopupMenuItem<VoidCallback>(
-            height: kDsMenuItemHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: _ImageWidthPresets(
-              current: block.widthFraction,
-              onPick: (fraction) => _updateBlock(
-                block.id,
-                (b) => (b as ImageBlock).copyWith(
-                  widthFraction: fraction,
-                  clearWidthFraction: fraction == null,
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (block is TextBlock) ...[
-          const DsMenuDivider(),
-          item(
-            'Body text',
-            () => _convertBlock(
-              block.id,
-              (b) => ParagraphBlock(
-                id: b.id,
-                spans: b.spans,
-                align: b.align,
-                spaceBefore: b.spaceBefore,
-              ),
-            ),
-          ),
-          item(
-            'Bulleted list',
-            () => _convertBlock(
-              block.id,
-              (b) => ListItemBlock(
-                id: b.id,
-                spans: b.spans,
-                align: b.align,
-                spaceBefore: b.spaceBefore,
-              ),
-            ),
-          ),
-          item(
-            'Numbered list',
-            () => _convertBlock(
-              block.id,
-              (b) => ListItemBlock(
-                id: b.id,
-                spans: b.spans,
-                style: ListStyle.ordered,
-                align: b.align,
-                spaceBefore: b.spaceBefore,
-              ),
-            ),
-          ),
-          item(
-            'Task',
-            () => _convertBlock(
-              block.id,
-              (b) => ListItemBlock(
-                id: b.id,
-                spans: b.spans,
-                checked: false,
-                align: b.align,
-                spaceBefore: b.spaceBefore,
-              ),
-            ),
-          ),
-          item(
-            'Quote',
-            () => _convertBlock(
-              block.id,
-              (b) => QuoteBlock(
-                id: b.id,
-                spans: b.spans,
-                align: b.align,
-                spaceBefore: b.spaceBefore,
-              ),
-            ),
-          ),
-          item(
-            'Code block',
-            () => _convertBlock(
-              block.id,
-              (b) => CodeBlock(
-                id: b.id,
-                text: b.plainText,
-                align: b.align,
-                spaceBefore: b.spaceBefore,
-              ),
-            ),
-          ),
-          if (block is ListItemBlock && block.depth < 8)
-            item(
-              'Indent',
-              () => _updateBlock(
-                block.id,
-                (b) => (b as ListItemBlock).copyWith(depth: b.depth + 1),
-              ),
-            ),
-          if (block is ListItemBlock && block.depth > 0)
-            item(
-              'Outdent',
-              () => _updateBlock(
-                block.id,
-                (b) => (b as ListItemBlock).copyWith(depth: b.depth - 1),
-              ),
-            ),
-        ],
-        if (block is TableBlock) ...[
-          const DsMenuDivider(),
-          item('Add row', () => _addTableRow(block.id)),
-          item('Add column', () => _addTableColumn(block.id)),
-        ],
-        const DsMenuDivider(),
-        item(
-          'Insert divider',
-          () => _insertAfter(block.id, DividerBlock(id: newId())),
-        ),
-        item('Insert table', () => _insertTable(block.id)),
-        if (isParagraph)
-          item('Insert footnote', () => _insertFootnote(block.id)),
-        item('Insert image…', () => _insertImage(block.id)),
-        item('Insert image by URL…', () => _insertImageUrl(block.id)),
-        const DsMenuDivider(),
-        item('Export as .docx…', () => _export(DocumentFormat.docx)),
-        item('Export as .odt…', () => _export(DocumentFormat.odt)),
-        const DsMenuDivider(),
-        item(
-          block is ImageBlock ? 'Delete image' : 'Delete block',
-          () => _deleteBlock(block.id),
-        ),
-      ],
+          height: kDsCompactMenuItemHeight,
+        );
+      }
+    }
+
+    if (block is TableBlock) {
+      menu.pushDivider();
+      menu.pushItem(
+        label: 'Add row',
+        value: () => _addTableRow(block.id),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Add column',
+        value: () => _addTableColumn(block.id),
+        height: kDsCompactMenuItemHeight,
+      );
+    }
+
+    menu.pushDivider();
+    menu.pushItem(
+      label: 'Insert divider',
+      value: () => _insertAfter(block.id, DividerBlock(id: newId())),
+      height: kDsCompactMenuItemHeight,
+    );
+    menu.pushItem(
+      label: 'Insert table',
+      value: () => _insertTable(block.id),
+      height: kDsCompactMenuItemHeight,
+    );
+    if (isParagraph) {
+      menu.pushItem(
+        label: 'Insert footnote',
+        value: () => _insertFootnote(block.id),
+        height: kDsCompactMenuItemHeight,
+      );
+    }
+    menu.pushItem(
+      label: 'Insert image…',
+      value: () => _insertImage(block.id),
+      height: kDsCompactMenuItemHeight,
+    );
+    menu.pushItem(
+      label: 'Insert image by URL…',
+      value: () => _insertImageUrl(block.id),
+      height: kDsCompactMenuItemHeight,
+    );
+    menu.pushDivider();
+    menu.pushItem(
+      label: 'Export as .docx…',
+      value: () => _export(DocumentFormat.docx),
+      height: kDsCompactMenuItemHeight,
+    );
+    menu.pushItem(
+      label: 'Export as .odt…',
+      value: () => _export(DocumentFormat.odt),
+      height: kDsCompactMenuItemHeight,
+    );
+    menu.pushDivider();
+    menu.pushItem(
+      label: block is ImageBlock ? 'Delete image' : 'Delete block',
+      value: () => _deleteBlock(block.id),
+      height: kDsCompactMenuItemHeight,
     );
 
+    final action = await menu.show(context, position: position);
     action?.call();
   }
 }

@@ -5,6 +5,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -24,7 +25,7 @@ import 'package:dayseven/features/editing_toolbar/ui/editing_toolbar.dart';
 import 'package:dayseven/features/hamburger_menu/ui/hamburger_menu_button.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/controls.dart';
-import 'package:dayseven/shared/ui/menu.dart';
+import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/features/differences/application/differences_navigation.dart';
@@ -385,8 +386,8 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
 
 /// The seam between two panes, which is also where they are resized from.
 ///
-/// It takes one pixel of layout and draws the line itself. The grab target is
-/// wider than the line and overhangs both neighbours, so a 1px seam is still
+/// It takes one pixel of layout and draws the line itself. The grab target
+/// reaches past the line into both neighbours, so a 1px seam is still
 /// comfortable to catch with a mouse without costing the panes any width.
 class _ResizeHandle extends StatelessWidget {
   const _ResizeHandle({required this.onDrag});
@@ -394,32 +395,69 @@ class _ResizeHandle extends StatelessWidget {
   final void Function(double delta) onDrag;
 
   /// How far the drag target reaches either side of the line.
-  static const double _grabOverhang = 3;
+  static const double _grabOverhang = 5;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: DsSpace.seam,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const Positioned.fill(child: DsSeam.vertical()),
-          Positioned(
-            top: 0,
-            bottom: 0,
-            left: -_grabOverhang,
-            right: -_grabOverhang,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.resizeLeftRight,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
-              ),
-            ),
+      child: _HorizontalHitSlop(
+        slop: _grabOverhang,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.resizeLeftRight,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
+            child: const DsSeam.vertical(),
           ),
-        ],
+        ),
       ),
     );
+  }
+}
+
+/// Accepts pointers that land within [slop] pixels to either side of the
+/// child, without changing how much room the child takes or how it paints.
+class _HorizontalHitSlop extends SingleChildRenderObjectWidget {
+  const _HorizontalHitSlop({required this.slop, required super.child});
+
+  final double slop;
+
+  @override
+  _RenderHorizontalHitSlop createRenderObject(BuildContext context) =>
+      _RenderHorizontalHitSlop(slop);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderHorizontalHitSlop renderObject,
+  ) {
+    renderObject.slop = slop;
+  }
+}
+
+class _RenderHorizontalHitSlop extends RenderProxyBox {
+  _RenderHorizontalHitSlop(this._slop);
+
+  double _slop;
+
+  set slop(double value) {
+    if (value == _slop) return;
+    _slop = value;
+    markNeedsLayout();
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final widened =
+        Rect.fromLTWH(-_slop, 0, size.width + _slop * 2, size.height);
+    if (!widened.contains(position)) return false;
+    // Clamp onto the child, so its own hit test sees a pointer inside it.
+    final clamped = Offset(
+      position.dx.clamp(0.0, size.width).toDouble(),
+      position.dy,
+    );
+    return super.hitTest(result, position: clamped);
   }
 }
 
@@ -622,47 +660,28 @@ class EditorToolbarMenuButton extends ConsumerWidget {
     required bool hasPendingProposal,
   }) async {
     final colors = context.ds;
-    final choice = await showDsMenu<_EditorToolbarMenuAction>(
-      context: context,
-      items: [
-        DsMenuItem<_EditorToolbarMenuAction>(
-          key: const Key('editor-menu-differences'),
-          value: _EditorToolbarMenuAction.differences,
-          enabled: openDifferences != null,
-          child: Row(
-            children: [
-              Expanded(
-                child: Tooltip(
-                  message: openDifferences == null
-                      ? 'No pending edits for this document.'
-                      : 'Review pending edits for this document.',
-                  child: Text(
-                    'Differences',
-                    style: uiTextStyle(
-                      size: 13,
-                      color: openDifferences == null
-                          ? colors.muted
-                          : colors.text,
-                    ),
-                  ),
-                ),
+    final menu = DsDropdownMenuList<_EditorToolbarMenuAction>();
+    menu.pushItem(
+      key: const Key('editor-menu-differences'),
+      value: _EditorToolbarMenuAction.differences,
+      label: 'Differences',
+      tooltip: openDifferences == null
+          ? 'No pending edits for this document.'
+          : 'Review pending edits for this document.',
+      enabled: openDifferences != null,
+      trailing: hasPendingProposal
+          ? Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: colors.pending,
+                shape: BoxShape.circle,
               ),
-              if (hasPendingProposal) ...[
-                const SizedBox(width: 12),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: colors.pending,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
+            )
+          : null,
     );
+
+    final choice = await menu.show(context);
 
     if (!context.mounted) return;
     if (choice == _EditorToolbarMenuAction.differences) {

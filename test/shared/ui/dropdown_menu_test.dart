@@ -202,5 +202,42 @@ void main() {
       expect(find.text('Disabled Action'), findsOneWidget);
       expect(find.text('Delete Action'), findsOneWidget);
     });
+
+    testWidgets('renders custom widgets, tooltips, and custom leading/trailing slots', (tester) async {
+      final menu = DsDropdownMenuList<String>();
+      menu.pushItem(
+        label: 'Action with Tooltip',
+        value: 'tooltip_val',
+        tooltip: 'Helpful message',
+        leading: const Icon(Icons.circle, key: Key('custom-leading-slot')),
+        trailing: const Icon(Icons.star, key: Key('custom-trailing-slot')),
+      );
+      menu.pushCustom(
+        const Text('Custom Embedded Row', key: Key('custom-embedded-row')),
+      );
+
+      await tester.pumpWidget(
+        app(
+          Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () => menu.show(context),
+              child: const Text('Show Menu'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Show Menu'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Action with Tooltip'), findsOneWidget);
+      expect(find.byKey(const Key('custom-leading-slot')), findsOneWidget);
+      expect(find.byKey(const Key('custom-trailing-slot')), findsOneWidget);
+      expect(find.byKey(const Key('custom-embedded-row')), findsOneWidget);
+      expect(
+        tester.widget<Tooltip>(find.byType(Tooltip)).message,
+        'Helpful message',
+      );
+    });
   });
 }

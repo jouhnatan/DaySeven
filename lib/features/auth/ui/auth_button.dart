@@ -10,7 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException, User;
 
 import 'package:dayseven/shared/ui/controls.dart';
-import 'package:dayseven/shared/ui/menu.dart';
+import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
@@ -61,49 +61,26 @@ class AuthButton extends ConsumerWidget {
     AsyncValue<Profile?> profile,
     String displayName,
   ) async {
-    final colors = context.ds;
-    final choice = await showDsMenu<_AccountAction>(
-      context: context,
-      items: [
-        DsMenuItem<_AccountAction>(
-          enabled: false,
-          height: kDsMenuHeaderHeight,
-          child: Text(
-            '@${_usernameFor(user, profile.valueOrNull)}',
-            style: uiTextStyle(size: 12, color: colors.muted),
-          ),
-        ),
-        const DsMenuDivider(),
-        // A profile that could not be read is worth saying out loud rather
-        // than quietly showing a fallback name.
-        if (profile.hasError)
-          DsMenuItem<_AccountAction>(
-            value: _AccountAction.profileError,
-            height: kDsMenuItemHeight,
-            child: Text(
-              'Could not load your profile',
-              style: uiTextStyle(size: 13, color: colors.muted),
-            ),
-          ),
-        DsMenuItem<_AccountAction>(
-          value: _AccountAction.changeName,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'Change display name…',
-            style: uiTextStyle(size: 13, color: colors.text),
-          ),
-        ),
-        DsMenuItem<_AccountAction>(
-          value: _AccountAction.signOut,
-          height: kDsMenuItemHeight,
-          child: Text(
-            'Sign out',
-            style: uiTextStyle(size: 13, color: colors.text),
-          ),
-        ),
-      ],
+    final menu = DsDropdownMenuList<_AccountAction>();
+    menu.pushHeader(text: '@${_usernameFor(user, profile.valueOrNull)}');
+    menu.pushDivider();
+    if (profile.hasError) {
+      menu.pushItem(
+        value: _AccountAction.profileError,
+        label: 'Could not load your profile',
+        textStyle: uiTextStyle(size: 13, color: context.ds.muted),
+      );
+    }
+    menu.pushItem(
+      value: _AccountAction.changeName,
+      label: 'Change display name…',
+    );
+    menu.pushItem(
+      value: _AccountAction.signOut,
+      label: 'Sign out',
     );
 
+    final choice = await menu.show(context);
     if (choice == null || !context.mounted) return;
 
     switch (choice) {

@@ -11,7 +11,7 @@ import 'package:dayseven/features/timeline/domain/timeline_parser.dart';
 import 'package:dayseven/features/timeline/ui/timeline_color_picker.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
-import 'package:dayseven/shared/ui/menu.dart';
+import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class TimelineInspector extends ConsumerStatefulWidget {
@@ -170,30 +170,24 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
                 actions.addItem(isPeriod: false);
               }
             },
-            itemBuilder: (context) => [
-              DsMenuItem<String>(
+            itemBuilder: (context) {
+              final menu = DsDropdownMenuList<String>();
+              menu.pushItem(
                 value: 'event',
                 height: kDsCompactMenuItemHeight,
-                child: Row(
-                  children: [
-                    Icon(Icons.radio_button_checked, size: 14, color: colors.fern),
-                    const SizedBox(width: 8),
-                    Text('New Point Event', style: uiTextStyle(size: 13, color: colors.text)),
-                  ],
-                ),
-              ),
-              DsMenuItem<String>(
+                label: 'New Point Event',
+                icon: Icon(Icons.radio_button_checked, size: 14, color: colors.fern),
+                iconPosition: DsDropdownIconPosition.leading,
+              );
+              menu.pushItem(
                 value: 'period',
                 height: kDsCompactMenuItemHeight,
-                child: Row(
-                  children: [
-                    Icon(Icons.linear_scale, size: 14, color: colors.fern),
-                    const SizedBox(width: 8),
-                    Text('New Age / Period', style: uiTextStyle(size: 13, color: colors.text)),
-                  ],
-                ),
-              ),
-            ],
+                label: 'New Age / Period',
+                icon: Icon(Icons.linear_scale, size: 14, color: colors.fern),
+                iconPosition: DsDropdownIconPosition.leading,
+              );
+              return menu.build(context);
+            },
             child: Container(
               height: 32,
               padding: const EdgeInsets.symmetric(horizontal: 10),

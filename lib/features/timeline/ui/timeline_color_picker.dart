@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import 'package:dayseven/shared/ui/menu.dart';
+import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class TimelineColorPicker extends StatelessWidget {
@@ -31,45 +31,38 @@ class TimelineColorPicker extends StatelessWidget {
         side: BorderSide(color: colors.surfaceOutline),
       ),
       itemBuilder: (context) {
-        return [
-          for (final c in TimelineColor.values)
-            DsMenuItem<TimelineColor>(
-              value: c,
-              child: Row(
-                children: [
-                  Container(
-                    width: 14,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: c.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: colors.surfaceOutline,
-                        width: 1.5,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      c.label,
-                      style: uiTextStyle(
-                        size: 12,
-                        weight: c == selectedColor ? 600 : 400,
-                        color: colors.text,
-                      ),
-                    ),
-                  ),
-                  if (c == selectedColor)
-                    Icon(
-                      Icons.check,
-                      size: 14,
-                      color: colors.fern,
-                    ),
-                ],
+        final menu = DsDropdownMenuList<TimelineColor>();
+        for (final c in TimelineColor.values) {
+          menu.pushItem(
+            value: c,
+            label: c.label,
+            textStyle: uiTextStyle(
+              size: 12,
+              weight: c == selectedColor ? 600 : 400,
+              color: colors.text,
+            ),
+            leading: Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: c.color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: colors.surfaceOutline,
+                  width: 1.5,
+                ),
               ),
             ),
-        ];
+            trailing: c == selectedColor
+                ? Icon(
+                    Icons.check,
+                    size: 14,
+                    color: colors.fern,
+                  )
+                : null,
+          );
+        }
+        return menu.build(context);
       },
       child: Container(
         height: 32,

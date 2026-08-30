@@ -18,6 +18,7 @@ import 'package:dayseven/shared/notifications/notification.dart';
 import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
+import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/knowledge_base/data/kb_repository.dart';
@@ -1089,17 +1090,16 @@ class _KbSwitcher extends ConsumerWidget {
                 return PopupMenuButton<String>(
                   tooltip: 'Switch Knowledge Base',
                   onSelected: onPick,
-                  itemBuilder: (_) => [
-                    for (final path in items)
-                      PopupMenuItem(
+                  itemBuilder: (context) {
+                    final menu = DsDropdownMenuList<String>();
+                    for (final path in items) {
+                      menu.pushItem(
                         value: path,
-                        child: Text(
-                          p.basename(path),
-                          overflow: TextOverflow.ellipsis,
-                          style: uiTextStyle(size: 13, color: colors.text),
-                        ),
-                      ),
-                  ],
+                        label: p.basename(path),
+                      );
+                    }
+                    return menu.build(context);
+                  },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
