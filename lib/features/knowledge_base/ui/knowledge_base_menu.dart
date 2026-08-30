@@ -116,9 +116,11 @@ Future<bool> _createFileIn(
     ref.read(viewProvider.notifier).state = DsView.editor;
     return true;
   } catch (error) {
-    ref
-        .read(notificationStoreProvider.notifier)
-        .record(DsNotificationKind.error, describeError(error));
+    if (context.mounted) {
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, describeError(error));
+    }
     return false;
   }
 }
@@ -137,9 +139,11 @@ Future<bool> _createFolderIn(
         .createFolder(name: name, parent: parentFolder);
     return true;
   } catch (error) {
-    ref
-        .read(notificationStoreProvider.notifier)
-        .record(DsNotificationKind.error, describeError(error));
+    if (context.mounted) {
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, describeError(error));
+    }
     return false;
   }
 }

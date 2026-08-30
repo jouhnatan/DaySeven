@@ -2,8 +2,53 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  static let defaultTrafficLightsOffsetX: CGFloat = 20.0
+  static let defaultTrafficLightsOffsetY: CGFloat = 18.0
+
+  private var trafficLightsOffsetX: CGFloat = defaultTrafficLightsOffsetX
+  private var trafficLightsOffsetY: CGFloat = defaultTrafficLightsOffsetY
   private var windowChromeChannel: FlutterMethodChannel?
   private var newInstanceChannel: FlutterMethodChannel?
+  private var macosLightsChannel: FlutterMethodChannel?
+
+  func applyTrafficLightsPosition() {
+    guard !styleMask.contains(.fullScreen) else { return }
+    guard
+      let closeButton = standardWindowButton(.closeButton),
+      let miniButton = standardWindowButton(.miniaturizeButton),
+      let zoomButton = standardWindowButton(.zoomButton)
+    else {
+      return
+    }
+
+    let superview = closeButton.superview
+    let isFlipped = superview?.isFlipped ?? false
+    let superviewHeight = superview?.bounds.height ?? self.frame.height
+    let buttonHeight = closeButton.frame.height
+    let y = isFlipped ? trafficLightsOffsetY : (superviewHeight - buttonHeight - trafficLightsOffsetY)
+
+    let closeX = trafficLightsOffsetX
+    let spacing: CGFloat = 6.0
+    let miniX = closeX + closeButton.frame.width + spacing
+    let zoomX = miniX + miniButton.frame.width + spacing
+
+    closeButton.setFrameOrigin(NSPoint(x: closeX, y: y))
+    miniButton.setFrameOrigin(NSPoint(x: miniX, y: y))
+    zoomButton.setFrameOrigin(NSPoint(x: zoomX, y: y))
+  }
+
+  override func layoutIfNeeded() {
+    super.layoutIfNeeded()
+    applyTrafficLightsPosition()
+  }
+
+  @objc private func onWindowDidResize(_ notification: Notification) {
+    applyTrafficLightsPosition()
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -12,6 +57,13 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     titlebarAppearsTransparent = true
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(onWindowDidResize),
+      name: NSWindow.didResizeNotification,
+      object: self
+    )
 
     let channel = FlutterMethodChannel(
       name: "dayseven/window_chrome",
@@ -74,8 +126,52 @@ class MainFlutterWindow: NSWindow {
     }
     newInstanceChannel = newInstance
 
+    let macosLights = FlutterMethodChannel(
+      name: "dayseven/macos_lights",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    macosLights.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else {
+        result(nil)
+        return
+      }
+      switch call.method {
+      case "setOffset":
+        guard
+          let arguments = call.arguments as? [String: Any],
+          let x = arguments["x"] as? NSNumber,
+          let y = arguments["y"] as? NSNumber
+        else {
+          result(FlutterError(
+            code: "invalid_arguments",
+            message: "setOffset requires numeric x and y values",
+            details: nil
+          ))
+          return
+        }
+        self.trafficLightsOffsetX = CGFloat(truncating: x)
+        self.trafficLightsOffsetY = CGFloat(truncating: y)
+        self.applyTrafficLightsPosition()
+        result(nil)
+      case "resetOffset":
+        self.trafficLightsOffsetX = Self.defaultTrafficLightsOffsetX
+        self.trafficLightsOffsetY = Self.defaultTrafficLightsOffsetY
+        self.applyTrafficLightsPosition()
+        result(nil)
+      case "getOffset":
+        result([
+          "x": Double(self.trafficLightsOffsetX),
+          "y": Double(self.trafficLightsOffsetY),
+        ])
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    macosLightsChannel = macosLights
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
+    applyTrafficLightsPosition()
   }
 }
