@@ -45,41 +45,45 @@ class KnowledgeBaseMenu extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(kbSessionProvider);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const DsMenuHeader('Knowledge Base'),
-        const SizedBox(height: DsSpace.islandGap),
-        SizedBox(
-          key: const Key('knowledge-base-access-controls'),
-          height: kKnowledgeBaseControlHeight,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Expanded(child: _KbDropdown()),
-              if (session != null) ...[
-                const SizedBox(width: DsSpace.islandGap),
-                const KnowledgeBaseSyncButton(),
-                const SizedBox(width: DsSpace.islandGap),
-                KnowledgeBaseSettingsButton(onPressed: onOpenSettings),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: DsSpace.islandGap),
-        if (session != null)
-          Expanded(
-            child: DsIsland(
-              key: const Key('knowledge-base-hierarchy'),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: _KbTree(session: session),
+    return DsPane(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const DsMenuHeader('Knowledge Base'),
+          Padding(
+            padding: const EdgeInsets.all(DsSpace.row),
+            child: SizedBox(
+              key: const Key('knowledge-base-access-controls'),
+              height: kKnowledgeBaseControlHeight,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Expanded(child: _KbDropdown()),
+                  if (session != null) ...[
+                    const SizedBox(width: DsSpace.row),
+                    const KnowledgeBaseSyncButton(),
+                    const SizedBox(width: DsSpace.row),
+                    KnowledgeBaseSettingsButton(onPressed: onOpenSettings),
+                  ],
+                ],
               ),
             ),
-          )
-        else
-          const Spacer(),
-      ],
+          ),
+          const DsSeam.horizontal(),
+          if (session != null)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: DsSpace.row),
+                child: KeyedSubtree(
+                  key: const Key('knowledge-base-hierarchy'),
+                  child: _KbTree(session: session),
+                ),
+              ),
+            )
+          else
+            const Spacer(),
+        ],
+      ),
     );
   }
 }

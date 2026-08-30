@@ -40,7 +40,7 @@ void main() {
     expect(find.text('Sign in'), findsOneWidget);
   });
 
-  testWidgets('is a rounded control', (tester) async {
+  testWidgets('is a square, frameless control', (tester) async {
     await tester.pumpWidget(harness());
     await tester.pump();
 
@@ -57,9 +57,10 @@ void main() {
     expect(decoration.borderRadius, const BorderRadius.all(DsRadius.control));
     expect(
       (decoration.border! as Border).top.color,
-      DsColors.cream.surfaceOutline,
+      Colors.transparent,
+      reason: 'a button carries no edge of its own',
     );
-    expect(decoration.color, DsColors.cream.island);
+    expect(decoration.color, Colors.transparent);
   });
 
   testWidgets('opens the sign-in dialog, asking for a username', (

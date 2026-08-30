@@ -376,7 +376,7 @@ void main() {
 
     final editorIsland = find.ancestor(
       of: find.byType(EditorScreen),
-      matching: find.byType(DsIsland),
+      matching: find.byType(DsPane),
     );
     final toolbarIsland = find.byKey(const Key('editing-toolbar-island'));
 
@@ -398,7 +398,7 @@ void main() {
     final toolbarBefore = toolbarRect();
     await tester.dragFrom(
       Offset(
-        editorBefore.right + DsSpace.islandGap / 2,
+        editorBefore.right + DsSpace.seam / 2,
         editorBefore.center.dy,
       ),
       const Offset(-80, 0),

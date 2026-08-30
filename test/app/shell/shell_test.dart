@@ -29,10 +29,10 @@ void main() {
     expect(
       find.ancestor(
         of: find.byKey(const Key('home-workspace')),
-        matching: find.byType(DsIsland),
+        matching: find.byType(DsPane),
       ),
-      findsNothing,
-      reason: 'Home is a full workspace surface, not an editor island',
+      findsOneWidget,
+      reason: 'Home is a seated pane like every other region',
     );
   });
 
@@ -74,9 +74,9 @@ void main() {
     );
     expect(
       tester
-          .widget<DsIsland>(
+          .widget<DsPane>(
             find.byWidgetPredicate(
-              (widget) => widget is DsIsland && widget.editorSurface,
+              (widget) => widget is DsPane && widget.editorSurface,
             ),
           )
           .editorSurface,
@@ -221,7 +221,7 @@ void main() {
       find.byKey(const Key('home-workspace')),
     );
     expect(slideMid.width, greaterThan(0));
-    expect(slideMid.width, lessThan(panelBefore.width + DsSpace.islandGap));
+    expect(slideMid.width, lessThan(panelBefore.width + DsSpace.seam));
     expect(panelMid.left, greaterThan(panelBefore.left));
     expect(workspaceMid.right, greaterThan(workspaceBefore.right));
 
@@ -318,15 +318,15 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the gap between the islands is the island gap', (
+    testWidgets('one seam separates the rail from the workspace', (
       tester,
     ) async {
       await pumpWide(tester);
 
-      final rail = tester.getRect(find.byType(DsIsland).at(0));
+      final rail = tester.getRect(find.byType(DsPane).at(0));
       final editor = tester.getRect(find.byKey(const Key('home-workspace')));
 
-      expect(editor.left - rail.right, DsSpace.islandGap);
+      expect(editor.left - rail.right, DsSpace.seam);
     });
 
     testWidgets('workspace and side menus keep the same bounds across views', (
@@ -334,14 +334,7 @@ void main() {
     ) async {
       await pumpWide(tester);
 
-      final views = tester.getRect(
-        find
-            .descendant(
-              of: find.byType(ViewsMenu),
-              matching: find.byType(DsIsland),
-            )
-            .first,
-      );
+      final views = tester.getRect(find.byType(ViewsMenu));
       final homeViewsMenu = tester.getRect(find.byType(ViewsMenu));
       final homeKnowledgeBaseMenu = tester.getRect(
         find.byType(KnowledgeBaseMenu),
@@ -359,7 +352,7 @@ void main() {
         find
             .ancestor(
               of: find.byType(EditorScreen),
-              matching: find.byType(DsIsland),
+              matching: find.byType(DsPane),
             )
             .first,
       );
@@ -372,7 +365,7 @@ void main() {
       );
     });
 
-    testWidgets('the bottom bar sits one island gap below the islands', (
+    testWidgets('the bottom bar is seated below the panes', (
       tester,
     ) async {
       await pumpWide(tester);
@@ -384,7 +377,7 @@ void main() {
         find
             .ancestor(
               of: find.byType(EditorScreen),
-              matching: find.byType(DsIsland),
+              matching: find.byType(DsPane),
             )
             .first,
       );
@@ -394,8 +387,8 @@ void main() {
 
       expect(
         bar.top - editor.bottom,
-        DsSpace.islandGap,
-        reason: 'the same distance that separates the islands',
+        DsSpace.seam,
+        reason: 'the footer is seated against the panes above it',
       );
     });
 
@@ -404,25 +397,18 @@ void main() {
     ) async {
       await pumpWide(tester);
 
-      final views = tester.getRect(
-        find
-            .descendant(
-              of: find.byType(ViewsMenu),
-              matching: find.byType(DsIsland),
-            )
-            .first,
-      );
+      final views = tester.getRect(find.byType(ViewsMenu));
       final notifications = tester.getRect(find.byType(NotificationsPanel));
       final hiddenButton = tester.getRect(
         find.byKey(const Key('bottom-bar-footprint')),
       );
       final window = tester.getRect(find.byType(DsShell));
 
-      expect(views.left - window.left, DsSpace.pane);
-      expect(notifications.left - window.left, DsSpace.pane);
+      expect(views.left, window.left, reason: 'the rail runs to the edge');
+      expect(notifications.left, window.left);
       expect(notifications.bottom, greaterThan(views.bottom));
-      expect(hiddenButton.top - notifications.bottom, DsSpace.islandGap);
-      expect(window.bottom - hiddenButton.bottom, DsSpace.pane);
+      expect(hiddenButton.top - notifications.bottom, DsSpace.seam);
+      expect(window.bottom, hiddenButton.bottom);
     });
 
     testWidgets('the Search shelf overlays the bottom of Editor', (
@@ -437,7 +423,7 @@ void main() {
         find
             .ancestor(
               of: find.byKey(const Key('editor-search-card')),
-              matching: find.byType(DsIsland),
+              matching: find.byType(DsPane),
             )
             .first,
       );
@@ -456,8 +442,8 @@ void main() {
       expect(search.height, kSearchHeight);
       expect(
         card.bottom,
-        editor.bottom - 1,
-        reason: 'the shelf sits just inside the editor island hairline',
+        editor.bottom,
+        reason: 'the shelf sits flush with the bottom of the editor pane',
       );
       expect(card.height, kEditorSearchCardHeight);
       expect(search.top, greaterThan(card.top));
@@ -478,7 +464,7 @@ void main() {
         find
             .ancestor(
               of: find.byKey(const Key('editor-search-card')),
-              matching: find.byType(DsIsland),
+              matching: find.byType(DsPane),
             )
             .first,
       );
@@ -486,7 +472,7 @@ void main() {
       // Widen the Knowledge Base panel by dragging the gap beside it.
       await tester.dragFrom(
         Offset(
-          editorBefore.right + DsSpace.islandGap / 2,
+          editorBefore.right + DsSpace.seam / 2,
           editorBefore.center.dy,
         ),
         const Offset(-80, 0),
@@ -497,7 +483,7 @@ void main() {
         find
             .ancestor(
               of: find.byKey(const Key('editor-search-card')),
-              matching: find.byType(DsIsland),
+              matching: find.byType(DsPane),
             )
             .first,
       );
@@ -511,7 +497,7 @@ void main() {
       );
     });
 
-    testWidgets('the bar keeps the window margin beneath it', (tester) async {
+    testWidgets('the bar runs to the bottom of the window', (tester) async {
       await pumpWide(tester);
 
       await tester.tap(find.text('Editor'));
@@ -522,7 +508,7 @@ void main() {
       );
       final window = tester.getRect(find.byType(DsShell));
 
-      expect(window.bottom - bar.bottom, DsSpace.pane);
+      expect(window.bottom, bar.bottom);
     });
   });
 
@@ -549,7 +535,7 @@ void main() {
     );
   });
 
-  test('island and button outlines are darker than their surfaces', () {
+  test('pane and button outlines are darker than their surfaces', () {
     expect(
       DsColors.cream.surfaceOutline.computeLuminance(),
       lessThan(DsColors.cream.island.computeLuminance()),
@@ -571,7 +557,7 @@ void main() {
     expect(
       DsColors.cream.surfaceOutline.computeLuminance(),
       lessThan(DsColors.cream.border.computeLuminance()),
-      reason: 'island edges should read more clearly than internal lines',
+      reason: 'object edges should read more clearly than internal lines',
     );
   });
 }

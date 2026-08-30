@@ -6,45 +6,67 @@ import 'package:flutter/services.dart';
 
 import 'package:dayseven/shared/ui/theme.dart';
 
-/// A feature-menu title drawn directly on the application background.
+/// A section title inside a pane, above the content it names.
 ///
 /// Headings are the one place the slab serif appears. It labels a region; it
-/// never carries a value or a control label.
+/// never carries a value or a control label. The header carries the seam that
+/// separates it from its content, so the content below draws no edge of its
+/// own.
 class DsMenuHeader extends StatelessWidget {
-  const DsMenuHeader(this.label, {super.key}) : _visible = true;
-
-  /// Reserves exactly the same vertical space as a menu header without
-  /// drawing or announcing one. This keeps adjacent, untitled panes aligned
-  /// with the menu surfaces below their headings.
-  const DsMenuHeader.spacer({super.key}) : label = '\u00a0', _visible = false;
+  const DsMenuHeader(this.label, {super.key});
 
   final String label;
-  final bool _visible;
 
   @override
   Widget build(BuildContext context) {
-    final header = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+    final colors = context.ds;
+    return Container(
+      height: kDsSectionHeaderHeight,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: DsSpace.sm),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.surfaceOutline)),
+      ),
       child: Text(
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: uiHeaderTextStyle(color: context.ds.text),
+        style: uiHeaderTextStyle(color: colors.text),
       ),
     );
-
-    return _visible
-        ? header
-        : ExcludeSemantics(child: Opacity(opacity: 0, child: header));
   }
 }
 
-/// A rounded pane sitting on the application background.
+/// The height of a section header row inside a pane.
+const double kDsSectionHeaderHeight = 32;
+
+/// The single 1px line where two seated regions meet.
 ///
-/// Flat, by rule: an island is on the page rather than above it, so it is
-/// drawn with a border and never with a shadow.
-class DsIsland extends StatelessWidget {
-  const DsIsland({super.key, required this.child, this.editorSurface = false});
+/// A seam is drawn once, by the join itself. Neither neighbour carries a
+/// border of its own, so two regions never stack two lines where one belongs.
+class DsSeam extends StatelessWidget {
+  const DsSeam.horizontal({super.key}) : _vertical = false;
+  const DsSeam.vertical({super.key}) : _vertical = true;
+
+  final bool _vertical;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _vertical ? DsSpace.seam : null,
+      height: _vertical ? null : DsSpace.seam,
+      color: context.ds.surfaceOutline,
+    );
+  }
+}
+
+/// One region of the shell, seated against its neighbours.
+///
+/// Square and flat, by rule. A pane draws no edge of its own: the shell puts a
+/// single 1px seam between two regions, and a pane that carried its own border
+/// would double it. Depth is the seam, never a shadow.
+class DsPane extends StatelessWidget {
+  const DsPane({super.key, required this.child, this.editorSurface = false});
 
   final Widget child;
   final bool editorSurface;
@@ -55,20 +77,18 @@ class DsIsland extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: editorSurface ? colors.editorSurface : colors.island,
-        borderRadius: const BorderRadius.all(DsRadius.island),
-        border: Border.all(color: colors.surfaceOutline),
       ),
-      clipBehavior: Clip.antiAlias,
+      clipBehavior: Clip.hardEdge,
       child: child,
     );
   }
 }
 
-/// A contrasting section nested inside an island.
+/// A contrasting section nested inside a pane.
 ///
 /// Cards use the recessed surface and can carry one hairline separator where
-/// they meet the island's primary content. A card inside a bordered island
-/// does not draw its own border — the system never doubles a border.
+/// they meet the pane's primary content. A card inside a bordered surface does
+/// not draw its own border — the system never doubles a border.
 class DsCard extends StatelessWidget {
   const DsCard({super.key, required this.child, this.separator});
 
@@ -134,9 +154,9 @@ class DsFocusRing extends StatelessWidget {
                   color: context.ds.fern,
                   width: DsSize.focusRing,
                 ),
-                borderRadius: borderRadius.add(
-                  const BorderRadius.all(Radius.circular(inset)),
-                ),
+                // The ring matches the control exactly. A square control gets a
+                // square ring; only a pill grows its radius by the offset.
+                borderRadius: borderRadius,
               ),
             ),
           ),
@@ -151,22 +171,28 @@ class DsFocusRing extends StatelessWidget {
 /// There is one primary action per surface. If a second button on screen is
 /// filled with fern, one of the two is wrong.
 enum DsButtonVariant {
-  /// Paper, a hairline edge, ink label. The default, and most buttons.
+  /// An ink label on nothing, washed on hover. The default, and most buttons.
   secondary,
 
   /// Fern fill, cream label, no border. The action that commits.
   primary,
 
-  /// No fill and no border until hovered. For a command that must not compete.
+  /// The same as [secondary] with no hover fill of its own to override. For a
+  /// command that must not compete.
   quiet,
 
-  /// Paper and a hairline edge, with a danger label. Destructive commands are
-  /// never filled with fern; a filled destructive button belongs only in the
-  /// confirmation dialog that follows.
+  /// A danger label on nothing, washed with the removal tint on hover.
+  /// Destructive commands are never filled with fern; a filled destructive
+  /// button belongs only in the confirmation dialog that follows.
   danger,
 }
 
-/// The bordered, focus-safe button used by the shell and feature controls.
+/// The frameless, focus-safe button used by the shell and feature controls.
+///
+/// A button carries no edge of its own: the label or icon is the target, and a
+/// wash says it is under the pointer. Only the primary action is filled. Set
+/// [framed] where a control genuinely reads as a box — a field-adjacent
+/// affordance — rather than as a command.
 ///
 /// It deliberately uses gestures rather than a Material button so clicking an
 /// editor toolbar control does not steal the current text selection. It is
@@ -187,6 +213,7 @@ class DsButton extends StatefulWidget {
     this.semanticLabel,
     this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     this.borderRadius = const BorderRadius.all(DsRadius.control),
+    this.framed = false,
   });
 
   final Widget child;
@@ -203,6 +230,10 @@ class DsButton extends StatefulWidget {
   final String? semanticLabel;
   final EdgeInsetsGeometry padding;
   final BorderRadiusGeometry borderRadius;
+
+  /// Draws the 1px object edge a button normally goes without. For the rare
+  /// control that has to read as a box beside a field, never for a command.
+  final bool framed;
 
   @override
   State<DsButton> createState() => _DsButtonState();
@@ -222,18 +253,20 @@ class _DsButtonState extends State<DsButton> {
     final active = widget.active;
 
     final filled = active || widget.variant == DsButtonVariant.primary;
+    final destructive = widget.variant == DsButtonVariant.danger;
     final quiet = widget.variant == DsButtonVariant.quiet;
-    final label = switch (widget.variant) {
-      DsButtonVariant.danger => colors.danger,
-      _ => colors.text,
-    };
+    final label = destructive ? colors.danger : colors.text;
+
+    // An unframed button shows no edge in any state; the wash is what says it
+    // is under the pointer. Only [DsButton.framed] asks for one back.
+    final frame = widget.framed ? colors.surfaceOutline : Colors.transparent;
 
     final (Color fill, Color edge, Color foreground) = switch (null) {
       // Disabled fills with the recessed surface rather than fading: there is
       // no translucency anywhere in this interface.
       _ when !enabled => (
-        filled ? colors.cardSurface : colors.island,
-        filled ? colors.cardSurface : colors.surfaceOutline,
+        filled ? colors.cardSurface : Colors.transparent,
+        filled ? colors.cardSurface : frame,
         colors.faint,
       ),
       _ when filled => (
@@ -241,22 +274,17 @@ class _DsButtonState extends State<DsButton> {
         _hovered || _pressed ? colors.fernHover : colors.fern,
         colors.onFern,
       ),
-      _ when quiet => (
-        _pressed
-            ? colors.pressed
-            : _hovered
-            ? colors.hover
-            : Colors.transparent,
-        Colors.transparent,
-        label,
-      ),
-      _ when _pressed => (colors.pressed, colors.muted, label),
+      _ when _pressed => (colors.pressed, frame, label),
       _ when _hovered => (
-        widget.highlight ?? colors.selection,
-        colors.muted,
+        quiet
+            ? colors.hover
+            : destructive
+            ? colors.removal
+            : widget.highlight ?? colors.hover,
+        frame,
         label,
       ),
-      _ => (colors.island, colors.surfaceOutline, label),
+      _ => (Colors.transparent, frame, label),
     };
 
     return Semantics(
@@ -740,10 +768,7 @@ class DsSettingRow extends StatelessWidget {
                       // Helper lines carry builds, counts, sizes and times
                       // more often than not, and tabular figures change
                       // nothing for a line with no digits in it.
-                      style: DsType.caption(
-                        color: colors.muted,
-                        tabular: true,
-                      ),
+                      style: DsType.caption(color: colors.muted, tabular: true),
                     ),
                   ),
               ],

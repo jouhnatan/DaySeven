@@ -304,7 +304,7 @@ class _ReviewEditsScreenState extends ConsumerState<ReviewEditsScreen> {
               DsSpace.pane,
               DsSpace.pane,
               DsSpace.pane,
-              DsSpace.islandGap / 2,
+              DsSpace.gap / 2,
             ),
             child: Row(
               children: [
@@ -361,7 +361,7 @@ class _ReviewEditsScreenState extends ConsumerState<ReviewEditsScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: DsSpace.islandGap),
+                  const SizedBox(width: DsSpace.gap),
                   Expanded(
                     child: _Pane(
                       label: 'Proposed revision',
@@ -445,13 +445,13 @@ class _ReviewEditsScreenState extends ConsumerState<ReviewEditsScreen> {
                       : _approve,
                   horizontalPadding: 18,
                 ),
-                const SizedBox(width: DsSpace.islandGap),
+                const SizedBox(width: DsSpace.gap),
                 DsLabelButton(
                   label: 'Reject',
                   onPressed: _working ? null : _reject,
                   horizontalPadding: 18,
                 ),
-                const SizedBox(width: DsSpace.islandGap),
+                const SizedBox(width: DsSpace.gap),
                 DsLabelButton(
                   label: 'Return',
                   onPressed: _working ? null : _return,

@@ -59,75 +59,77 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final displayName = ref.watch(accountDisplayNameProvider);
     final greetingName = displayName ?? 'Guest';
 
-    return SizedBox.expand(
-      key: const Key('home-workspace'),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(40, 44, 40, 40),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Ready to build, $greetingName?',
-                  key: const Key('home-greeting'),
-                  textAlign: TextAlign.center,
-                  style: uiHeaderTextStyle(
-                    size: 32,
-                    weight: 600,
-                    color: colors.text,
+    return DsPane(
+      child: SizedBox.expand(
+        key: const Key('home-workspace'),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(40, 44, 40, 40),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Ready to build, $greetingName?',
+                    key: const Key('home-greeting'),
+                    textAlign: TextAlign.center,
+                    style: uiHeaderTextStyle(
+                      size: 32,
+                      weight: 600,
+                      color: colors.text,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 40),
-                LayoutBuilder(
-                  builder: (context, content) {
-                    final recentCard = _HomeCard(
-                      key: const Key('home-recent-files-card'),
-                      title: 'Recent Files',
-                      child: _RecentFiles(
-                        hasKnowledgeBase: session != null,
-                        recents: recents,
-                        onOpen: _openRecent,
-                      ),
-                    );
-                    final settingsCard = _HomeCard(
-                      key: const Key('home-user-settings-card'),
-                      title: 'User Settings',
-                      child: _UserSettings(
-                        signedIn: user != null,
-                        displayName: displayName,
-                        loggingOut: _loggingOut,
-                        error: _accountError,
-                        onSignIn: () => showSignInDialog(context),
-                        onLogOut: _logOut,
-                      ),
-                    );
-
-                    if (content.maxWidth < 720) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          recentCard,
-                          const SizedBox(height: 16),
-                          settingsCard,
-                        ],
+                  const SizedBox(height: 40),
+                  LayoutBuilder(
+                    builder: (context, content) {
+                      final recentCard = _HomeCard(
+                        key: const Key('home-recent-files-card'),
+                        title: 'Recent Files',
+                        child: _RecentFiles(
+                          hasKnowledgeBase: session != null,
+                          recents: recents,
+                          onOpen: _openRecent,
+                        ),
                       );
-                    }
+                      final settingsCard = _HomeCard(
+                        key: const Key('home-user-settings-card'),
+                        title: 'User Settings',
+                        child: _UserSettings(
+                          signedIn: user != null,
+                          displayName: displayName,
+                          loggingOut: _loggingOut,
+                          error: _accountError,
+                          onSignIn: () => showSignInDialog(context),
+                          onLogOut: _logOut,
+                        ),
+                      );
 
-                    return IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: recentCard),
-                          const SizedBox(width: 16),
-                          Expanded(child: settingsCard),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
+                      if (content.maxWidth < 720) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            recentCard,
+                            const SizedBox(height: 16),
+                            settingsCard,
+                          ],
+                        );
+                      }
+
+                      return IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(child: recentCard),
+                            const SizedBox(width: 16),
+                            Expanded(child: settingsCard),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -152,7 +154,6 @@ class _HomeCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.island,
         border: Border.all(color: colors.surfaceOutline),
-        borderRadius: const BorderRadius.all(DsRadius.island),
       ),
       child: Padding(
         padding: const EdgeInsets.all(22),

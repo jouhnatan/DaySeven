@@ -21,30 +21,27 @@ class ViewsMenu extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const DsMenuHeader('Views'),
-        const SizedBox(height: DsSpace.islandGap),
         Expanded(
-          child: DsIsland(
-            child: Padding(
-              padding: const EdgeInsets.all(6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final view in DsView.values)
-                    _ViewRow(
-                      label: switch (view) {
-                        DsView.home => 'Home',
-                        DsView.editor => 'Editor',
-                        DsView.differences => 'Differences',
-                      },
-                      badgeCount: view == DsView.differences
-                          ? pendingDifferencesCount
-                          : 0,
-                      selected: view == current,
-                      onTap: () => ref.read(viewProvider.notifier).state = view,
-                    ),
-                ],
-              ),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final view in DsView.values)
+                  _ViewRow(
+                    label: switch (view) {
+                      DsView.home => 'Home',
+                      DsView.editor => 'Editor',
+                      DsView.differences => 'Differences',
+                    },
+                    badgeCount: view == DsView.differences
+                        ? pendingDifferencesCount
+                        : 0,
+                    selected: view == current,
+                    onTap: () => ref.read(viewProvider.notifier).state = view,
+                  ),
+              ],
             ),
           ),
         ),
@@ -93,7 +90,7 @@ class _ViewRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: colors.pending,
-                borderRadius: BorderRadius.circular(99),
+                borderRadius: BorderRadius.all(DsRadius.pill),
               ),
               child: Text(
                 '$badgeCount',

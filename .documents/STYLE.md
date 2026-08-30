@@ -18,8 +18,8 @@ none may be added.
 | `paperRaised` | `#FFFDF6` | Rare floating surface with no border. |
 | `inset` | `#F0ECDC` | Recessed regions: nav rails, table headers, status blocks. |
 | `bar` | `#EDE9D9` | Title bars, toolbars. |
-| `hairline` | `#E1DBC4` | Divisions inside one surface: row separators, group dividers. |
-| `line` | `#CFC8AE` | Edges of objects: buttons, inputs, cards, menus. |
+| `hairline` | `#D5CEB4` | Divisions inside one surface: row separators, group dividers. |
+| `line` | `#C0B89A` | Edges of objects: inputs, cards, menus — and the seam between two regions. |
 | `ink` | `#1B201A` | Primary text and icons. |
 | `muted` | `#5A6560` | Captions, helper text, timestamps, inactive labels. |
 | `faint` | `#8A9089` | Disabled text and placeholders only. |
@@ -46,10 +46,12 @@ none may be added.
 - Semantic colours describe state only — text plus a small mark, or a full-width banner. Never an accent.
 - No dark chrome. Fern is the only dark mass permitted on screen.
 - Depth is drawn with borders, not shadows (§4).
+- Regions are seated, not floating. Two adjacent regions meet on one shared 1px `line`
+  seam — never a gap, never two abutting borders (§3).
 
 Contrast (measured): ink/paper 15.4:1 · muted/paper 5.7:1 · onFern/fern 11.3:1 ·
 slate/paper 7.0:1 · success/paper 5.6:1 · danger/paper 8.4:1 · warning/paper 4.7:1.
-Non-text (borders only): line/paper 1.56:1 · hairline/paper 1.29:1.
+Non-text (borders only): line/paper 1.85:1 · hairline/paper 1.47:1.
 
 ---
 
@@ -93,19 +95,26 @@ Solway for anything a user reads as content, or introduce a "strong" text style 
 ## 3. Spacing, size, shape
 
 **Spacing scale (use nothing else):** `2, 4, 6, 8, 10, 12, 14, 16, 20, 22, 24, 32, 40, 56, 72`
-Default gap between related controls is 12. Pane padding is 20–22. Region separation is 32+.
+Default gap between related controls is 12. Pane padding is 20–22. Separation between
+content regions *inside* a pane is 32+. Shell regions are not separated by space at all:
+panes butt against each other, run to the window edge, and are divided by a 1px `line` seam.
 
-**Radius:** `0` full-bleed rows and table cells · `6` nav items, menu items, chips ·
-`7` buttons, inputs, toolbar buttons · `8` segmented controls, menus, status blocks ·
-`10` cards, tiles, dialogs, windows · pill only for a toggle track. Nothing exceeds 10.
+**Radius:** `0` — everywhere. Rows, cells, buttons, inputs, nav items, menu items, chips,
+segmented controls, menus, popovers, status blocks, cards, tiles, dialogs, panes, windows:
+all square. The only exception is `pill` (999), used for the toggle track and thumb and for
+a count badge. Genuinely circular things stay circles: presence dots, avatars, colour
+swatches, status dots. Nothing rectangular carries a rounded corner anywhere in the product.
 
 **Heights (desktop):** button 36 · small/toolbar button 32 · icon button 32×32 · input 36 ·
 menu item 32 · nav item 34 · list row 40 (dense 34) · tree row 30 · segmented cell 30 ·
 toggle 22×38 · title bar 44 · toolbar 48. Wrap anything under 44px in a transparent 44px hit area.
 
-**Borders:** 1px `hairline` inside a surface · 1px `line` around an object · 2px `fern` for
-focus rings only. Never nest two borders — a bordered element inside a bordered container
-drops its own.
+**Borders:** 1px `hairline` inside a surface · 1px `line` around a nested object · 1px `line`
+for the seam between two regions · 2px `fern` for focus rings only. Never nest two borders —
+a bordered element inside a bordered container drops its own — and never abut two: where two
+regions meet, the shell draws **one** shared seam and the seated pane draws no border of its
+own. Nested surfaces inside a pane (cards, fields, menus, dialogs, status blocks, popovers)
+keep their 1px border.
 
 ---
 
@@ -113,12 +122,17 @@ drops its own.
 
 | Level | What | Treatment |
 |---|---|---|
-| Flat | Panes, cards, tiles, rows, toolbars | No shadow. 1px `line`. |
+| Seated | Panes, title bar, toolbar, footer | No shadow, no border of its own. Adjacent regions share one 1px `line` seam. |
+| Flat | Cards, tiles, rows, fields nested inside a pane | No shadow. 1px `line`. |
 | Raised | Menus, popovers, tooltips | 1px `line` + `0 1px 2px rgba(27,32,26,.06), 0 8px 20px -10px rgba(27,32,26,.22)` |
 | Window | Floating windows, sheets | 1px `line` + `0 1px 2px rgba(27,32,26,.08), 0 14px 36px -14px rgba(27,32,26,.30)` |
 | Modal | Dialogs | Window shadow + `scrim` |
 
-**Don't:** put a shadow on a card, tile, table row, nav item, or toolbar.
+Menus, popovers and dialogs float, so they keep both their own 1px `line` border and their
+shadow. A seated region does neither.
+
+**Don't:** put a shadow on a card, tile, table row, nav item, or toolbar, or give a seated
+pane a border of its own.
 
 ---
 
@@ -148,18 +162,21 @@ a divider without padding around it.
 
 Each entry is the whole spec. Match it exactly.
 
-**Button** — 36px tall, radius 7, 17px horizontal padding, label Body (13.5px, Sans 400).
-Primary: `fern` fill, `onFern` label, `fernHover` on hover, one per view. Secondary: `paper`
-fill, 1px `line`, `ink` label, `inset` on hover. Quiet: transparent, `hover` wash on hover.
-Destructive: `paper` fill, 1px `line`, `danger` label. Disabled: `inset` fill, `faint` label.
-*Don't* use a fern fill for a destructive action or place two primaries on one surface.
+**Button** — 36px tall, square, 17px horizontal padding, label Body (13.5px, Sans 400).
+Primary: `fern` fill, `onFern` label, `fernHover` on hover, one per view. Every other variant
+is frameless — no border, transparent fill, `hover` wash on hover, `pressed` on press.
+Secondary and quiet: `ink` label. Destructive: `danger` label, optionally `dangerWash` on
+hover. Disabled: `faint` label, no fill, no frame. *Don't* use a fern fill for a destructive
+action, place two primaries on one surface, or put a frame around a button.
 
-**Toolbar** — 48px tall, `bar` fill, 1px `hairline` bottom border, 12px horizontal padding.
-Contains individually framed buttons: 32px tall, `paper` fill, 1px `line`, radius 7, 6px
-apart, icon 16px, optional label at Body. Active mode: `fern` fill, `onFern` icon, persists.
-Clusters separated by 12px plus a 1px × 20px `line` divider. Overflow collapses into a single
-framed ⋯ button opening a dropdown. *Don't* wrap a toolbar to a second row or use bare
-unframed icons.
+**Toolbar** — 48px tall, `bar` fill, full-bleed, 12px horizontal padding, and a 1px `line`
+seam on the edge where it meets the next region (bottom for a header toolbar, top for a
+footer toolbar). No other border. Contains unframed buttons: 32px tall, square, transparent
+fill, no border, 6px apart, icon 16px, optional label at Body; `hover` wash on hover,
+`pressed` on press. Active mode: `fern` fill, `onFern` icon, persists. Clusters separated by
+12px plus a 1px × 20px `line` divider. Overflow collapses into a single ⋯ button opening a
+dropdown. *Don't* wrap a toolbar to a second row, frame its buttons, or border the edges
+where it meets nothing.
 
 **Toggle switch** — booleans only. Track 38×22 pill, thumb 16px. Off: `line` track, `paper`
 thumb. On: `fern` track, `paper` thumb. 180ms ease. Always the right-hand element of its row,
@@ -167,29 +184,30 @@ label left at Body, optional one-line helper beneath at Caption. *Don't* use a t
 select objects or a checkbox to change a setting.
 
 **Segmented control (switch states)** — 2 to 4 exclusive options, all worth showing. One
-frame: `inset` fill, 1px `hairline`, radius 8, 2px inner padding. Cells 30px tall, radius 6,
+frame: `inset` fill, 1px `line`, square, 2px inner padding. Cells 30px tall, square,
 13px horizontal padding, labels at Caption size (12.5px, Sans 400) in `muted`. Selected cell:
 `paper` fill, `ink` label, 1px soft shadow — same 400 weight as the others. *Don't* bold the
 selected cell, add a checkmark, or use this for five or more options.
 
-**Checkbox** — object selection only. 18×18, radius 4, 1px `line`, `paper` fill. Checked:
+**Checkbox** — object selection only. 18×18, square, 1px `line`, `paper` fill. Checked:
 `fern` fill, `onFern` tick.
 
-**Text field** — 36px tall, `paper` fill, 1px `line`, radius 7, 12px padding, Body text,
+**Text field** — 36px tall, `paper` fill, 1px `line`, square, 12px padding, Body text,
 `faint` placeholder. Label above at Body; helper below at Caption. Focus: `fern` border plus
 a 2px `fern` ring offset 2px. Error: `danger` border and a one-line Caption message in
 `danger` that states the fix. *Don't* use a placeholder in place of a label.
 
-**Dropdown menu** — `paper`, 1px `line`, radius 8, raised shadow, 6px padding, min-width 180,
+**Dropdown menu** — `paper`, 1px `line`, square, raised shadow, 6px padding, min-width 180,
 max-width 320, opens 4px below its anchor and flips when short of room. Items 32px tall,
-radius 6, 10px padding, label at Body; optional 16px leading icon in `muted`; shortcut
+square, 10px padding, label at Body; optional 16px leading icon in `muted`; shortcut
 right-aligned at Caption in `faint`. Hover fills with `hover`. Checked item shows a 14px
 `fern` tick in the leading slot — the label does not change. Destructive item is `danger`
 text with a `dangerWash` hover. Grouping follows §5. Fade + 4px rise, 140ms. *Don't* nest
 more than one submenu level or exceed 60% of window height without scrolling.
 
-**Nav rail** — vertical, left, 168–220px wide, `inset` fill, 1px `hairline` right border,
-12px/10px padding. Items 34px tall, radius 6, 11px padding, Body labels in `muted`. Selected:
+**Nav rail** — vertical, left, 168–220px wide, `inset` fill, seated: no border of its own,
+the shell draws a 1px `line` seam at its right edge. 12px/10px padding. Items 34px tall,
+square, 11px padding, Body labels in `muted`. Selected:
 solid `fern` fill, `onFern` label, weight unchanged. Grouping follows §5. *Don't* show
 selection with weight, an indent, or a left bar.
 
@@ -209,24 +227,24 @@ Rows 40px, 1px `hairline` between, `hover` on hover, `fernWash` when selected. T
 left, quantities right. Row actions appear on hover at the right as 28px quiet icon buttons.
 *Don't* fill a selected row with solid fern — solid fern is for navigation.
 
-**Card / bento tile** — `paper`, 1px `line`, radius 10, 16px padding, no shadow, no hover
+**Card / bento tile** — `paper`, 1px `line`, square, 16px padding, no shadow, no hover
 lift. Title at Title (Solway 16). One primary datum at 28px Sans 400. One supporting line at
 Caption. Maximum one fern element per tile. Grid: 12 columns, 12px gutter, 88px row unit, on
 an `inset` ground. Three layouts: hero 8×2 with 4×1 satellites; uniform 4×1 wrapping; 3×3
 rail beside a 9-column region. Below 900px everything becomes full width in source order.
 *Don't* reorder tiles responsively or put two fern elements in one tile.
 
-**Dialog** — `paper`, 1px `line`, radius 10, modal shadow over `scrim`, 22px padding, max
+**Dialog** — `paper`, 1px `line`, square, modal shadow over `scrim`, 22px padding, max
 480px wide. Title at Title, body at Body large, actions bottom-right with 12px between them:
 quiet Cancel, then primary. Destructive confirm uses a `danger` fill.
 
-**Status block** — `inset`, 1px `hairline`, radius 8, 13px padding. 19px semantic glyph, a
+**Status block** — `inset`, 1px `hairline`, square, 13px padding. 19px semantic glyph, a
 Body headline naming the state, a Caption sub-line carrying the timestamp, optional secondary
 button at the right. Inverts to `fern`/`onFern` only when the state is actionable.
 
-**Sync / background activity** — one row, 56px, `paper`, 1px `line`, radius 10, 12/14
+**Sync / background activity** — one row, 56px, `paper`, 1px `line`, square, 12/14
 padding, 12px gaps: semantic 19px mark · Body title naming **the state** · Caption sub-line
-carrying the checkable fact · optional Caption count · trailing framed 32px button · a 2px
+carrying the checkable fact · optional Caption count · trailing 32px button · a 2px
 `fern` progress line pinned to the row's bottom edge, present only while work runs.
 States: Synced (`success`, "Up to date" / "Synced 2 minutes ago") · Syncing (`fern`, rotating
 mark, "Syncing" / "12 of 40") · Paused (`muted`) · Offline (`warning`, "Last synced yesterday
@@ -235,22 +253,23 @@ at 21:40") · Failed (`danger`, sub-line states the fix). Elsewhere: a 24px chip
 coloured dot as a status, name the feature instead of the state, omit the timestamp, or show
 two activity indicators on one surface.
 
-**Banner** — full width inside its pane, radius 8, `warningWash` or `dangerWash` fill, 1px
+**Banner** — full width inside its pane, square, `warningWash` or `dangerWash` fill, 1px
 border in the matching semantic colour at 35%, `ink` text at Body, one sentence, one action
 at the right.
 
-**Chip / badge** — 24px tall, radius 6, 9px padding, Caption small text. Pairs: `fernWash`
+**Chip / badge** — 24px tall, square, 9px padding, Caption small text. A numeric count
+badge is the one exception: a pill. Pairs: `fernWash`
 with `success`, `warningWash` with `warning`, `dangerWash` with `danger`, `inset` with `muted`.
 
 **Progress** — linear only. 16px tall including a 1px `line` frame, `paper` interior, `fern`
 fill drawn as 6px blocks with 2px gaps, width animated on a stepped curve. Percentage sits
 right at Caption.
 
-**Tooltip** — `ink` fill, `paper` text at Caption, radius 6, 8×10 padding, 400ms delay. The
+**Tooltip** — `ink` fill, `paper` text at Caption, square, 8×10 padding, 400ms delay. The
 only place ink is used as a surface. Required on every icon-only control, alongside an
 accessible label.
 
-**Empty state** — centred, 34px padding: 46px `sage` glyph tile at radius 11, Title heading,
+**Empty state** — centred, 34px padding: 46px square `sage` glyph tile, Title heading,
 one Caption sentence up to 40 characters wide, one primary button. Every list, tree, and grid
 needs one.
 
@@ -262,10 +281,11 @@ no emoji in the interface.
 
 ## 7. Layout
 
-- App shell: title bar (44px, `bar`, hairline bottom) → optional toolbar (48px) → body.
+- App shell: full-bleed title bar (44px, `bar`, 1px `line` bottom seam) → optional toolbar
+  (48px) → body → optional footer toolbar (1px `line` top seam). No window margin.
 - Body: nav rail (168–220px, `inset`) │ optional list column (260–320px) │ content pane.
-- Dividers between columns are 1px `hairline`; a draggable divider adds an 8px invisible hit
-  area and a resize cursor.
+- Columns butt against each other with no gap. The divider between two columns is a single
+  1px `line` seam; a draggable divider adds an 8px invisible hit area and a resize cursor.
 - A settings or detail pane is **one column**. If it needs two, it needs two panes.
 - Pane padding 20–22px. Content max width for prose 66 characters.
 
@@ -301,7 +321,7 @@ marketing adjectives inside the product.
 
 ## 11. Accessibility
 
-Focus ring is 2px `fern`, 2px offset, matching the control's radius, never removed.
+Focus ring is 2px `fern`, 2px offset, square like the control it surrounds, never removed.
 All interactive text meets 4.5:1; `faint` is for disabled only. Full keyboard support: tab
 order, arrow keys inside rails, trees, menus, and segmented controls, `Esc` closes, `Enter`
 commits. Icon-only controls carry both a tooltip and an accessible label. Never rely on
@@ -311,10 +331,10 @@ colour alone to carry meaning.
 
 ## 12. Extrapolation — when this file is silent
 
-1. Reuse the nearest component's geometry exactly — height, radius, border, padding.
+1. Reuse the nearest component's geometry exactly — height, border, padding. The radius is 0.
 2. Take every new value from the scales in §3.
 3. If the element is neither "where you are" nor "what commits", it does not get fern.
-4. Prefer a hairline to a fill; prefer a fill to a shadow.
+4. Prefer a seam to a gap; prefer a hairline to a fill; prefer a fill to a shadow.
 5. Give any stale-able state a timestamp.
 6. Name it as the user would, not as the system does.
 7. One primary action per surface.
@@ -335,9 +355,11 @@ internals — provided §1–§5 hold.
 - [ ] No monospace, no ALL-CAPS, no third typeface.
 - [ ] Menu and settings groups are 2px inside, 20px apart, with a hairline bar carrying 10px
       of padding above and below.
-- [ ] Every spacing, radius, and height came from §3.
+- [ ] Every spacing and height came from §3; every radius is 0, bar a pill toggle or count badge.
+- [ ] Nothing rectangular has a rounded corner.
+- [ ] Regions meet on one shared 1px `line` seam — no gaps between panes, no doubled borders.
 - [ ] Booleans are toggles; 2–4 exclusive options are a framed segmented control; 5+ is a menu.
-- [ ] Cards flat, menus raised, dialogs scrimmed.
+- [ ] Panes seated and borderless; cards flat, menus raised, dialogs scrimmed.
 - [ ] Every stale-able state shows a timestamp; no status is carried by a dot alone.
 - [ ] Focus rings visible everywhere; icon-only controls have tooltips and labels.
 - [ ] Every list, tree, and grid has an empty state.
@@ -350,8 +372,9 @@ internals — provided §1–§5 hold.
 Dark theme · dark title bar, sidebar, or footer · white surfaces · pure black · any hex
 outside §1 · bold or semibold sans text · a "strong" or emphasised text style · monospace ·
 a third typeface · ALL-CAPS labels · letterspaced small caps in product UI · shadows on
-cards, tiles, rows, or nav items · gradients, blur, glassmorphism · a coloured hero · radius
-above 10 · fern on decoration or on a third element · a bare coloured dot as status · a
+cards, tiles, rows, or nav items · gradients, blur, glassmorphism · a coloured hero · a
+rounded corner on any rectangular surface · a gap used as a separator between regions · two
+abutting borders where one seam belongs · fern on decoration or on a third element · a bare coloured dot as status · a
 status with no timestamp · emoji in the interface · animation over 240ms · bounce or elastic
-curves · a toggle used for selection · a checkbox used for a setting · unframed icon buttons
-in a toolbar · menu groups without a padded divider between them.
+curves · a toggle used for selection · a checkbox used for a setting · menu groups
+without a padded divider between them.
