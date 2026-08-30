@@ -99,6 +99,7 @@ class _DsSearchBarState extends ConsumerState<DsSearchBar> {
     final documents = ref.read(documentControllerProvider.notifier);
     final view = ref.read(viewProvider.notifier);
     await documents.open(hit.relativePath);
+    if (!mounted) return;
     view.state = DsView.editor;
   }
 

@@ -33,8 +33,8 @@ These hex values are the system. Do not shift, tint, or "improve" them.
 | `paperRaised` | `#FFFDF6` | Only for a surface that floats above `paper` and must separate without a border (rare). |
 | `inset` | `#F0ECDC` | Recessed surface: nav rails, table headers, status blocks, disabled fills, code blocks. |
 | `bar` | `#EDE9D9` | Title bars and toolbars. Sits between `paper` and `inset`. |
-| `hairline` | `#E5E0CD` | Internal divisions: row separators, pane splits, dividers inside a surface. |
-| `line` | `#D7D1BB` | Object borders: input outlines, button frames, card edges, menu borders. |
+| `hairline` | `#E1DBC4` | Internal divisions: row separators, pane splits, dividers inside a surface. |
+| `line` | `#CFC8AE` | Object borders: input outlines, button frames, card edges, menu borders. |
 | `ink` | `#1B201A` | Primary text and icons. |
 | `muted` | `#5A6560` | Secondary text: helper lines, timestamps, units, placeholder, inactive nav labels. |
 | `faint` | `#8A9089` | Tertiary: disabled text, watermark, empty-state body. Never for anything actionable. |
@@ -71,7 +71,7 @@ These hex values are the system. Do not shift, tint, or "improve" them.
 | `danger` on `paper` | 8.40:1 | AAA |
 | `warning` on `paper` | 4.71:1 | AA normal text only — never below 14px |
 | `onSage` on `sage` | 6.30:1 | AA all sizes |
-| `line` on `paper` | 1.43:1 | Non-text; borders only |
+| `line` on `paper` | 1.56:1 | Non-text; borders only |
 
 `faint` (`#8A9089`) measures ≈3.0:1 on `paper`. It is legal only for disabled controls and
 decorative text. Never put a real message in it.
@@ -100,8 +100,8 @@ abstract final class CF {
   static const paperRaised = Color(0xFFFFFDF6);
   static const inset       = Color(0xFFF0ECDC);
   static const bar         = Color(0xFFEDE9D9);
-  static const hairline    = Color(0xFFE5E0CD);
-  static const line        = Color(0xFFD7D1BB);
+  static const hairline    = Color(0xFFE1DBC4);
+  static const line        = Color(0xFFCFC8AE);
 
   static const ink   = Color(0xFF1B201A);
   static const muted = Color(0xFF5A6560);

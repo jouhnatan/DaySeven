@@ -35,8 +35,8 @@ abstract final class CF {
 
   // Lines. A hairline divides within one surface; a line is the edge of an
   // object. Nothing else draws structure.
-  static const hairline = Color(0xFFE5E0CD);
-  static const line = Color(0xFFD7D1BB);
+  static const hairline = Color(0xFFE1DBC4);
+  static const line = Color(0xFFCFC8AE);
 
   // Ink.
   static const ink = Color(0xFF1B201A);

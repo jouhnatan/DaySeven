@@ -216,7 +216,6 @@ void main() {
     await openDialog(tester, RecordingController());
 
     expect(find.byType(DsSegmented<AppSettingsSection>), findsNothing);
-    expect(find.text('Install updates automatically'), findsOneWidget);
     expect(
       find.byKey(const Key('app-settings-section-appearance')),
       findsNothing,
@@ -258,12 +257,12 @@ void main() {
     );
 
     expect(find.text('kb panel'), findsNothing);
-    expect(find.text('Install updates automatically'), findsOneWidget);
+    expect(find.byKey(const Key('app-settings-update-status')), findsOneWidget);
 
     await selectSection(tester, AppSettingsSection.knowledgeBase);
 
     expect(find.text('kb panel'), findsOneWidget);
-    expect(find.text('Install updates automatically'), findsNothing);
+    expect(find.byKey(const Key('app-settings-update-status')), findsNothing);
 
     // The strip itself holds the answer to "where am I": its raised cell is
     // the section on screen.
@@ -303,7 +302,7 @@ void main() {
 
     // Nothing supplied a Knowledge Base panel, so that section does not exist
     // and the switcher would otherwise have had nothing selected.
-    expect(find.text('Install updates automatically'), findsOneWidget);
+    expect(find.byKey(const Key('app-settings-update-status')), findsOneWidget);
   });
 
   testWidgets('sets dialog title in header font', (tester) async {
@@ -347,22 +346,6 @@ void main() {
     // that a fresh answer can be told from one sitting there since yesterday.
     expect(find.textContaining('Checked today at'), findsOneWidget);
     expect(find.text('Check now'), findsOneWidget);
-  });
-
-  testWidgets('update rows do not duplicate the status card separator', (
-    tester,
-  ) async {
-    await openDialog(tester, RecordingController());
-    await selectSection(tester, AppSettingsSection.updates);
-
-    for (final label in ['Install updates automatically', 'Channel']) {
-      final row = find.ancestor(
-        of: find.text(label),
-        matching: find.byType(DsSettingRow),
-      );
-      expect(row, findsOneWidget);
-      expect(tester.widget<DsSettingRow>(row).first, isTrue);
-    }
   });
 
   testWidgets('checks on open and names a newer version', (tester) async {

@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:dayseven/app/shell/shell.dart';
+import 'package:dayseven/core/macos_lights/macos_lights.dart';
 import 'package:dayseven/shared/platform/install_location.dart';
 import 'package:dayseven/shared/platform/window_chrome.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
@@ -21,9 +22,11 @@ class DaySevenApp extends StatelessWidget {
       // One theme. The system is light and has no dark variant, so the
       // window chrome the native runners are handed is always a light one.
       theme: dsTheme(settings: settings),
-      builder: (context, child) => WindowChromeSync(
-        backgroundColor: context.ds.appBackground,
-        child: child ?? const SizedBox.shrink(),
+      builder: (context, child) => MacosLightsSync(
+        child: WindowChromeSync(
+          backgroundColor: context.ds.appBackground,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
       // Rebuild the existing launch subtree for every global setting, even
       // when a future setting is not represented by ThemeData.
