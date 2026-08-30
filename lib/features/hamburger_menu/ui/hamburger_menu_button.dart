@@ -4,7 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:dayseven/shared/ui/controls.dart';
-import 'package:dayseven/shared/ui/menu.dart';
+import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 @immutable
@@ -37,61 +37,23 @@ class HamburgerMenuButton extends StatelessWidget {
   final List<HamburgerMenuEntry> entries;
 
   Future<void> _show(BuildContext context) async {
-    final colors = context.ds;
-    final choice = await showDsMenu<int>(
-      context: context,
-      items: [
-        for (var index = 0; index < entries.length; index++)
-          if (entries[index].checked case final checked?)
-            DsMenuItem<int>(
-              key: Key('hamburger-menu-toggle-$index'),
-              value: index,
-              height: kDsMenuItemHeight,
-              child: Row(
-                children: [
-                  SizedBox(
-                    key: Key('hamburger-menu-toggle-indicator-$index'),
-                    width: 16,
-                    child: checked
-                        ? Icon(
-                            Icons.check,
-                            key: Key('hamburger-menu-toggle-check-$index'),
-                            size: 14,
-                            color: colors.fern,
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      entries[index].label,
-                      textAlign: TextAlign.left,
-                      style: DsType.label(color: colors.text),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            DsMenuItem<int>(
-              value: index,
-              height: kDsMenuItemHeight,
-              // An unchecked item keeps the same leading slot, so labels line
-              // up down the menu whether or not anything is checked.
-              child: Row(
-                children: [
-                  const SizedBox(width: 16 + 8),
-                  Expanded(
-                    child: Text(
-                      entries[index].label,
-                      style: DsType.label(color: colors.text),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-      ],
-    );
+    final menu = DsDropdownMenuList<int>();
+    for (var index = 0; index < entries.length; index++) {
+      final entry = entries[index];
+      menu.pushItem(
+        key: entry.checked != null
+            ? Key('hamburger-menu-toggle-$index')
+            : null,
+        value: index,
+        label: entry.label,
+        isChecked: entry.checked,
+        leadingKey: entry.checked == true
+            ? Key('hamburger-menu-toggle-check-$index')
+            : null,
+      );
+    }
+
+    final choice = await menu.show(context);
     if (choice == null || !context.mounted) return;
     entries[choice].onSelected();
   }

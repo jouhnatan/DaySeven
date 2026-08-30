@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
+export 'package:dayseven/shared/ui/menu.dart'
+    show kDsMenuItemHeight, kDsCompactMenuItemHeight, kDsMenuHeaderHeight;
+
 /// The placement of an icon relative to the label in a dropdown menu item.
 enum DsDropdownIconPosition {
   /// Icon is placed to the left of the item text.
@@ -37,9 +40,13 @@ class DsDropdownMenuItem<T> extends DsDropdownMenuEntry<T> {
     this.height = kDsMenuItemHeight,
     this.shortcut,
     this.key,
+    this.leadingKey,
+    this.trailingKey,
   });
 
   final Key? key;
+  final Key? leadingKey;
+  final Key? trailingKey;
   final String label;
   final T? value;
   final Widget? icon;
@@ -73,7 +80,12 @@ class DsDropdownMenuItem<T> extends DsDropdownMenuEntry<T> {
       leadingSlot = SizedBox(
         width: 16,
         child: isChecked!
-            ? Icon(Icons.check, size: 14, color: colors.fern)
+            ? Icon(
+                Icons.check,
+                key: leadingKey,
+                size: 14,
+                color: colors.fern,
+              )
             : null,
       );
     } else if (icon != null && iconPosition == DsDropdownIconPosition.leading) {
@@ -82,7 +94,9 @@ class DsDropdownMenuItem<T> extends DsDropdownMenuEntry<T> {
           size: 16,
           color: isDestructive ? colors.danger : colors.muted,
         ),
-        child: icon!,
+        child: leadingKey != null
+            ? KeyedSubtree(key: leadingKey, child: icon!)
+            : icon!,
       );
     }
 
@@ -92,7 +106,9 @@ class DsDropdownMenuItem<T> extends DsDropdownMenuEntry<T> {
           size: 16,
           color: isDestructive ? colors.danger : colors.muted,
         ),
-        child: icon!,
+        child: trailingKey != null
+            ? KeyedSubtree(key: trailingKey, child: icon!)
+            : icon!,
       );
     }
 
@@ -201,10 +217,14 @@ class DsDropdownMenuList<T> {
     double height = kDsMenuItemHeight,
     String? shortcut,
     Key? key,
+    Key? leadingKey,
+    Key? trailingKey,
   }) {
     _entries.add(
       DsDropdownMenuItem<T>(
         key: key,
+        leadingKey: leadingKey,
+        trailingKey: trailingKey,
         label: label,
         value: value,
         icon: icon,
