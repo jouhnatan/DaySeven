@@ -81,7 +81,7 @@ class _NotificationsPanelState extends ConsumerState<NotificationsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return DsIsland(
+    return DsPane(
       child: Padding(
         padding: const EdgeInsets.all(DsSpace.pane),
         child: _items.isEmpty

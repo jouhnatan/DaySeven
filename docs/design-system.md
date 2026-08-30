@@ -33,8 +33,8 @@ These hex values are the system. Do not shift, tint, or "improve" them.
 | `paperRaised` | `#FFFDF6` | Only for a surface that floats above `paper` and must separate without a border (rare). |
 | `inset` | `#F0ECDC` | Recessed surface: nav rails, table headers, status blocks, disabled fills, code blocks. |
 | `bar` | `#EDE9D9` | Title bars and toolbars. Sits between `paper` and `inset`. |
-| `hairline` | `#E1DBC4` | Internal divisions: row separators, pane splits, dividers inside a surface. |
-| `line` | `#CFC8AE` | Object borders: input outlines, button frames, card edges, menu borders. |
+| `hairline` | `#D5CEB4` | Internal divisions: row separators, dividers inside a surface. |
+| `line` | `#C0B89A` | Object borders: input outlines, card edges, menu borders — and the seam between two regions. |
 | `ink` | `#1B201A` | Primary text and icons. |
 | `muted` | `#5A6560` | Secondary text: helper lines, timestamps, units, placeholder, inactive nav labels. |
 | `faint` | `#8A9089` | Tertiary: disabled text, watermark, empty-state body. Never for anything actionable. |
@@ -71,7 +71,8 @@ These hex values are the system. Do not shift, tint, or "improve" them.
 | `danger` on `paper` | 8.40:1 | AAA |
 | `warning` on `paper` | 4.71:1 | AA normal text only — never below 14px |
 | `onSage` on `sage` | 6.30:1 | AA all sizes |
-| `line` on `paper` | 1.56:1 | Non-text; borders only |
+| `line` on `paper` | 1.85:1 | Non-text; borders only |
+| `hairline` on `paper` | 1.47:1 | Non-text; internal divisions only |
 
 `faint` (`#8A9089`) measures ≈3.0:1 on `paper`. It is legal only for disabled controls and
 decorative text. Never put a real message in it.
@@ -88,6 +89,9 @@ decorative text. Never put a real message in it.
 5. **Dark chrome is forbidden.** No dark title bar, no dark sidebar, no dark footer. Fern
    is allowed to be the only dark mass on screen.
 6. **Depth comes from borders, not shadows.** See §5.
+7. **Regions are seated, not floating.** Panes butt against each other and run to the window
+   edge. Two adjacent regions meet on one shared 1px `line` seam — never a gap, never two
+   abutting borders. A seated pane draws no border of its own; the shell draws the seam.
 
 ### 1.4 Flutter: the colour scheme
 
@@ -100,8 +104,8 @@ abstract final class CF {
   static const paperRaised = Color(0xFFFFFDF6);
   static const inset       = Color(0xFFF0ECDC);
   static const bar         = Color(0xFFEDE9D9);
-  static const hairline    = Color(0xFFE1DBC4);
-  static const line        = Color(0xFFCFC8AE);
+  static const hairline    = Color(0xFFD5CEB4);
+  static const line        = Color(0xFFC0B89A);
 
   static const ink   = Color(0xFF1B201A);
   static const muted = Color(0xFF5A6560);
@@ -283,7 +287,9 @@ If a widget shows Solway on a value, it is a bug.
 `2, 4, 6, 8, 10, 12, 14, 16, 20, 22, 24, 32, 40, 56, 72`
 
 Use `12` as the default gap between related controls, `20–22` as pane padding, `32+` only
-between major regions. Never invent a value outside the scale.
+between content regions *inside* a pane. Never invent a value outside the scale. Shell
+regions get no spacing at all: panes butt together, run to the window edge, and are divided
+by a 1px `line` seam rather than by a gap.
 
 ```dart
 abstract final class Sp {
@@ -294,16 +300,17 @@ abstract final class Sp {
 
 ### 3.2 Radius
 
+Every rectangular surface is square. One token carries a non-zero value.
+
 | Token | Value | Applied to |
 |---|---|---|
-| `rNone` | 0 | Table cells, full-bleed rows, dividers |
-| `rSm` | 6 | Nav items, menu items, chips, small icon buttons |
-| `rMd` | 7 | Buttons, inputs, toolbar buttons |
-| `rLg` | 8 | Segmented controls, status blocks, menus, popovers |
-| `rXl` | 10 | Cards, bento tiles, dialogs, windows |
-| `rPill` | 999 | Toggle track and thumb only |
+| `rNone` | 0 | Everything rectangular: rows, cells, dividers, buttons, inputs, toolbar buttons, nav and menu items, chips, segmented controls, status blocks, menus, popovers, cards, bento tiles, dialogs, panes, windows |
+| `rPill` | 999 | Toggle track and thumb, and count badges |
 
-Nothing is larger than 10 except a pill toggle. No `rounded-2xl` softness.
+Genuinely circular elements — presence dots, avatars, colour swatches, status dots — stay
+circles. Nothing else carries a rounded corner. The old `rSm`/`rMd`/`rLg`/`rXl` steps are
+gone; do not reintroduce them, and never write a literal `Radius.circular(n)` in a widget —
+use `BorderRadius.zero` (or the radius token) so the rule stays enforceable.
 
 ### 3.3 Control heights (desktop)
 
@@ -324,10 +331,16 @@ On touch targets under 44px, wrap in a transparent 44px hit area — do not enla
 
 ### 3.4 Borders
 
-- **1px `hairline`** — divisions *inside* one surface (row separators, pane splits).
-- **1px `line`** — the edge of an *object* (input, button, card, menu, tile).
+- **1px `hairline`** — divisions *inside* one surface (row separators, group dividers).
+- **1px `line`** — the edge of a nested *object* (input, card, menu, tile), and the **seam**
+  between two regions.
 - **2px `fern`** — focus ring only, offset 2px. Nothing else is 2px.
 - Never a double border: a bordered card inside a bordered pane drops the inner border.
+- Never two abutting borders: where two regions meet there is exactly **one** shared 1px
+  `line` seam, drawn by the shell. A seated pane, title bar, toolbar or footer has no border
+  of its own. Surfaces nested *inside* a pane keep their 1px border — they are just square.
+- Buttons have no border at all except the primary's fill; inputs and the segmented control
+  frame keep theirs.
 
 ---
 
@@ -366,11 +379,11 @@ sentences decide it.
 | One of 2–4 exclusive options, all worth showing | **Segmented control** — word buttons inside a single framed strip | Radio list, dropdown |
 | One of 5+ exclusive options | **Dropdown menu** | Segmented control |
 | One of many, needing search | **Dropdown with filter** or a picker dialog | A very long menu |
-| A command | **Button** — framed, with a verb | An icon alone in a content area |
-| A command among many, repeated | **Toolbar button** — framed, icon + optional label, in a horizontal row | An overflowing menu bar |
+| A command | **Button** — a verb; frameless unless it is the primary (a `fern` fill) | An icon alone in a content area |
+| A command among many, repeated | **Toolbar button** — unframed, icon + optional label, in a horizontal row | An overflowing menu bar |
 | Navigating between sibling regions | **Nav rail** (vertical, left) | Top tabs, unless ≤4 and shallow |
 | Navigating within one region | **Tabs** (underline, sans labels) | A second nav rail |
-| Destructive command | Button with `danger` text on `paper`, or `danger` fill in a confirm dialog | `fern` fill |
+| Destructive command | Frameless button with a `danger` label, or a `danger` fill in a confirm dialog | `fern` fill |
 
 ---
 
@@ -380,13 +393,15 @@ Four levels only.
 
 | Level | What | Treatment |
 |---|---|---|
-| 0 — flat | Panes, cards, bento tiles, table rows | No shadow. 1px `line` border. |
+| 0 — seated | Panes, title bar, toolbar, footer | No shadow and no border of their own. Adjacent regions share one 1px `line` seam. |
+| 0 — flat | Cards, bento tiles, table rows, fields nested in a pane | No shadow. 1px `line` border. |
 | 1 — raised | Popovers, dropdown menus, tooltips, autocomplete | 1px `line` + `0 1px 2px rgba(27,32,26,.06), 0 8px 20px -10px rgba(27,32,26,.22)` |
 | 2 — window | Floating windows, side sheets | 1px `line` + `0 1px 2px rgba(27,32,26,.08), 0 14px 36px -14px rgba(27,32,26,.30)` |
 | 3 — modal | Dialogs over a `scrim` | Same as level 2, plus the scrim |
 
 **Cards never carry a shadow.** If a card looks flat next to a menu, that is correct — the
-menu is above the page and the card is on it.
+menu is above the page and the card is on it. Menus, popovers and dialogs float, so they keep
+both their 1px `line` border and their shadow; a seated region has neither.
 
 ```dart
 const cfMenuShadow = <BoxShadow>[
@@ -405,9 +420,11 @@ const cfWindowShadow = <BoxShadow>[
 
 ### 6.1 Window / page chrome
 
-A cream title bar — **not dark**. 44px tall, `bar` background, 1px `hairline` bottom border,
-title in Solway `titleMedium` sentence case at the left (optionally preceded by an 18px app
-mark), window/close controls at the right as 32px icon buttons.
+A cream title bar — **not dark**. Full-bleed, 44px tall, `bar` background, square, a 1px
+`line` bottom seam and no other border, title in Solway `titleMedium` sentence case at the
+left (optionally preceded by an 18px app mark), window/close controls at the right as 32px
+icon buttons. There is no window margin: the bar runs to the window edge, and the body sits
+directly beneath the seam.
 
 ```dart
 PreferredSize(
@@ -415,7 +432,7 @@ PreferredSize(
   child: DecoratedBox(
     decoration: const BoxDecoration(
       color: CF.bar,
-      border: Border(bottom: BorderSide(color: CF.hairline)),
+      border: Border(bottom: BorderSide(color: CF.line)),
     ),
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: Sp.m),
@@ -434,19 +451,22 @@ PreferredSize(
 | Variant | Fill | Border | Text |
 |---|---|---|---|
 | Primary | `fern` → `fernHover` on hover | none | `onFern`, label 500 |
-| Secondary | `paper` → `inset` on hover | 1px `line` → `muted` on hover | `ink`, label 400 |
+| Secondary | transparent → `hover` on hover, `pressed` on press | none | `ink`, label 400 |
 | Quiet | transparent → `hover` | none | `ink` |
-| Destructive | `paper` | 1px `line` | `danger` |
+| Destructive | transparent → `dangerWash` on hover | none | `danger` |
 | Destructive-confirm (in dialog) | `danger` | none | `paper` |
+| Disabled (any variant) | none | none | `faint` |
 
-One primary per view. Radius 7. Height 36 (32 for the small/toolbar size).
+Every variant but the primary is **frameless** — a bare label/icon target. One primary per
+view. Radius 0. Height 36 (32 for the small/toolbar size). Text inputs and the segmented
+control frame are not buttons: they keep their 1px `line` frame, square.
 
 ```dart
 final cfPrimaryButton = FilledButton.styleFrom(
   backgroundColor: CF.fern, foregroundColor: CF.onFern,
   disabledBackgroundColor: CF.inset, disabledForegroundColor: CF.faint,
   minimumSize: const Size(0, 36), padding: const EdgeInsets.symmetric(horizontal: 17),
-  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(7))),
+  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
   textStyle: cfTextTheme.labelLarge,
 ).copyWith(
   backgroundColor: WidgetStateProperty.resolveWith((s) =>
@@ -455,12 +475,27 @@ final cfPrimaryButton = FilledButton.styleFrom(
       : CF.fern),
 );
 
+// Secondary, quiet and destructive are all frameless: no side, no fill, a wash on hover.
 final cfSecondaryButton = OutlinedButton.styleFrom(
-  backgroundColor: CF.paper, foregroundColor: CF.ink,
-  side: const BorderSide(color: CF.line),
+  backgroundColor: Colors.transparent, foregroundColor: CF.ink,
+  disabledForegroundColor: CF.faint,
+  side: BorderSide.none,
   minimumSize: const Size(0, 36), padding: const EdgeInsets.symmetric(horizontal: 15),
-  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(7))),
+  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
   textStyle: cfTextTheme.labelLarge?.copyWith(fontWeight: FontWeight.w400),
+).copyWith(
+  backgroundColor: WidgetStateProperty.resolveWith((s) =>
+      s.contains(WidgetState.pressed) ? CF.pressed
+      : s.contains(WidgetState.hovered) ? CF.hover
+      : Colors.transparent),
+);
+
+final cfDestructiveButton = cfSecondaryButton.copyWith(
+  foregroundColor: const WidgetStatePropertyAll(CF.danger),
+  backgroundColor: WidgetStateProperty.resolveWith((s) =>
+      s.contains(WidgetState.pressed) ? CF.pressed
+      : s.contains(WidgetState.hovered) ? CF.dangerWash
+      : Colors.transparent),
 );
 ```
 
@@ -515,8 +550,8 @@ class CfSettingRow extends StatelessWidget {
 
 ### 6.4 Segmented control (2–4 exclusive options)
 
-Word buttons inside **one frame**: 1px `line`, radius 8, 2px inner padding, `inset` fill.
-Cells are label-only (13px), 30px tall, radius 6. The selected cell is `paper` with a
+Word buttons inside **one frame**: 1px `line`, square, 2px inner padding, `inset` fill.
+Cells are label-only (13px), 30px tall, square. The selected cell is `paper` with a
 1px/2px soft shadow and 500 weight — it reads as a raised chip inside the frame. On dense or
 pixel-adjacent surfaces the selected cell may instead invert to `fern`/`onFern` with hard
 2px `line` dividers between cells; pick one convention per app and keep it.
@@ -531,19 +566,19 @@ final cfSegmentedTheme = SegmentedButtonThemeData(
     textStyle: WidgetStatePropertyAll(cfTextTheme.labelMedium),
     side: const WidgetStatePropertyAll(BorderSide.none),
     shape: const WidgetStatePropertyAll(RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(6)))),
+        borderRadius: BorderRadius.zero)),
     padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 13)),
     minimumSize: const WidgetStatePropertyAll(Size(0, 30)),
   ),
 );
 // Wrap the SegmentedButton in a Container with color: CF.inset,
-// border: Border.all(color: CF.hairline), radius 8, padding 2,
+// border: Border.all(color: CF.line), BorderRadius.zero, padding 2,
 // and pass showSelectedIcon: false — the checkmark is not part of this system.
 ```
 
 ### 6.5 Text fields
 
-36px tall, `paper` fill, 1px `line`, radius 7, 12px horizontal padding, body text.
+36px tall, `paper` fill, 1px `line`, square, 12px horizontal padding, body text.
 Focus: 1px border becomes `fern` **plus** a 2px `fern` ring offset 2px. Error: `danger`
 border, message below in `caption`/`danger`, one line, stating the fix.
 Label sits **above** the field in `bodyMedium`; placeholder is `faint` and never replaces a
@@ -552,25 +587,25 @@ label.
 ### 6.6 Status block
 
 The pattern for "here is the current state of something": `inset` fill, 1px `hairline`,
-radius 8, 13px padding, a 19px semantic glyph, a `bodyMedium` 500 headline, a `caption`
+square, 13px padding, a 19px semantic glyph, a `bodyMedium` 500 headline, a `caption`
 `muted` sub-line carrying the timestamp, and an optional secondary button at the right.
 When the state is *actionable* (an update is waiting), the block inverts to `fern` with
 `onFern` text — this is the one place a large fern surface is allowed.
 
 ### 6.7 Progress
 
-Linear only. 16px tall including a 2px `line` frame, `paper` interior, fern fill. Render the
+Linear only. 16px tall including a 1px `line` frame, `paper` interior, fern fill. Render the
 fill as discrete 6px blocks with 2px gaps and animate width with a **stepped** curve — the
 meter should read as counting, not sliding. A percentage label sits right, `muted`, tabular.
 
 ### 6.8 Tooltips, toasts, banners
 
-- **Tooltip**: `ink` fill, `paper` text, radius 6, 8×10 padding, caption size, 400ms delay.
+- **Tooltip**: `ink` fill, `paper` text, square, 8×10 padding, caption size, 400ms delay.
   The one place ink is used as a surface.
-- **Toast**: bottom-left, `paper`, 1px `line`, level-1 shadow, one sentence + optional
-  "Undo" in `slate`. 6s.
-- **Banner**: full-width inside its pane, radius 8, `warningWash`/`dangerWash` fill, 1px
-  border in the matching semantic colour at 30% (`warning`/`danger`), `ink` text, one
+- **Toast**: bottom-left, `paper`, 1px `line`, square, level-1 shadow, one sentence +
+  optional "Undo" in `slate`. 6s.
+- **Banner**: full-width inside its pane, square, `warningWash`/`dangerWash` fill, 1px
+  border in the matching semantic colour at 35% (`warning`/`danger`), `ink` text, one
   sentence, one action on the right.
 
 ---
@@ -587,7 +622,7 @@ children remain traceable. Icons are 16px, `muted` when unselected.
 
 **Rows** — folder name in `bodyMedium`, truncated with ellipsis in the middle for long names
 (preserve the extension). A right-aligned `caption`/`muted` tabular count or size. Selected
-row is a full-bleed `fern` block, radius 0 (or 6 if the tree is inset in a card), text and
+row is a full-bleed `fern` block, square, text and
 icons in `onFern`, and the guide rails hidden inside the selection. Hover is `hover` wash.
 Multi-select uses the same fill; the focus row adds a 2px `fern` ring.
 
@@ -641,16 +676,18 @@ TreeSliver<FileNode>(
 
 ---
 
-## 8. Toolbar — framed buttons in a horizontal list
+## 8. Toolbar — unframed buttons in a horizontal list
 
-The toolbar is a **row of individually framed buttons**, not a strip of bare icons.
+The toolbar is a **row of unframed icon/label targets**. Nothing in it carries a frame; the
+only filled button is one whose mode is active.
 
-**Container** — 48px tall, `bar` fill, 1px `hairline` bottom border, 12px horizontal padding.
-It never carries a shadow and never goes dark.
+**Container** — full-bleed, 48px tall, `bar` fill, square, a 1px `line` seam on the edge
+where it meets the next region (bottom for a header toolbar, top for a footer toolbar) and no
+other border. It never carries a shadow and never goes dark.
 
-**Buttons** — 32px tall, `paper` fill, 1px `line`, radius 7, 6px gap between siblings.
+**Buttons** — 32px tall, square, transparent fill, **no border**, 6px gap between siblings.
 Icon-only buttons are 32×32 with a 16px glyph; labelled buttons take 13px sans with an 8px
-icon-to-label gap. Hover: `inset` fill, border `muted`. Pressed: `pressed` wash.
+icon-to-label gap. Hover: `hover` wash. Pressed: `pressed` wash.
 **Toggled-on** (a mode is active): `fern` fill, `onFern` glyph — this is a state, not a
 hover, and it persists.
 
@@ -659,11 +696,11 @@ hover, and it persists.
 the destructive cluster is last and separated by 16px.
 
 **Overflow** — never wrap to a second row. Below the width where all clusters fit, collapse
-the right-most clusters into a single framed "More" button (⋯) that opens a dropdown
-containing the same commands with the same labels and shortcuts.
+the right-most clusters into a single "More" button (⋯) that opens a dropdown containing the
+same commands with the same labels and shortcuts.
 
-**Search** in a toolbar is a 32px framed field, 200px wide, growing to 280px on focus in
-140ms.
+**Search** in a toolbar is a 32px field — an input, so it keeps its 1px `line` frame, square
+— 200px wide, growing to 280px on focus in 140ms.
 
 ```dart
 class CfToolbarButton extends StatelessWidget {
@@ -676,15 +713,15 @@ class CfToolbarButton extends StatelessWidget {
     return Tooltip(
       message: label ?? '',
       child: Material(
-        color: active ? CF.fern : CF.paper,
-        shape: RoundedRectangleBorder(
-          side: BorderSide(color: active ? CF.fern : CF.line),
-          borderRadius: const BorderRadius.all(Radius.circular(7)),
+        color: active ? CF.fern : Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          side: BorderSide.none,
+          borderRadius: BorderRadius.zero,
         ),
         child: InkWell(
           onTap: onPressed,
-          hoverColor: active ? CF.fernHover : CF.inset,
-          borderRadius: const BorderRadius.all(Radius.circular(7)),
+          hoverColor: active ? CF.fernHover : CF.hover,
+          borderRadius: BorderRadius.zero,
           child: SizedBox(
             height: 32,
             child: Padding(
@@ -710,11 +747,11 @@ class CfToolbarButton extends StatelessWidget {
 
 ## 9. Dropdown menus
 
-**Surface** — `paper`, 1px `line`, radius 8, level-1 shadow, 6px padding, min-width 180,
+**Surface** — `paper`, 1px `line`, square, level-1 shadow, 6px padding, min-width 180,
 max-width 320, max-height 60% of the window with internal scrolling. It opens 4px below its
 anchor, left-aligned to it, and flips above when there is no room.
 
-**Items** — 32px tall, radius 6, 10px horizontal padding, label 13px `ink`. Optional 16px
+**Items** — 32px tall, square, 10px horizontal padding, label 13px `ink`. Optional 16px
 leading icon in `muted` (8px gap). A right-aligned keyboard shortcut in `caption`/`faint`,
 tabular. Hover fills the item with `hover`; the keyboard-focused item uses the same wash
 plus a 2px `fern` ring inset.
@@ -737,7 +774,7 @@ MenuAnchor(
     padding: const WidgetStatePropertyAll(EdgeInsets.all(6)),
     shape: const WidgetStatePropertyAll(RoundedRectangleBorder(
       side: BorderSide(color: CF.line),
-      borderRadius: BorderRadius.all(Radius.circular(8)),
+      borderRadius: BorderRadius.zero,
     )),
   ),
   menuChildren: [
@@ -775,7 +812,7 @@ project overview, a library home. It is not a replacement for a table.
 (which are `paper`) separate without shadows. Row height unit 88px; tiles span 1, 2 or 3
 units tall.
 
-**Tile** — `paper`, 1px `line`, radius 10, 16px padding, no shadow, no hover lift. A tile
+**Tile** — `paper`, 1px `line`, square, 16px padding, no shadow, no hover lift. A tile
 has: a Solway `titleMedium` title, at most **one** primary datum in Instrument Sans 28/500
 tabular, and at most **one** fern element (a button, a chip, or a bar) — a tile with two
 fern things is over-designed. An optional 12.5px `muted` sub-line carries the timestamp.
@@ -825,9 +862,10 @@ LayoutBuilder(builder: (context, c) {
 - **Numeric columns** are right-aligned and tabular; text columns left.
 - **Row actions** appear on hover at the right as 28px quiet icon buttons; the destructive
   one is `danger`.
-- **Master/detail**: rail 168–220px, list 260–320px, detail flexible. Dividers are 1px
-  `hairline`; a draggable divider is a 1px line with an 8px invisible hit area and
-  `SystemMouseCursors.resizeColumn`. Flutter has no first-party splitter — hand-roll it or
+- **Master/detail**: rail 168–220px, list 260–320px, detail flexible. The columns butt
+  against each other with no gap; each boundary is a single 1px `line` seam drawn once, not a
+  border on both panes. A draggable divider is that same 1px seam with an 8px invisible hit
+  area and `SystemMouseCursors.resizeColumn`. Flutter has no first-party splitter — hand-roll it or
   use `multi_split_view`.
 
 ---
@@ -839,7 +877,7 @@ LayoutBuilder(builder: (context, c) {
 - **No filled icon set**, no duotone, no emoji as an interface element.
 - Illustration and empty-state art: flat shapes in `sage`, `inset`, and `line` with `ink`
   linework — never gradients, never photographs behind text.
-- The app mark is a sprite/monogram on `sage` with `onSage` linework, radius 11 at 42px.
+- The app mark is a sprite/monogram on `sage` with `onSage` linework, square, 42px.
 - Charts: `fern` for the primary series, `sage` and `slate` for others, `hairline` gridlines,
   `muted` axis labels, tabular numerals, and a single emphasised endpoint dot.
 
@@ -851,7 +889,7 @@ LayoutBuilder(builder: (context, c) {
   pane transition. Curve `Curves.easeOut`. Nothing over 240ms.
 - **Never animate**: layout width on hover, list reordering, page transitions with slides
   longer than 8px, anything decorative.
-- **Focus** is always visible: 2px `fern` ring, 2px offset, matching the control's radius.
+- **Focus** is always visible: 2px `fern` ring, 2px offset, square like the control.
   Never remove it, including on mouse users.
 - Honour `MediaQuery.disableAnimations` / reduced motion: drop to 0ms, keep end states.
 - All interactive text meets 4.5:1; `faint` is disabled-only.
@@ -865,13 +903,14 @@ LayoutBuilder(builder: (context, c) {
 
 Apply in order:
 
-1. **Find the nearest sanctioned component** and reuse its geometry (height, radius, border,
-   padding) exactly. A new "chip" borrows the menu item's height and the segmented cell's
-   radius; it does not invent 5px.
-2. **Snap to the scales.** Any new spacing, radius, or size must come from §3.
+1. **Find the nearest sanctioned component** and reuse its geometry (height, border,
+   padding) exactly. A new "chip" borrows the menu item's height; its radius, like
+   everything else's, is 0.
+2. **Snap to the scales.** Any new spacing or size must come from §3, and any radius is 0.
 3. **Ask what the colour means.** If the new element is not "where you are" or "this
-   commits", it does not get fern. Default to `ink` on `paper` with a `line` border.
-4. **Prefer a hairline to a fill; prefer a fill to a shadow.**
+   commits", it does not get fern. Default to `ink` on `paper`, with a `line` border only if
+   it is a nested object rather than a seated region.
+4. **Prefer a seam to a gap; prefer a hairline to a fill; prefer a fill to a shadow.**
 5. **Give the state a timestamp** if it can go stale.
 6. **Name it as the user would.** Controls and headings use the user's noun, not the
    system's — "Notifications", not "Webhook config".
@@ -903,8 +942,10 @@ Ship a screen only when all of these are true:
 - [ ] Every header is Solway; every value, label, and number is Instrument Sans.
 - [ ] No monospace; every number that lines up uses tabular figures.
 - [ ] No ALL-CAPS text.
-- [ ] Cards flat, menus shadowed, dialogs scrimmed — no card shadows.
-- [ ] Every spacing, radius and height came from §3.
+- [ ] Panes seated and borderless; cards flat, menus shadowed, dialogs scrimmed — no card shadows.
+- [ ] Every spacing and height came from §3; every radius is 0, bar a pill toggle or count badge.
+- [ ] Nothing rectangular has a rounded corner.
+- [ ] Regions meet on one shared 1px `line` seam — no gaps between panes, no doubled borders.
 - [ ] Booleans are toggles; 2–4 exclusive options are a framed segmented control; 5+ is a menu.
 - [ ] Every stale-able state shows a timestamp.
 - [ ] Focus rings visible on every interactive element; icon-only controls have tooltips + semantics.
@@ -933,13 +974,13 @@ ThemeData cfTheme() => ThemeData(
     color: CF.paper, elevation: 0, margin: EdgeInsets.zero,
     shape: RoundedRectangleBorder(
       side: BorderSide(color: CF.line),
-      borderRadius: BorderRadius.all(Radius.circular(10))),
+      borderRadius: BorderRadius.zero),
   ),
   dialogTheme: const DialogThemeData(
     backgroundColor: CF.paper, elevation: 0, surfaceTintColor: Colors.transparent,
     shape: RoundedRectangleBorder(
       side: BorderSide(color: CF.line),
-      borderRadius: BorderRadius.all(Radius.circular(10))),
+      borderRadius: BorderRadius.zero),
   ),
   tabBarTheme: const TabBarThemeData(
     labelColor: CF.ink, unselectedLabelColor: CF.muted,
@@ -947,7 +988,7 @@ ThemeData cfTheme() => ThemeData(
   ),
   tooltipTheme: const TooltipThemeData(
     decoration: BoxDecoration(color: CF.ink,
-      borderRadius: BorderRadius.all(Radius.circular(6))),
+      borderRadius: BorderRadius.zero),
     textStyle: TextStyle(color: CF.paper, fontSize: 12.5),
     waitDuration: Duration(milliseconds: 400),
   ),
@@ -957,16 +998,16 @@ ThemeData cfTheme() => ThemeData(
     hintStyle: cfTextTheme.bodyMedium?.copyWith(color: CF.faint),
     border: const OutlineInputBorder(
       borderSide: BorderSide(color: CF.line),
-      borderRadius: BorderRadius.all(Radius.circular(7))),
+      borderRadius: BorderRadius.zero),
     enabledBorder: const OutlineInputBorder(
       borderSide: BorderSide(color: CF.line),
-      borderRadius: BorderRadius.all(Radius.circular(7))),
+      borderRadius: BorderRadius.zero),
     focusedBorder: const OutlineInputBorder(
       borderSide: BorderSide(color: CF.fern),
-      borderRadius: BorderRadius.all(Radius.circular(7))),
+      borderRadius: BorderRadius.zero),
     errorBorder: const OutlineInputBorder(
       borderSide: BorderSide(color: CF.danger),
-      borderRadius: BorderRadius.all(Radius.circular(7))),
+      borderRadius: BorderRadius.zero),
   ),
   navigationRailTheme: const NavigationRailThemeData(
     backgroundColor: CF.inset,
@@ -994,6 +1035,10 @@ deprecated `MaterialState*`.
 - Do not add shadows to cards, tiles, table rows, or nav items.
 - Do not use gradients, glassmorphism, blur, or a coloured hero.
 - Do not use emoji in the interface.
-- Do not exceed radius 10 (except the pill toggle).
+- Do not put a rounded corner on any rectangular surface (the pill toggle and count badge
+  are the only exceptions).
+- Do not use a gap as a separator between regions, and do not abut two borders where one
+  shared seam belongs.
+- Do not frame a button other than the primary, or frame a toolbar button.
 - Do not animate anything longer than 240ms or with a bounce/elastic curve.
 - Do not replace a toggle with a checkbox for a setting, or a checkbox with a toggle for selection.

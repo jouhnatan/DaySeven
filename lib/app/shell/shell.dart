@@ -76,103 +76,95 @@ class DsShell extends ConsumerWidget {
         body: Column(
           children: [
             Expanded(
-              child: Padding(
-                // The bottom bar supplies the gap beneath the islands, so that
-                // it matches the gap between them.
-                padding: const EdgeInsets.fromLTRB(
-                  DsSpace.pane,
-                  DsSpace.pane,
-                  DsSpace.pane,
-                  0,
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final widths = ref.watch(paneWidthsProvider);
-                    final panes = ref.read(paneWidthsProvider.notifier);
-                    final visibility = ref.watch(paneVisibilityProvider);
-                    final paneVisibility = ref.read(
-                      paneVisibilityProvider.notifier,
-                    );
-                    final fullyOpenAvailable =
-                        constraints.maxWidth - DsSpace.islandGap * 2;
+              // Seated: the panes run to the window edge, and the seams
+              // between them are the only thing separating one from the next.
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final widths = ref.watch(paneWidthsProvider);
+                  final panes = ref.read(paneWidthsProvider.notifier);
+                  final visibility = ref.watch(paneVisibilityProvider);
+                  final paneVisibility = ref.read(
+                    paneVisibilityProvider.notifier,
+                  );
+                  final fullyOpenAvailable =
+                      constraints.maxWidth - DsSpace.seam * 2;
 
-                    return TweenAnimationBuilder<double>(
-                      tween: Tween<double>(
-                        begin: 1,
-                        end: visibility.knowledgeBase ? 1 : 0,
-                      ),
-                      duration: DsMotion.pane,
-                      curve: Curves.easeInOutCubic,
-                      builder: (context, panelProgress, _) {
-                        final available =
-                            constraints.maxWidth -
-                            DsSpace.islandGap * (1 + panelProgress);
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween<double>(
+                      begin: 1,
+                      end: visibility.knowledgeBase ? 1 : 0,
+                    ),
+                    duration: DsMotion.pane,
+                    curve: Curves.easeInOutCubic,
+                    builder: (context, panelProgress, _) {
+                      final available =
+                          constraints.maxWidth -
+                          DsSpace.seam * (1 + panelProgress);
 
-                        return Column(
-                          children: [
-                            SizedBox(
-                              height: kSearchHeight,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Collaboration needs a server; without
-                                    // one there is nothing to sign in to.
-                                    if (isSupabaseConfigured) ...[
-                                      const AuthButton(),
-                                      const SizedBox(width: DsSpace.controlGap),
-                                    ],
-                                    HamburgerMenuButton(
-                                      entries: [
-                                        HamburgerMenuEntry.toggle(
-                                          label: 'Knowledge Base',
-                                          checked: visibility.knowledgeBase,
-                                          onSelected: paneVisibility
-                                              .toggleKnowledgeBase,
-                                        ),
-                                        if (canOpenNewWindow) ...[
-                                          HamburgerMenuEntry.action(
-                                            label: 'New Window',
-                                            onSelected: () => _openNewWindow(
-                                              context,
-                                              fresh: false,
-                                            ),
-                                          ),
-                                          HamburgerMenuEntry.action(
-                                            label:
-                                                'New Window as '
-                                                'Different Account…',
-                                            onSelected: () => _openNewWindow(
-                                              context,
-                                              fresh: true,
-                                            ),
-                                          ),
-                                        ],
-                                        // Shown with or without a
-                                        // server: the version is worth
-                                        // seeing either way, and the
-                                        // dialog says so itself when
-                                        // there is nothing to check
-                                        // against.
+                      return Column(
+                        children: [
+                          _TitleBar(
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Collaboration needs a server; without
+                                  // one there is nothing to sign in to.
+                                  if (isSupabaseConfigured) ...[
+                                    const AuthButton(),
+                                    const SizedBox(width: DsSpace.controlGap),
+                                  ],
+                                  HamburgerMenuButton(
+                                    entries: [
+                                      HamburgerMenuEntry.toggle(
+                                        label: 'Knowledge Base',
+                                        checked: visibility.knowledgeBase,
+                                        onSelected:
+                                            paneVisibility.toggleKnowledgeBase,
+                                      ),
+                                      if (canOpenNewWindow) ...[
                                         HamburgerMenuEntry.action(
-                                          label: 'Settings',
-                                          onSelected: () =>
-                                              _openAppSettings(context),
+                                          label: 'New Window',
+                                          onSelected: () => _openNewWindow(
+                                            context,
+                                            fresh: false,
+                                          ),
+                                        ),
+                                        HamburgerMenuEntry.action(
+                                          label:
+                                              'New Window as '
+                                              'Different Account…',
+                                          onSelected: () => _openNewWindow(
+                                            context,
+                                            fresh: true,
+                                          ),
                                         ),
                                       ],
-                                    ),
-                                  ],
-                                ),
+                                      // Shown with or without a
+                                      // server: the version is worth
+                                      // seeing either way, and the
+                                      // dialog says so itself when
+                                      // there is nothing to check
+                                      // against.
+                                      HamburgerMenuEntry.action(
+                                        label: 'Settings',
+                                        onSelected: () =>
+                                            _openAppSettings(context),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: DsSpace.islandGap),
-                            Expanded(
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  SizedBox(
-                                    width: widths.rail,
+                          ),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SizedBox(
+                                  width: widths.rail,
+                                  child: DsPane(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
@@ -183,74 +175,62 @@ class DsShell extends ConsumerWidget {
                                                 pendingDifferencesCount,
                                           ),
                                         ),
-                                        const SizedBox(
-                                          height: DsSpace.islandGap,
-                                        ),
+                                        const DsSeam.horizontal(),
                                         const DsMenuHeader('Notifications'),
-                                        const SizedBox(
-                                          height: DsSpace.islandGap,
-                                        ),
                                         const Expanded(
                                           child: NotificationsPanel(),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  _ResizeHandle(
-                                    onDrag: (dx) => panes.dragRail(
-                                      dx,
-                                      available,
-                                      reservedPanelWidth:
-                                          widths.panel * panelProgress,
-                                    ),
+                                ),
+                                _ResizeHandle(
+                                  onDrag: (dx) => panes.dragRail(
+                                    dx,
+                                    available,
+                                    reservedPanelWidth:
+                                        widths.panel * panelProgress,
                                   ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        // Side-menu surfaces sit below a heading.
-                                        // Reserve the same header row here so
-                                        // every workspace starts at one height.
-                                        const DsMenuHeader.spacer(),
-                                        const SizedBox(
-                                          height: DsSpace.islandGap,
-                                        ),
-                                        Expanded(
-                                          child: switch (view) {
-                                            DsView.home => const HomeScreen(),
-                                            DsView.editor => const DsIsland(
-                                              editorSurface: true,
-                                              child: EditorScreen(
-                                                timelineWidget: TimelineWidget(),
-                                                searchCard: DsSearchBar(
-                                                  resultsAbove: true,
-                                                ),
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(
+                                        child: switch (view) {
+                                          DsView.home => const HomeScreen(),
+                                          DsView.editor => const DsPane(
+                                            editorSurface: true,
+                                            child: EditorScreen(
+                                              timelineWidget: TimelineWidget(),
+                                              searchCard: DsSearchBar(
+                                                resultsAbove: true,
                                               ),
                                             ),
-                                            DsView.differences =>
-                                              const DifferencesWorkspace(),
-                                          },
-                                        ),
-                                      ],
-                                    ),
+                                          ),
+                                          DsView.differences =>
+                                            const DifferencesWorkspace(),
+                                        },
+                                      ),
+                                    ],
                                   ),
-                                  _SlidingKnowledgeBasePane(
-                                    progress: panelProgress,
-                                    panelWidth: widths.panel,
-                                    visible: visibility.knowledgeBase,
-                                    onDrag: (dx) =>
-                                        panes.dragPanel(dx, fullyOpenAvailable),
-                                  ),
-                                ],
-                              ),
+                                ),
+                                _SlidingKnowledgeBasePane(
+                                  progress: panelProgress,
+                                  panelWidth: widths.panel,
+                                  visible: visibility.knowledgeBase,
+                                  onDrag: (dx) =>
+                                      panes.dragPanel(dx, fullyOpenAvailable),
+                                ),
+                              ],
                             ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
             ),
             const _BottomBar(),
@@ -362,7 +342,7 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fullWidth = panelWidth + DsSpace.islandGap;
+    final fullWidth = panelWidth + DsSpace.seam;
 
     return SizedBox(
       key: const Key('knowledge-base-slide-region'),
@@ -403,24 +383,66 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
   }
 }
 
-/// The gap between two islands, which is also where they are resized from.
+/// The seam between two panes, which is also where they are resized from.
 ///
-/// It draws nothing: the application background showing between the panes is
-/// the separator, and the cursor is what says the gap can be dragged.
+/// It takes one pixel of layout and draws the line itself. The grab target is
+/// wider than the line and overhangs both neighbours, so a 1px seam is still
+/// comfortable to catch with a mouse without costing the panes any width.
 class _ResizeHandle extends StatelessWidget {
   const _ResizeHandle({required this.onDrag});
 
   final void Function(double delta) onDrag;
 
+  /// How far the drag target reaches either side of the line.
+  static const double _grabOverhang = 3;
+
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeLeftRight,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
-        child: const SizedBox(width: DsSpace.islandGap),
+    return SizedBox(
+      width: DsSpace.seam,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Positioned.fill(child: DsSeam.vertical()),
+          Positioned(
+            top: 0,
+            bottom: 0,
+            left: -_grabOverhang,
+            right: -_grabOverhang,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+/// The strip across the top of the window: the account control and the
+/// application menu, on the toolbar surface, closed by a seam.
+class _TitleBar extends StatelessWidget {
+  const _TitleBar({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: kSearchHeight,
+          padding: const EdgeInsets.symmetric(horizontal: DsSpace.sm),
+          color: context.ds.bar,
+          child: child,
+        ),
+        const DsSeam.horizontal(),
+      ],
     );
   }
 }
@@ -428,8 +450,8 @@ class _ResizeHandle extends StatelessWidget {
 const double _kToolbarIslandVerticalPadding = 6;
 
 /// The formatting toolbar and its overflow menu while the Editor is active.
-/// Other views keep the same taller footprint so the three main islands do not
-/// change height when the workspace changes.
+/// Other views keep the same taller footprint so the panes above do not change
+/// height when the workspace changes.
 class _BottomBar extends ConsumerWidget {
   const _BottomBar();
 
@@ -439,20 +461,14 @@ class _BottomBar extends ConsumerWidget {
     final showingEditor = view == DsView.editor;
 
     // With nothing being edited there is no toolbar, and the bar has to look
-    // exactly as it did before there was one — gap included.
+    // exactly as it did before there was one.
     final editing = showingEditor && ref.watch(editingFocusProvider) != null;
 
     if (editing) {
       final widths = ref.watch(paneWidthsProvider);
       final visibility = ref.watch(paneVisibilityProvider);
 
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(
-          DsSpace.pane,
-          DsSpace.islandGap,
-          DsSpace.pane,
-          DsSpace.pane,
-        ),
+      return _Footer(
         child: LayoutBuilder(
           builder: (context, constraints) => TweenAnimationBuilder<double>(
             tween: Tween<double>(
@@ -463,11 +479,9 @@ class _BottomBar extends ConsumerWidget {
             curve: Curves.easeInOutCubic,
             builder: (context, panelProgress, _) => Row(
               children: [
-                SizedBox(width: widths.rail + DsSpace.islandGap),
+                SizedBox(width: widths.rail + DsSpace.seam),
                 const Expanded(child: _EditingToolbarIsland()),
-                SizedBox(
-                  width: (widths.panel + DsSpace.islandGap) * panelProgress,
-                ),
+                SizedBox(width: (widths.panel + DsSpace.seam) * panelProgress),
               ],
             ),
           ),
@@ -475,10 +489,7 @@ class _BottomBar extends ConsumerWidget {
       );
     }
 
-    return Padding(
-      // The islands sit one island-gap above the bar, the same distance that
-      // separates them from each other; below it is the window margin.
-      padding: const EdgeInsets.fromLTRB(0, DsSpace.islandGap, 0, DsSpace.pane),
+    return _Footer(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -498,16 +509,35 @@ class _BottomBar extends ConsumerWidget {
   }
 }
 
+/// The full-width strip across the bottom of the window, closed by a seam
+/// where it meets the panes above it.
+class _Footer extends StatelessWidget {
+  const _Footer({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const DsSeam.horizontal(),
+        ColoredBox(color: context.ds.island, child: child),
+      ],
+    );
+  }
+}
+
 /// The editor-width surface that carries the formatting and review buttons.
 ///
-/// Its parent mirrors the shell's resizable side-pane slots, so this island's
+/// Its parent mirrors the shell's resizable side-pane slots, so this surface's
 /// horizontal bounds always follow the editor above it.
 class _EditingToolbarIsland extends StatelessWidget {
   const _EditingToolbarIsland();
 
   @override
   Widget build(BuildContext context) {
-    return DsIsland(
+    return DsPane(
       key: const Key('editing-toolbar-island'),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -535,7 +565,7 @@ class _EditingToolbarIsland extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: DsSpace.islandGap),
+            const SizedBox(width: DsSpace.gap),
             const DocumentPresenceIndicator(),
             const DocumentReviewSyncIndicator(),
             const SizedBox(width: DsSpace.controlGap),

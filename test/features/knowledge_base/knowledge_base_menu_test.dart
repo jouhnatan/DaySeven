@@ -312,9 +312,10 @@ void main() {
     expect(
       find.ancestor(
         of: find.text('Knowledge Base'),
-        matching: find.byType(DsIsland),
+        matching: find.byType(DsPane),
       ),
-      findsNothing,
+      findsOneWidget,
+      reason: 'the heading is a section row inside the panel surface',
     );
     expect(find.text('MyWorld'), findsOneWidget);
     expect(
@@ -581,7 +582,7 @@ void main() {
     expect(find.text('Open a folder…'), findsOneWidget);
     expect(find.byTooltip('Sync Knowledge Base'), findsNothing);
     expect(find.byTooltip('Knowledge Base settings'), findsNothing);
-    expect(find.byType(DsIsland), findsNothing);
+    expect(find.byType(DsPane), findsOneWidget);
   });
 
   testWidgets('the gear hands the Knowledge Base section up to be opened', (

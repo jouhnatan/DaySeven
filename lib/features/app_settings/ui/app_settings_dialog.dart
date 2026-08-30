@@ -532,7 +532,7 @@ class _UpdateStatusBlock extends ConsumerWidget {
                 borderRadius: const BorderRadius.all(DsRadius.row),
               ),
               child: ClipRRect(
-                borderRadius: const BorderRadius.all(Radius.circular(3)),
+                borderRadius: const BorderRadius.all(DsRadius.none),
                 child: LinearProgressIndicator(
                   value: fraction,
                   minHeight: 10,

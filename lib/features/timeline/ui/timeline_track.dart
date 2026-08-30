@@ -402,7 +402,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
                       height: 8,
                       decoration: BoxDecoration(
                         color: isSelected ? itemColor : itemColor.withAlpha(200),
-                        borderRadius: const BorderRadius.all(Radius.circular(4)),
+                        borderRadius: const BorderRadius.all(DsRadius.none),
                       ),
                     ),
                   ],

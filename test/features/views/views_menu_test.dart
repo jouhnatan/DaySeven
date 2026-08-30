@@ -32,9 +32,9 @@ void main() {
     final header = tester.widget<Text>(find.text('Views'));
     expect(header.style?.fontFamily, kUiHeaderFontFamily);
     expect(
-      find.ancestor(of: find.text('Views'), matching: find.byType(DsIsland)),
+      find.ancestor(of: find.text('Views'), matching: find.byType(DsPane)),
       findsNothing,
-      reason: 'the menu heading sits directly on the app background',
+      reason: 'the heading is a section row; the rail surface is the shell\'s',
     );
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Editor'), findsOneWidget);

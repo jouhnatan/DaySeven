@@ -22,13 +22,13 @@ void main() {
     return (container.decoration! as BoxDecoration).color!;
   }
 
-  testWidgets('actionable buttons use the theme highlight when hovered', (
+  testWidgets('actionable buttons are frameless until hovered', (
     tester,
   ) async {
     await tester.pumpWidget(
       app(DsButton(onPressed: () {}, child: const Text('A'))),
     );
-    expect(buttonFill(tester), DsColors.cream.island);
+    expect(buttonFill(tester), Colors.transparent);
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
@@ -36,7 +36,7 @@ void main() {
     await mouse.moveTo(tester.getCenter(find.byType(DsButton)));
     await tester.pumpAndSettle();
 
-    expect(buttonFill(tester), DsColors.cream.selection);
+    expect(buttonFill(tester), DsColors.cream.hover);
   });
 
   testWidgets('a button can override the fill it takes while hovered', (

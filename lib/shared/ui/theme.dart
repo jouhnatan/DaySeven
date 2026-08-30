@@ -35,8 +35,8 @@ abstract final class CF {
 
   // Lines. A hairline divides within one surface; a line is the edge of an
   // object. Nothing else draws structure.
-  static const hairline = Color(0xFFE1DBC4);
-  static const line = Color(0xFFCFC8AE);
+  static const hairline = Color(0xFFD5CEB4);
+  static const line = Color(0xFFC0B89A);
 
   // Ink.
   static const ink = Color(0xFF1B201A);
@@ -180,30 +180,33 @@ class DsColors extends ThemeExtension<DsColors> {
       t < 0.5 ? this : (other as DsColors? ?? this);
 }
 
-/// Corner radii. Nothing is larger than 10 except a pill toggle.
+/// Corner radii. Every rectangular surface is square: panes, cards, menus,
+/// dialogs, buttons, fields and rows all sit at zero. The names survive as
+/// semantic slots so a component still says what kind of thing it is, but only
+/// [pill] and a genuine circle are allowed to curve.
 class DsRadius {
   /// Table cells, full-bleed rows, dividers.
   static const none = Radius.zero;
 
   /// Nav items, menu items, chips, small icon buttons.
-  static const row = Radius.circular(6);
+  static const row = Radius.zero;
 
   /// The wash behind the paragraph being edited.
-  static const block = Radius.circular(6);
+  static const block = Radius.zero;
 
   /// Menu items.
-  static const menuItem = Radius.circular(6);
+  static const menuItem = Radius.zero;
 
   /// Buttons, inputs, toolbar buttons.
-  static const control = Radius.circular(7);
+  static const control = Radius.zero;
 
   /// Segmented controls, status blocks, menus, popovers.
-  static const menu = Radius.circular(8);
+  static const menu = Radius.zero;
 
-  /// Cards, tiles, dialogs, windows.
-  static const island = Radius.circular(10);
+  /// Panes, cards, tiles, dialogs, windows.
+  static const island = Radius.zero;
 
-  /// Toggle track and thumb only.
+  /// Toggle track and thumb, and count badges. The only curve left.
   static const pill = Radius.circular(999);
 }
 
@@ -269,8 +272,12 @@ class DsSpace {
   static const xs = 4.0;
   static const s = 8.0;
 
-  /// The gap that separates the island from the editor.
-  static const islandGap = 10.0;
+  /// The line that separates one region of the shell from the next. Regions
+  /// are seated against each other, so the separator is drawn, not left empty.
+  static const seam = 1.0;
+
+  /// A gap between two controls or stacked surfaces inside one pane.
+  static const gap = 10.0;
   static const pane = 12.0;
   static const sm = 12.0;
   static const row = 6.0;
@@ -321,9 +328,10 @@ class DsMotion {
       : duration;
 }
 
-/// Depth comes from borders, not shadows. There are four levels: flat panes
-/// and cards carry a border and no shadow at all; only things that float above
-/// the page are allowed one.
+/// Depth comes from lines, not shadows. Seated panes carry neither: the seam
+/// between two of them is the whole separation. Nested cards and controls
+/// carry a border and no shadow. Only things that float above the page — menus,
+/// popovers, dialogs — are allowed one.
 const cfMenuShadow = <BoxShadow>[
   BoxShadow(color: Color(0x0F1B201A), blurRadius: 2, offset: Offset(0, 1)),
   BoxShadow(
@@ -407,11 +415,7 @@ ThemeData dsTheme({DsAppSettings? settings}) {
     highlightColor: Colors.transparent,
     hoverColor: c.hover,
     focusColor: c.hover,
-    dividerTheme: DividerThemeData(
-      color: c.border,
-      thickness: 1,
-      space: 1,
-    ),
+    dividerTheme: DividerThemeData(color: c.border, thickness: 1, space: 1),
     textButtonTheme: TextButtonThemeData(
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.resolveWith((states) {
@@ -424,30 +428,37 @@ ThemeData dsTheme({DsAppSettings? settings}) {
           return Colors.transparent;
         }),
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        // Material's default is a rounded rectangle. Nothing here is rounded.
+        shape: const WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(DsRadius.control),
+          ),
+        ),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        backgroundColor: CF.fern,
-        foregroundColor: CF.onFern,
-        disabledBackgroundColor: CF.inset,
-        disabledForegroundColor: CF.faint,
-        minimumSize: const Size(0, DsSize.control),
-        padding: const EdgeInsets.symmetric(horizontal: 17),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(DsRadius.control),
-        ),
-      ).copyWith(
-        backgroundColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.disabled)
-              ? CF.inset
-              : s.contains(WidgetState.hovered) ||
-                    s.contains(WidgetState.pressed)
-              ? CF.fernHover
-              : CF.fern,
-        ),
-        textStyle: WidgetStatePropertyAll(DsType.label(weight: 500)),
-      ),
+      style:
+          FilledButton.styleFrom(
+            backgroundColor: CF.fern,
+            foregroundColor: CF.onFern,
+            disabledBackgroundColor: CF.inset,
+            disabledForegroundColor: CF.faint,
+            minimumSize: const Size(0, DsSize.control),
+            padding: const EdgeInsets.symmetric(horizontal: 17),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(DsRadius.control),
+            ),
+          ).copyWith(
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (s) => s.contains(WidgetState.disabled)
+                  ? CF.inset
+                  : s.contains(WidgetState.hovered) ||
+                        s.contains(WidgetState.pressed)
+                  ? CF.fernHover
+                  : CF.fern,
+            ),
+            textStyle: WidgetStatePropertyAll(DsType.label(weight: 500)),
+          ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
@@ -477,7 +488,8 @@ ThemeData dsTheme({DsAppSettings? settings}) {
     segmentedButtonTheme: SegmentedButtonThemeData(
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.selected) ? CF.paper : Colors.transparent,
+          (s) =>
+              s.contains(WidgetState.selected) ? CF.paper : Colors.transparent,
         ),
         foregroundColor: WidgetStateProperty.resolveWith(
           (s) => s.contains(WidgetState.selected) ? CF.ink : CF.muted,
@@ -574,7 +586,9 @@ TextTheme _cfTextTheme(double scale) {
 
   return TextTheme(
     displayLarge: at(DsType.display()),
-    displayMedium: at(uiHeaderTextStyle(size: 28, weight: 700, height: 34 / 28)),
+    displayMedium: at(
+      uiHeaderTextStyle(size: 28, weight: 700, height: 34 / 28),
+    ),
     displaySmall: at(uiHeaderTextStyle(size: 24, weight: 700, height: 30 / 24)),
     headlineLarge: at(DsType.titleLarge()),
     headlineMedium: at(uiHeaderTextStyle(size: 19, height: 25 / 19)),

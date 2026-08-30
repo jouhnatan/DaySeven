@@ -32,7 +32,7 @@ class _DifferencesWorkspaceState extends ConsumerState<DifferencesWorkspace> {
     final state = ref.watch(differencesStateProvider);
     final proposals = _visible(state.proposals);
 
-    return DsIsland(
+    return DsPane(
       key: const Key('differences-workspace'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -308,7 +308,7 @@ class _CountPill extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
       color: context.ds.pending,
-      borderRadius: BorderRadius.circular(99),
+      borderRadius: BorderRadius.all(DsRadius.pill),
     ),
     child: Text(
       '$count pending',

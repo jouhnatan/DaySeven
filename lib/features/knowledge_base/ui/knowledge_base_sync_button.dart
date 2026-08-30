@@ -108,9 +108,6 @@ class _KnowledgeBaseSyncButtonState
       padding: widget.showLabel
           ? const EdgeInsets.symmetric(horizontal: 12)
           : EdgeInsets.zero,
-      borderRadius: BorderRadius.all(
-        widget.showLabel ? DsRadius.control : DsRadius.island,
-      ),
       child: child,
     );
 
