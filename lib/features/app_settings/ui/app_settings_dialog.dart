@@ -89,8 +89,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
   final Set<String> _workingSettings = {};
   String? _settingsError;
   late AppSettingsSection _section = widget.initialSection;
-  bool _autoUpdate = true;
-  String _channel = 'Stable';
 
   /// A section is listed only when it has something to say. Developer options
   /// are absent in an ordinary build, and there is no Knowledge Base section
@@ -206,52 +204,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
         _Alert(message: message),
       if (state case UpdateFailed(:final message, :final release))
         _Alert(message: message, release: release),
-      DsSettingRow(
-        first: true,
-        label: 'Install updates automatically',
-        helper: 'Applies on next launch',
-        trailing: Switch(
-          value: _autoUpdate,
-          onChanged: (value) => setState(() => _autoUpdate = value),
-        ),
-      ),
-      DsSettingRow(
-        first: true,
-        label: 'Channel',
-        helper: 'Beta builds land about a week early',
-        trailing: DsSegmented<String>(
-          value: _channel,
-          onPick: (value) => setState(() => _channel = value),
-          options: const [
-            DsSegmentedOption(
-              value: 'Stable',
-              semanticLabel: 'Stable',
-              child: Text('Stable'),
-            ),
-            DsSegmentedOption(
-              value: 'Beta',
-              semanticLabel: 'Beta',
-              child: Text('Beta'),
-            ),
-          ],
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.only(top: 14),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: () {},
-              child: Text(
-                "What's new in ${ref.watch(currentVersionProvider).valueOrNull?.name ?? '1.3.7'}",
-                style: uiTextStyle(size: 13, color: CF.slate, weight: 500),
-              ),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 6),
-      Container(height: 1, color: CF.hairline),
     ];
   }
 
@@ -270,7 +222,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       _DeveloperToggleRow(
         first: true,
         key: const Key('app-settings-metadata-toggle'),
-        icon: Icons.folder_open_outlined,
         title: 'Show workspace metadata',
         subtitle: developer.showWorkspaceMetadata
             ? 'metadata/ is visible in the tree and search.'
@@ -388,7 +339,6 @@ class _SectionSwitcher extends StatelessWidget {
 
 class _DeveloperToggleRow extends StatelessWidget {
   const _DeveloperToggleRow({
-    required this.icon,
     required this.title,
     required this.subtitle,
     required this.value,
@@ -398,7 +348,6 @@ class _DeveloperToggleRow extends StatelessWidget {
     super.key,
   });
 
-  final IconData icon;
   final String title;
   final String subtitle;
   final bool value;
