@@ -17,7 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/editing_focus.dart';
-import 'package:dayseven/app/workspace/editing_keybinds.dart';
+import 'package:dayseven/core/keybinds/data/keybind_hash_map.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/presence.dart';
@@ -1432,9 +1432,9 @@ class _TextBlockView extends StatelessWidget {
               meta: defaultTargetPlatform == TargetPlatform.macOS,
               control: defaultTargetPlatform != TargetPlatform.macOS,
             ): const _PublishIntent(),
-            for (final entry in kEditingKeybinds.entries)
+            for (final entry in KeybindHashMap.instance.entries)
               entry.value.activator(defaultTargetPlatform): _FormatIntent(
-                entry.key,
+                entry.key.toEditingFormat(),
               ),
           },
           child: Actions(

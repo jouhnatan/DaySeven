@@ -44,10 +44,10 @@ void main() {
       );
 
       for (final (icon, tooltip) in const [
-        (Icons.format_bold, 'Bold (CTRL+B)'),
-        (Icons.format_italic, 'Italics (CTRL+I)'),
-        (Icons.format_strikethrough, 'Strikethrough (CTRL+SHIFT+X)'),
-        (Icons.format_underlined, 'Underline (CTRL+U)'),
+        (Icons.format_bold, 'Bold (CTRL + B)'),
+        (Icons.format_italic, 'Italics (CTRL + I)'),
+        (Icons.format_strikethrough, 'Strikethrough (CTRL + SHIFT + X)'),
+        (Icons.format_underlined, 'Underline (CTRL + U)'),
       ]) {
         expect(find.byIcon(icon), findsOneWidget);
         expect(
