@@ -18,8 +18,8 @@ none may be added.
 | `paperRaised` | `#FFFDF6` | Rare floating surface with no border. |
 | `inset` | `#F0ECDC` | Recessed regions: nav rails, table headers, status blocks. |
 | `bar` | `#EDE9D9` | Title bars, toolbars. |
-| `hairline` | `#E5E0CD` | Divisions inside one surface: row separators, group dividers. |
-| `line` | `#D7D1BB` | Edges of objects: buttons, inputs, cards, menus. |
+| `hairline` | `#E1DBC4` | Divisions inside one surface: row separators, group dividers. |
+| `line` | `#CFC8AE` | Edges of objects: buttons, inputs, cards, menus. |
 | `ink` | `#1B201A` | Primary text and icons. |
 | `muted` | `#5A6560` | Captions, helper text, timestamps, inactive labels. |
 | `faint` | `#8A9089` | Disabled text and placeholders only. |
@@ -49,6 +49,7 @@ none may be added.
 
 Contrast (measured): ink/paper 15.4:1 · muted/paper 5.7:1 · onFern/fern 11.3:1 ·
 slate/paper 7.0:1 · success/paper 5.6:1 · danger/paper 8.4:1 · warning/paper 4.7:1.
+Non-text (borders only): line/paper 1.56:1 · hairline/paper 1.29:1.
 
 ---
 
