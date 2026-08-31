@@ -27,6 +27,7 @@ import 'package:dayseven/features/hamburger_menu/ui/hamburger_menu_button.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dropdown_menu.dart';
+import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/features/differences/application/differences_navigation.dart';
@@ -395,75 +396,93 @@ class _ResizeGrabStrip extends StatelessWidget {
 /// The strip across the top of the window: the menus beside the window
 /// buttons, Search in the middle of the window, and the account control at the
 /// far end, on the toolbar surface, closed by a seam.
-class _TitleBar extends StatelessWidget {
+class _TitleBar extends StatefulWidget {
   const _TitleBar({required this.leading, required this.trailing});
 
   final List<Widget> leading;
   final List<Widget> trailing;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: kDsTopBarHeight,
-          child: ColoredBox(
-            color: context.ds.bar,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final compact =
-                    constraints.maxWidth < kDsTopBarFullControlsMinWidth;
+  State<_TitleBar> createState() => _TitleBarState();
+}
 
-                return Stack(
-                  children: [
-                    // Search centres on the window, not on whatever the two
-                    // clusters leave between them, so it does not shift when
-                    // the account name changes length. Compact windows keep a
-                    // symmetric clear area for the native buttons and Menu.
-                    Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: compact ? _kCompactTopBarSearchInset : 0,
-                        ),
-                        child: const DsSearchBar(),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: DsSpace.s,
-                        ),
-                        child: Row(
-                          children: [
-                            Row(
-                              key: const Key('title-bar-leading-controls'),
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const _WindowButtonsInset(),
-                                if (!compact) ...leading,
-                              ],
-                            ),
-                            const Spacer(),
-                            Row(
-                              key: const Key('title-bar-trailing-controls'),
-                              mainAxisSize: MainAxisSize.min,
-                              children: compact
-                                  ? [if (trailing.isNotEmpty) trailing.last]
-                                  : trailing,
-                            ),
-                          ],
+class _TitleBarState extends State<_TitleBar> {
+  /// The bar surface itself, which its menus hang from. Held here rather than
+  /// rebuilt each frame so the anchor survives a rebuild of the bar.
+  final _barKey = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    return DsMenuAnchorEdge(
+      surfaceKey: _barKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            key: _barKey,
+            height: kDsTopBarHeight,
+            child: ColoredBox(
+              color: context.ds.bar,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact =
+                      constraints.maxWidth < kDsTopBarFullControlsMinWidth;
+
+                  return Stack(
+                    children: [
+                      // Search centres on the window, not on whatever the two
+                      // clusters leave between them, so it does not shift when
+                      // the account name changes length. Compact windows keep a
+                      // symmetric clear area for the native buttons and Menu.
+                      Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact
+                                ? _kCompactTopBarSearchInset
+                                : 0,
+                          ),
+                          child: const DsSearchBar(),
                         ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                      Positioned.fill(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: DsSpace.s,
+                          ),
+                          child: Row(
+                            children: [
+                              Row(
+                                key: const Key('title-bar-leading-controls'),
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const _WindowButtonsInset(),
+                                  if (!compact) ...widget.leading,
+                                ],
+                              ),
+                              const Spacer(),
+                              Row(
+                                key: const Key('title-bar-trailing-controls'),
+                                mainAxisSize: MainAxisSize.min,
+                                children: compact
+                                    ? [
+                                        if (widget.trailing.isNotEmpty)
+                                          widget.trailing.last,
+                                      ]
+                                    : widget.trailing,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
-        ),
-        const DsSeam.horizontal(),
-      ],
+          const DsSeam.horizontal(),
+        ],
+      ),
     );
   }
 }

@@ -309,7 +309,9 @@ void main() {
     visibility.setKnowledgeBaseVisible(false);
     await tester.pump();
     expect(
-      tester.getSize(find.byKey(const Key('knowledge-base-slide-region'))).width,
+      tester
+          .getSize(find.byKey(const Key('knowledge-base-slide-region')))
+          .width,
       0,
       reason: 'closes instantly on state change without animation lag',
     );
@@ -422,6 +424,55 @@ void main() {
         );
       }
       expect(trafficLightCentre, kDsTopBarHeight / 2);
+    });
+
+    /// The panel a top-bar menu opens, found through one of its entries.
+    Finder menuPanelFor(Finder entry) =>
+        find.ancestor(of: entry, matching: find.byType(Material)).first;
+
+    testWidgets('top-bar menus hang from the bottom edge of the bar', (
+      tester,
+    ) async {
+      await pumpWide(tester);
+
+      await openViews(tester);
+      expect(
+        tester
+            .getRect(menuPanelFor(find.byKey(const Key('views-menu-editor'))))
+            .top,
+        kDsTopBarHeight,
+        reason: 'a menu drops from the bar, not from the control inside it',
+      );
+      await tester.tapAt(const Offset(700, 500));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('hamburger-menu-button')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(menuPanelFor(find.text('Settings'))).top,
+        kDsTopBarHeight,
+      );
+      await tester.tapAt(const Offset(700, 500));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('notifications-bell-button')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const Key('notifications-popover'))).top,
+        kDsTopBarHeight,
+      );
+    });
+
+    testWidgets('a top-bar menu carries the bar surface down with it', (
+      tester,
+    ) async {
+      await pumpWide(tester);
+      await openViews(tester);
+
+      final panel = tester.widget<Material>(
+        menuPanelFor(find.byKey(const Key('views-menu-editor'))),
+      );
+      expect(panel.color, DsColors.cream.bar);
     });
 
     testWidgets('compact windows hide menu items without clipping Search', (

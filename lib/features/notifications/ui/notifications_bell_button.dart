@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/shared/notifications/notification_store.dart';
 import 'package:dayseven/shared/ui/controls.dart';
+import 'package:dayseven/shared/ui/menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 /// Wide enough for a heading and its timestamp on one line, which the rail
@@ -45,7 +46,7 @@ class _NotificationsBellButtonState
       link: _layerLink,
       child: OverlayPortal(
         controller: _portal,
-        overlayChildBuilder: (context) => Stack(
+        overlayChildBuilder: (overlayContext) => Stack(
           children: [
             // Anywhere outside the panel dismisses it.
             Positioned.fill(
@@ -60,7 +61,9 @@ class _NotificationsBellButtonState
                 link: _layerLink,
                 targetAnchor: Alignment.bottomLeft,
                 followerAnchor: Alignment.topLeft,
-                offset: const Offset(0, DsSpace.xs),
+                // The panel hangs from the bottom of the top bar rather than
+                // from the bell, which is inset within it.
+                offset: Offset(0, dsMenuAnchorDrop(context)),
                 child: const _NotificationsPopover(),
               ),
             ),
@@ -125,7 +128,7 @@ class _NotificationsPopover extends StatelessWidget {
         key: const Key('notifications-popover'),
         height: kNotificationsPanelHeight,
         decoration: BoxDecoration(
-          color: colors.island,
+          color: colors.bar,
           borderRadius: const BorderRadius.all(DsRadius.island),
           border: Border.all(color: colors.surfaceOutline, width: 1),
         ),

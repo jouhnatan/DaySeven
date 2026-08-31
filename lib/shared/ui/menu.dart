@@ -139,6 +139,52 @@ class _DsMenuItemState<T> extends PopupMenuItemState<T, DsMenuItem<T>> {
   }
 }
 
+/// Marks the surface that menus opened from inside it should hang from.
+///
+/// A control in the top bar is inset from the bar's own bottom edge, so a menu
+/// dropped from the control alone floats against nothing. Wrapping the bar in
+/// this lets [showDsMenu] — and anchored popovers, through [dsMenuAnchorDrop]
+/// — start at the bar's edge instead, so the menu reads as hanging off the bar
+/// rather than off the button.
+class DsMenuAnchorEdge extends InheritedWidget {
+  const DsMenuAnchorEdge({
+    super.key,
+    required this.surfaceKey,
+    required super.child,
+  });
+
+  /// The key of the surface whose bottom edge menus drop from.
+  final GlobalKey surfaceKey;
+
+  @override
+  bool updateShouldNotify(DsMenuAnchorEdge oldWidget) =>
+      oldWidget.surfaceKey != surfaceKey;
+}
+
+/// The laid-out surface an enclosing [DsMenuAnchorEdge] points at, if any.
+RenderBox? _anchorEdgeBox(BuildContext context) {
+  // Looked up without depending on it: this runs from a callback, and nothing
+  // here needs to rebuild when the anchor changes.
+  final element = context
+      .getElementForInheritedWidgetOfExactType<DsMenuAnchorEdge>();
+  final edge = element?.widget as DsMenuAnchorEdge?;
+  final box = edge?.surfaceKey.currentContext?.findRenderObject() as RenderBox?;
+  return box != null && box.hasSize ? box : null;
+}
+
+/// How far below [context]'s own bottom edge the enclosing anchor surface ends.
+///
+/// Zero when there is no [DsMenuAnchorEdge] above [context], which leaves a
+/// popover hanging directly off its control.
+double dsMenuAnchorDrop(BuildContext context) {
+  final box = context.findRenderObject() as RenderBox?;
+  final edge = _anchorEdgeBox(context);
+  if (box == null || !box.hasSize || edge == null) return 0;
+  final bottom = box.localToGlobal(box.size.bottomLeft(Offset.zero)).dy;
+  final edgeBottom = edge.localToGlobal(edge.size.bottomLeft(Offset.zero)).dy;
+  return edgeBottom - bottom;
+}
+
 /// Shows a DaySeven menu below [context], or at the global pointer [position].
 ///
 /// Dropdown menus open and close instantly without route animation.
@@ -152,7 +198,7 @@ Future<T?> showDsMenu<T>({
   final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
   if (anchor == null || overlay == null) return Future<T?>.value();
 
-  final Rect rect;
+  Rect rect;
   if (position case final point?) {
     final local = overlay.globalToLocal(point);
     rect = Rect.fromLTWH(local.dx, local.dy, 0, 0);
@@ -162,13 +208,25 @@ Future<T?> showDsMenu<T>({
       anchor.localToGlobal(anchor.size.bottomRight(Offset.zero)),
     );
     rect = Rect.fromPoints(topLeft, bottomRight);
+
+    // Inside a marked surface — the top bar — the menu drops from that
+    // surface's bottom edge rather than from the control, so every menu along
+    // the bar opens on the same line.
+    if (_anchorEdgeBox(context) case final edge?) {
+      final edgeBottom = overlay
+          .globalToLocal(edge.localToGlobal(edge.size.bottomLeft(Offset.zero)))
+          .dy;
+      rect = Rect.fromLTWH(rect.left, edgeBottom, rect.width, rect.height);
+    }
   }
 
   final colors = context.ds;
   return showMenu<T>(
     context: context,
     position: RelativeRect.fromRect(rect, Offset.zero & overlay.size),
-    color: colors.island,
+    // The menu carries the bar's surface down with it, so a menu hanging off
+    // the top bar reads as part of the bar rather than as paper over it.
+    color: colors.bar,
     // A menu is above the page rather than on it, so unlike a card it is
     // allowed a shadow. It is the only depth cue the system spends here.
     shadowColor: Theme.of(context).colorScheme.shadow,
