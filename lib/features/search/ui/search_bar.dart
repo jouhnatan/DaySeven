@@ -19,7 +19,7 @@ import 'package:dayseven/features/search/state/search_state.dart';
 /// A little narrower and shorter than macOS Spotlight, which is roughly
 /// 680 x 60.
 const double kSearchWidth = 560;
-const double kSearchHeight = 40;
+const double kSearchHeight = 36;
 
 class DsSearchBar extends ConsumerStatefulWidget {
   const DsSearchBar({super.key});
