@@ -5,7 +5,6 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -160,71 +159,78 @@ class DsShell extends ConsumerWidget {
                             ),
                           ),
                           Expanded(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SizedBox(
-                                  width: widths.rail,
-                                  child: DsPane(
+                            child: _PaneRow(
+                              railSeamLeft: widths.rail,
+                              panelSlotWidth:
+                                  (widths.panel + DsSpace.seam) * panelProgress,
+                              onDragRail: (dx) => panes.dragRail(
+                                dx,
+                                available,
+                                reservedPanelWidth:
+                                    widths.panel * panelProgress,
+                              ),
+                              onDragPanel: panelProgress == 0
+                                  ? null
+                                  : (dx) =>
+                                        panes.dragPanel(dx, fullyOpenAvailable),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    width: widths.rail,
+                                    child: DsPane(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          Expanded(
+                                            child: ViewsMenu(
+                                              pendingDifferencesCount:
+                                                  pendingDifferencesCount,
+                                            ),
+                                          ),
+                                          const DsSeam.horizontal(),
+                                          const DsMenuHeader('Notifications'),
+                                          const Expanded(
+                                            child: NotificationsPanel(),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const DsSeam.vertical(),
+                                  Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
                                         Expanded(
-                                          child: ViewsMenu(
-                                            pendingDifferencesCount:
-                                                pendingDifferencesCount,
-                                          ),
-                                        ),
-                                        const DsSeam.horizontal(),
-                                        const DsMenuHeader('Notifications'),
-                                        const Expanded(
-                                          child: NotificationsPanel(),
+                                          child: switch (view) {
+                                            DsView.home => const HomeScreen(),
+                                            DsView.editor => const DsPane(
+                                              editorSurface: true,
+                                              child: EditorScreen(
+                                                timelineWidget:
+                                                    TimelineWidget(),
+                                                searchCard: DsSearchBar(
+                                                  resultsAbove: true,
+                                                ),
+                                              ),
+                                            ),
+                                            DsView.differences =>
+                                              const DifferencesWorkspace(),
+                                          },
                                         ),
                                       ],
                                     ),
                                   ),
-                                ),
-                                _ResizeHandle(
-                                  onDrag: (dx) => panes.dragRail(
-                                    dx,
-                                    available,
-                                    reservedPanelWidth:
-                                        widths.panel * panelProgress,
+                                  _SlidingKnowledgeBasePane(
+                                    progress: panelProgress,
+                                    panelWidth: widths.panel,
+                                    visible: visibility.knowledgeBase,
                                   ),
-                                ),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Expanded(
-                                        child: switch (view) {
-                                          DsView.home => const HomeScreen(),
-                                          DsView.editor => const DsPane(
-                                            editorSurface: true,
-                                            child: EditorScreen(
-                                              timelineWidget: TimelineWidget(),
-                                              searchCard: DsSearchBar(
-                                                resultsAbove: true,
-                                              ),
-                                            ),
-                                          ),
-                                          DsView.differences =>
-                                            const DifferencesWorkspace(),
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                _SlidingKnowledgeBasePane(
-                                  progress: panelProgress,
-                                  panelWidth: widths.panel,
-                                  visible: visibility.knowledgeBase,
-                                  onDrag: (dx) =>
-                                      panes.dragPanel(dx, fullyOpenAvailable),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -333,13 +339,11 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
     required this.progress,
     required this.panelWidth,
     required this.visible,
-    required this.onDrag,
   });
 
   final double progress;
   final double panelWidth;
   final bool visible;
-  final void Function(double delta) onDrag;
 
   @override
   Widget build(BuildContext context) {
@@ -360,7 +364,7 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _ResizeHandle(onDrag: onDrag),
+                  const DsSeam.vertical(),
                   SizedBox(
                     key: const Key('knowledge-base-pane'),
                     width: panelWidth,
@@ -384,80 +388,84 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
   }
 }
 
-/// The seam between two panes, which is also where they are resized from.
+/// The pane row, with a grab strip floated over each seam.
 ///
-/// It takes one pixel of layout and draws the line itself. The grab target
-/// reaches past the line into both neighbours, so a 1px seam is still
-/// comfortable to catch with a mouse without costing the panes any width.
-class _ResizeHandle extends StatelessWidget {
-  const _ResizeHandle({required this.onDrag});
+/// The seams themselves stay one pixel wide, so the panes keep every pixel of
+/// their width. Resizing is done through a wider transparent strip laid over
+/// the seam: it sits above both neighbours, so the whole strip catches the
+/// pointer rather than only the hairline the neighbours leave exposed.
+class _PaneRow extends StatelessWidget {
+  const _PaneRow({
+    required this.railSeamLeft,
+    required this.panelSlotWidth,
+    required this.onDragRail,
+    required this.onDragPanel,
+    required this.child,
+  });
 
-  final void Function(double delta) onDrag;
+  /// Distance from the row's left edge to the seam beside the rail.
+  final double railSeamLeft;
 
-  /// How far the drag target reaches either side of the line.
-  static const double _grabOverhang = 5;
+  /// Width of the Knowledge Base slot, seam included. Zero while it is closed,
+  /// and part-way through while it slides.
+  final double panelSlotWidth;
+
+  final void Function(double delta) onDragRail;
+
+  /// Null while the Knowledge Base pane is closed, when there is no seam to
+  /// take hold of.
+  final void Function(double delta)? onDragPanel;
+
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: DsSpace.seam,
-      child: _HorizontalHitSlop(
-        slop: _grabOverhang,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.resizeLeftRight,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
-            child: const DsSeam.vertical(),
+    return Stack(
+      children: [
+        child,
+        _ResizeGrabStrip(left: railSeamLeft, onDrag: onDragRail),
+        if (onDragPanel != null)
+          _ResizeGrabStrip(
+            right: panelSlotWidth - DsSpace.seam,
+            onDrag: onDragPanel!,
           ),
+      ],
+    );
+  }
+}
+
+/// A transparent, full-height strip over one seam, which is where a pane is
+/// resized from.
+class _ResizeGrabStrip extends StatelessWidget {
+  const _ResizeGrabStrip({this.left, this.right, required this.onDrag});
+
+  /// Distance from the row's left edge to the seam this strip covers, or from
+  /// the row's right edge for [right]. Exactly one of the two is given.
+  final double? left;
+  final double? right;
+
+  final void Function(double delta) onDrag;
+
+  /// How far the strip reaches past the seam on either side. The seam is a
+  /// hairline, so this is what there is to aim at.
+  static const double _reach = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: left == null ? null : left! - _reach,
+      right: right == null ? null : right! - _reach,
+      top: 0,
+      bottom: 0,
+      width: DsSpace.seam + _reach * 2,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeLeftRight,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
         ),
       ),
     );
-  }
-}
-
-/// Accepts pointers that land within [slop] pixels to either side of the
-/// child, without changing how much room the child takes or how it paints.
-class _HorizontalHitSlop extends SingleChildRenderObjectWidget {
-  const _HorizontalHitSlop({required this.slop, required super.child});
-
-  final double slop;
-
-  @override
-  _RenderHorizontalHitSlop createRenderObject(BuildContext context) =>
-      _RenderHorizontalHitSlop(slop);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderHorizontalHitSlop renderObject,
-  ) {
-    renderObject.slop = slop;
-  }
-}
-
-class _RenderHorizontalHitSlop extends RenderProxyBox {
-  _RenderHorizontalHitSlop(this._slop);
-
-  double _slop;
-
-  set slop(double value) {
-    if (value == _slop) return;
-    _slop = value;
-    markNeedsLayout();
-  }
-
-  @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    final widened =
-        Rect.fromLTWH(-_slop, 0, size.width + _slop * 2, size.height);
-    if (!widened.contains(position)) return false;
-    // Clamp onto the child, so its own hit test sees a pointer inside it.
-    final clamped = Offset(
-      position.dx.clamp(0.0, size.width).toDouble(),
-      position.dy,
-    );
-    return super.hitTest(result, position: clamped);
   }
 }
 
