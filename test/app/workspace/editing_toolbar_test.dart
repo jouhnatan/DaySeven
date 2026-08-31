@@ -424,7 +424,11 @@ void main() {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 3);
 
-    expect(find.text('Differences'), findsOneWidget);
+    expect(
+      find.text('Differences'),
+      findsNothing,
+      reason: 'Differences is named in the Views menu, which is closed',
+    );
     expect(find.byKey(const Key('document-publish-button')), findsOneWidget);
     expect(find.byKey(const Key('document-protection-button')), findsOneWidget);
     await tester.tap(find.byTooltip('Editor menu'));
@@ -433,7 +437,7 @@ void main() {
     expect(find.text('Publish directly'), findsNothing);
     expect(find.text('Sync latest'), findsNothing);
     expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
-    expect(find.text('Differences'), findsNWidgets(2));
+    expect(find.text('Differences'), findsOneWidget);
     expect(
       tester
           .widget<Tooltip>(

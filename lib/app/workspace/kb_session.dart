@@ -218,7 +218,6 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
       relativePath,
       destination,
     );
-    _ref.read(recentEditedDocumentsRevisionProvider.notifier).state++;
     await refreshTree();
   }
 
@@ -256,7 +255,6 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
       destination,
     );
     await store.noteDocumentEdited(session.kb.manifest.kbId, destination);
-    _ref.read(recentEditedDocumentsRevisionProvider.notifier).state++;
     await refreshTree();
     return destination;
   }
@@ -288,7 +286,6 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
 
     final store = await _ref.read(appStoreProvider.future);
     await store.noteDocumentsDeleted(session.kb.manifest.kbId, relativePath);
-    _ref.read(recentEditedDocumentsRevisionProvider.notifier).state++;
     await refreshTree();
   }
 

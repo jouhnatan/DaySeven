@@ -146,7 +146,6 @@ class DocumentController extends StateNotifier<OpenDocument?> {
       session.kb.manifest.kbId,
       current.relativePath,
     );
-    _ref.read(recentEditedDocumentsRevisionProvider.notifier).state++;
   }
 
   @override
@@ -177,25 +176,3 @@ final recentDocumentsProvider = FutureProvider<List<String>>((ref) async {
   return existing;
 });
 
-/// An independent signal for edits that change the persisted recent list.
-/// Keeping it separate from the Knowledge Base controller avoids invalidating
-/// one of that controller's own downstream providers during a move or rename.
-final recentEditedDocumentsRevisionProvider = StateProvider<int>((ref) => 0);
-
-/// The five most recently saved documents in the current Knowledge Base,
-/// filtered to paths that still exist on disk.
-final recentEditedDocumentsProvider = FutureProvider<List<String>>((ref) async {
-  ref.watch(recentEditedDocumentsRevisionProvider);
-  final session = ref.watch(kbSessionProvider);
-  if (session == null) return const [];
-  final store = await ref.watch(appStoreProvider.future);
-  final paths = await store.recentEditedDocuments(session.kb.manifest.kbId);
-  final existing = <String>[];
-  for (final path in paths) {
-    if (await File(session.kb.absolutePathFor(path)).exists()) {
-      existing.add(path);
-      if (existing.length == 5) break;
-    }
-  }
-  return existing;
-});

@@ -1,4 +1,4 @@
-/// The widths of the shell's two side panes.
+/// The width of the shell's Knowledge Base pane.
 library;
 
 import 'dart:async';
@@ -7,25 +7,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/app_store.dart';
 
-/// How wide the two side panes are. The editor takes whatever is left, so the
-/// panes are what the user drags. Persisted, so a window comes back the way it
-/// was left.
+/// How wide the Knowledge Base pane is. The workspace takes whatever is left,
+/// so the pane is what the user drags. Persisted, so a window comes back the
+/// way it was left.
 class PaneWidths {
-  const PaneWidths({this.rail = 140, this.panel = 248});
+  const PaneWidths({this.panel = 248});
 
-  final double rail;
   final double panel;
 
-  static const double minRail = 104;
-  static const double maxRail = 280;
   static const double minPanel = 180;
   static const double maxPanel = 560;
 
-  /// The editor never collapses to nothing, however far a handle is dragged.
+  /// The workspace never collapses to nothing, however far the handle is
+  /// dragged.
   static const double minEditor = 320;
 
-  PaneWidths copyWith({double? rail, double? panel}) =>
-      PaneWidths(rail: rail ?? this.rail, panel: panel ?? this.panel);
+  PaneWidths copyWith({double? panel}) =>
+      PaneWidths(panel: panel ?? this.panel);
 }
 
 class PaneWidthsController extends StateNotifier<PaneWidths> {
@@ -40,28 +38,13 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
     final store = await _ref.read(appStoreProvider.future);
     final widths = await store.paneWidths();
     if (!mounted) return;
-    state = PaneWidths(
-      rail: widths['rail'] ?? state.rail,
-      panel: widths['panel'] ?? state.panel,
-    );
+    state = PaneWidths(panel: widths['panel'] ?? state.panel);
   }
 
-  /// [available] is the width the three panes and their handles share, so a
-  /// drag can be stopped before the editor is squeezed out.
-  void dragRail(double delta, double available, {double? reservedPanelWidth}) {
-    final headroom =
-        available - (reservedPanelWidth ?? state.panel) - PaneWidths.minEditor;
-    final rail = (state.rail + delta)
-        .clamp(PaneWidths.minRail, PaneWidths.maxRail)
-        .clamp(
-          PaneWidths.minRail,
-          headroom.clamp(PaneWidths.minRail, PaneWidths.maxRail),
-        );
-    _set(state.copyWith(rail: rail));
-  }
-
+  /// [available] is the width the workspace, the pane and the handle share, so
+  /// a drag can be stopped before the workspace is squeezed out.
   void dragPanel(double delta, double available) {
-    final headroom = available - state.rail - PaneWidths.minEditor;
+    final headroom = available - PaneWidths.minEditor;
     final panel = (state.panel - delta)
         .clamp(PaneWidths.minPanel, PaneWidths.maxPanel)
         .clamp(
@@ -76,7 +59,6 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
     _saveDebounce?.cancel();
     _saveDebounce = Timer(_saveDelay, () async {
       final store = await _ref.read(appStoreProvider.future);
-      await store.setPaneWidth('rail', state.rail);
       await store.setPaneWidth('panel', state.panel);
     });
   }

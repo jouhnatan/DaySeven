@@ -3,7 +3,7 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   static let defaultTrafficLightsOffsetX: CGFloat = 20.0
-  static let defaultTrafficLightsOffsetY: CGFloat = 18.0
+  static let defaultTrafficLightsOffsetY: CGFloat = 17.0
 
   private var trafficLightsOffsetX: CGFloat = defaultTrafficLightsOffsetX
   private var trafficLightsOffsetY: CGFloat = defaultTrafficLightsOffsetY
@@ -57,6 +57,11 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     titlebarAppearsTransparent = true
+    // The shell draws its own top bar and the traffic lights sit inside it,
+    // which only works if the Flutter surface owns the full window height
+    // rather than starting below a titlebar strip of its own.
+    styleMask.insert(.fullSizeContentView)
+    titleVisibility = .hidden
 
     NotificationCenter.default.addObserver(
       self,

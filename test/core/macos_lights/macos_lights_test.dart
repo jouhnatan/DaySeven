@@ -11,9 +11,9 @@ void main() {
   group('TrafficLightsOffset', () {
     test('standard has expected default offsets', () {
       expect(TrafficLightsOffset.defaultX, 20.0);
-      expect(TrafficLightsOffset.defaultY, 18.0);
+      expect(TrafficLightsOffset.defaultY, 17.0);
       expect(TrafficLightsOffset.standard.x, 20.0);
-      expect(TrafficLightsOffset.standard.y, 18.0);
+      expect(TrafficLightsOffset.standard.y, 17.0);
     });
 
     test('supports custom offsets', () {

@@ -1,7 +1,7 @@
-/// The Search field injected into the Editor's fixed overlay shelf.
+/// The Search field seated in the shell's top bar.
 ///
-/// Shaped after Spotlight: a single rounded field, wider than it is tall, set
-/// on its own rather than stretched across the window. Results come from the
+/// Shaped after Spotlight: a single field, wider than it is tall, set on its
+/// own rather than stretched across the window. Results come from the
 /// Knowledge Base's local FTS index and update on every keystroke, so matching
 /// files appear while the user is still typing a word.
 library;
@@ -22,10 +22,7 @@ const double kSearchWidth = 560;
 const double kSearchHeight = 40;
 
 class DsSearchBar extends ConsumerStatefulWidget {
-  const DsSearchBar({super.key, this.resultsAbove = false});
-
-  /// Opens results above the field when Search is anchored to the bottom edge.
-  final bool resultsAbove;
+  const DsSearchBar({super.key});
 
   @override
   ConsumerState<DsSearchBar> createState() => _DsSearchBarState();
@@ -63,13 +60,9 @@ class _DsSearchBarState extends ConsumerState<DsSearchBar> {
         width: width,
         child: CompositedTransformFollower(
           link: _layerLink,
-          targetAnchor: widget.resultsAbove
-              ? Alignment.topLeft
-              : Alignment.bottomLeft,
-          followerAnchor: widget.resultsAbove
-              ? Alignment.bottomLeft
-              : Alignment.topLeft,
-          offset: Offset(0, widget.resultsAbove ? -4 : 4),
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: const Offset(0, 4),
           // Keep result clicks in the field's tap region. Otherwise TextField
           // unfocuses on mouse-down and removes this overlay before the row's
           // onTap can run on mouse-up.

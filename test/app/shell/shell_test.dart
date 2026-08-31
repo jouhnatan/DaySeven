@@ -1,10 +1,11 @@
+import 'dart:io';
+
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
-import 'package:dayseven/features/views/ui/views_menu.dart';
 import 'package:dayseven/app/shell/shell.dart';
 import 'package:dayseven/app/shell/pane_visibility.dart';
 import 'package:flutter/material.dart';
@@ -16,36 +17,86 @@ Widget harness({List<Override> overrides = const []}) => ProviderScope(
   child: MaterialApp(theme: dsTheme(), home: const DsShell()),
 );
 
+/// Opens the Views menu, which is where everything placeable is listed.
+Future<void> openViews(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('views-menu-button')));
+  await tester.pumpAndSettle();
+}
+
+Future<void> place(WidgetTester tester, String item) async {
+  await openViews(tester);
+  await tester.tap(find.byKey(Key('views-menu-$item')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
-  testWidgets('opens to Home, showing the greeting and both cards', (
+  testWidgets('opens to the Editor, which invites a Knowledge Base', (
     tester,
   ) async {
     await tester.pumpWidget(harness());
     await tester.pump();
 
-    expect(find.text('Ready to build, Guest?'), findsOneWidget);
-    expect(find.text('Recent Files'), findsOneWidget);
-    expect(find.text('User Settings'), findsOneWidget);
+    expect(find.byType(EditorScreen), findsOneWidget);
     expect(
-      find.ancestor(
-        of: find.byKey(const Key('home-workspace')),
-        matching: find.byType(DsPane),
-      ),
+      find.text('Open a document from the Knowledge Base.'),
       findsOneWidget,
-      reason: 'Home is a seated pane like every other region',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('centre-workspace')),
+        matching: find.byType(EditorScreen),
+        matchRoot: true,
+      ),
+      findsWidgets,
+      reason: 'the Editor holds the centre slot',
+    );
+    expect(
+      tester.widget<DsPane>(find.byKey(const Key('centre-workspace'))),
+      isA<DsPane>(),
+      reason: 'the workspace is a seated pane like every other region',
     );
   });
 
-  testWidgets('the Views menu lists Home, Editor, and Differences', (
+  testWidgets('the top bar carries the menus, Search and the account', (
     tester,
   ) async {
     await tester.pumpWidget(harness());
     await tester.pump();
 
-    expect(find.text('Views'), findsOneWidget);
-    expect(find.text('Home'), findsOneWidget);
+    expect(find.byKey(const Key('views-menu-button')), findsOneWidget);
+    expect(find.byKey(const Key('notifications-bell-button')), findsOneWidget);
+    expect(find.byKey(const Key('hamburger-menu-button')), findsOneWidget);
+    expect(find.byType(DsSearchBar), findsOneWidget);
+  });
+
+  testWidgets('the Views menu lists Editor, Differences and Knowledge Base', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness());
+    await tester.pump();
+    await openViews(tester);
+
     expect(find.text('Editor'), findsOneWidget);
     expect(find.text('Differences'), findsOneWidget);
+    expect(
+      find.text('Knowledge Base'),
+      findsNWidgets(2),
+      reason: 'the menu names the pane the pane also heads',
+    );
+  });
+
+  testWidgets('Notifications opens from the bell, not from a rail', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness());
+    await tester.pump();
+
+    expect(find.byType(NotificationsPanel), findsNothing);
+
+    await tester.tap(find.byKey(const Key('notifications-bell-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NotificationsPanel), findsOneWidget);
   });
 
   testWidgets('every workspace uses the standard shell background', (
@@ -53,20 +104,6 @@ void main() {
   ) async {
     await tester.pumpWidget(harness());
     await tester.pump();
-
-    expect(
-      tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-      DsColors.cream.appBackground,
-    );
-
-    await tester.tap(find.byTooltip('Menu'));
-    await tester.pumpAndSettle();
-    expect(find.text('Gradient on Other Views'), findsNothing);
-    await tester.tapAt(Offset.zero);
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Editor'));
-    await tester.pumpAndSettle();
 
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
@@ -88,34 +125,41 @@ void main() {
     await tester.pumpWidget(harness());
     await tester.pump();
 
-    expect(find.byTooltip('Editor menu'), findsNothing);
-    expect(find.text('Differences'), findsOneWidget);
-
-    await tester.tap(find.text('Editor'));
-    await tester.pumpAndSettle();
-
     expect(find.byTooltip('Editor menu'), findsOneWidget);
-    expect(find.text('Differences'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Editor menu'));
     await tester.pumpAndSettle();
 
     expect(find.text('Publish directly'), findsNothing);
     expect(find.text('Sync latest'), findsNothing);
-    expect(find.text('Differences'), findsNWidgets(2));
     expect(find.byKey(const Key('editor-menu-differences')), findsOneWidget);
 
     await tester.tapAt(const Offset(1, 1));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Home'));
-    await tester.pumpAndSettle();
+    await place(tester, 'differences');
 
-    expect(find.byTooltip('Editor menu'), findsNothing);
-    expect(find.text('Differences'), findsOneWidget);
+    expect(
+      find.byTooltip('Editor menu'),
+      findsNothing,
+      reason: 'the Editor gave up the centre slot',
+    );
   });
 
-  testWidgets('the Knowledge Base menu shows on the right of the editor', (
+  testWidgets('placing Differences displaces the Editor, and back', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness());
+    await tester.pump();
+
+    await place(tester, 'differences');
+    expect(find.byType(EditorScreen), findsNothing);
+
+    await place(tester, 'editor');
+    expect(find.byType(EditorScreen), findsOneWidget);
+  });
+
+  testWidgets('the Knowledge Base pane sits right of the workspace', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1400, 900);
@@ -125,31 +169,31 @@ void main() {
     await tester.pumpWidget(harness());
     await tester.pump();
 
-    final island = tester.getTopLeft(find.text('Knowledge Base'));
-    final welcome = tester.getTopLeft(find.text('Ready to build, Guest?'));
-    expect(
-      island.dx,
-      greaterThan(welcome.dx),
-      reason: 'the island belongs on the right-hand side',
-    );
+    final pane = tester.getRect(find.byKey(const Key('knowledge-base-pane')));
+    final workspace = tester.getRect(find.byKey(const Key('centre-workspace')));
+
+    expect(pane.left, greaterThanOrEqualTo(workspace.right));
   });
 
-  testWidgets('Search belongs to the Editor overlay, not Home', (tester) async {
+  testWidgets('Search is in the top bar in every view', (tester) async {
     await tester.pumpWidget(harness());
     await tester.pump();
 
-    expect(find.byType(DsSearchBar), findsNothing);
-
-    await tester.tap(find.text('Editor'));
-    await tester.pumpAndSettle();
-
     expect(find.byType(DsSearchBar), findsOneWidget);
+    final onEditor = tester.getRect(find.byType(DsSearchBar));
+
+    await place(tester, 'differences');
+
     expect(
-      find.ancestor(
-        of: find.byType(DsSearchBar),
-        matching: find.byKey(const Key('editor-search-card')),
-      ),
+      find.byType(DsSearchBar),
       findsOneWidget,
+      reason: 'Search belongs to the shell now, not to one workspace',
+    );
+    expect(tester.getRect(find.byType(DsSearchBar)), onEditor);
+    expect(
+      find.byKey(const Key('editor-search-card')),
+      findsNothing,
+      reason: 'the Editor no longer carries a search shelf',
     );
   });
 
@@ -175,12 +219,14 @@ void main() {
 
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Run updates'), findsNothing);
-
-    expect(find.byKey(const Key('hamburger-menu-toggle-0')), findsOneWidget);
-    expect(find.byKey(const Key('hamburger-menu-toggle-1')), findsNothing);
+    expect(
+      find.byKey(const Key('hamburger-menu-toggle-0')),
+      findsNothing,
+      reason: 'the Knowledge Base toggle lives in Views now',
+    );
   });
 
-  testWidgets('the hamburger toggles the Knowledge Base out and back in instantly', (
+  testWidgets('Views toggles the Knowledge Base out and back in instantly', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1400, 900);
@@ -193,25 +239,25 @@ void main() {
       tester.element(find.byType(DsShell)),
     );
     final workspaceBefore = tester.getRect(
-      find.byKey(const Key('home-workspace')),
+      find.byKey(const Key('centre-workspace')),
     );
     final panelBefore = tester.getRect(
       find.byKey(const Key('knowledge-base-pane')),
     );
-    final buttonBefore = tester.getRect(find.byTooltip('Menu'));
-
-    await tester.tap(find.byTooltip('Menu'));
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('hamburger-menu-toggle-check-0')),
-      findsOneWidget,
+    final buttonBefore = tester.getRect(
+      find.byKey(const Key('views-menu-button')),
     );
 
-    await tester.tap(find.byKey(const Key('hamburger-menu-toggle-0')));
+    await openViews(tester);
+    expect(
+      find.byKey(const Key('views-menu-knowledge-base-check')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('views-menu-knowledge-base')));
     await tester.pumpAndSettle();
 
     final workspaceHidden = tester.getRect(
-      find.byKey(const Key('home-workspace')),
+      find.byKey(const Key('centre-workspace')),
     );
     final slideHidden = tester.getSize(
       find.byKey(const Key('knowledge-base-slide-region')),
@@ -227,16 +273,18 @@ void main() {
     expect(container.read(paneVisibilityProvider).knowledgeBase, isFalse);
     expect(slideHidden.width, 0);
     expect(workspaceHidden.right, greaterThan(workspaceBefore.right));
-    expect(tester.getRect(find.byTooltip('Menu')), buttonBefore);
+    expect(
+      tester.getRect(find.byKey(const Key('views-menu-button'))),
+      buttonBefore,
+    );
     expect(hiddenInput.ignoring, isTrue);
 
-    await tester.tap(find.byTooltip('Menu'));
-    await tester.pumpAndSettle();
+    await openViews(tester);
     expect(
-      find.byKey(const Key('hamburger-menu-toggle-check-0')),
+      find.byKey(const Key('views-menu-knowledge-base-check')),
       findsNothing,
     );
-    await tester.tap(find.byKey(const Key('hamburger-menu-toggle-0')));
+    await tester.tap(find.byKey(const Key('views-menu-knowledge-base')));
     await tester.pumpAndSettle();
 
     expect(container.read(paneVisibilityProvider).knowledgeBase, isTrue);
@@ -245,7 +293,7 @@ void main() {
       panelBefore,
     );
     expect(
-      tester.getRect(find.byKey(const Key('home-workspace'))),
+      tester.getRect(find.byKey(const Key('centre-workspace'))),
       workspaceBefore,
     );
 
@@ -267,30 +315,6 @@ void main() {
     );
   });
 
-  testWidgets('the welcome message is centered in Geist Pixel', (tester) async {
-    await tester.pumpWidget(harness());
-    await tester.pump();
-
-    final text = tester.widget<Text>(find.text('Ready to build, Guest?'));
-    expect(text.style?.fontFamily, kUiHeaderFontFamily);
-    expect(text.textAlign, TextAlign.center);
-  });
-
-  testWidgets('with no Knowledge Base open, the editor invites one', (
-    tester,
-  ) async {
-    await tester.pumpWidget(harness());
-    await tester.pump();
-
-    await tester.tap(find.text('Editor'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('Open a document from the Knowledge Base.'),
-      findsOneWidget,
-    );
-  });
-
   group('spacing', () {
     /// Sets a window wide enough that no pane is clamped.
     Future<void> pumpWide(WidgetTester tester) async {
@@ -301,190 +325,163 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('one seam separates the rail from the workspace', (
-      tester,
-    ) async {
+    testWidgets('the workspace runs to the left window edge', (tester) async {
       await pumpWide(tester);
 
-      final rail = tester.getRect(find.byType(DsPane).at(0));
-      final editor = tester.getRect(find.byKey(const Key('home-workspace')));
-
-      expect(editor.left - rail.right, DsSpace.seam);
-    });
-
-    testWidgets('workspace and side menus keep the same bounds across views', (
-      tester,
-    ) async {
-      await pumpWide(tester);
-
-      final views = tester.getRect(find.byType(ViewsMenu));
-      final homeViewsMenu = tester.getRect(find.byType(ViewsMenu));
-      final homeKnowledgeBaseMenu = tester.getRect(
-        find.byType(KnowledgeBaseMenu),
+      final workspace = tester.getRect(
+        find.byKey(const Key('centre-workspace')),
       );
-      final workspace = tester.getRect(find.byKey(const Key('home-workspace')));
-      final notifications = tester.getRect(find.byType(NotificationsPanel));
+      final window = tester.getRect(find.byType(DsShell));
 
-      expect(workspace.top, views.top);
-      expect(workspace.bottom, notifications.bottom);
-
-      await tester.tap(find.text('Editor'));
-      await tester.pumpAndSettle();
-
-      final editor = tester.getRect(
-        find
-            .ancestor(
-              of: find.byType(EditorScreen),
-              matching: find.byType(DsPane),
-            )
-            .first,
-      );
-      expect(editor.top, workspace.top, reason: 'the editor spans the pane');
-      expect(editor.bottom, workspace.bottom);
-      expect(tester.getRect(find.byType(ViewsMenu)), homeViewsMenu);
       expect(
-        tester.getRect(find.byType(KnowledgeBaseMenu)),
-        homeKnowledgeBaseMenu,
+        workspace.left,
+        window.left,
+        reason: 'nothing stands between the workspace and the edge any more',
       );
     });
 
-    testWidgets('the bottom bar is seated below the panes', (
+    testWidgets('one seam separates the workspace from the Knowledge Base', (
       tester,
     ) async {
       await pumpWide(tester);
 
-      await tester.tap(find.text('Editor'));
+      final workspace = tester.getRect(
+        find.byKey(const Key('centre-workspace')),
+      );
+      final pane = tester.getRect(find.byKey(const Key('knowledge-base-pane')));
+
+      expect(pane.left - workspace.right, DsSpace.seam);
+    });
+
+    testWidgets('the top bar is seated above the panes', (tester) async {
+      await pumpWide(tester);
+
+      final bar = tester.getRect(find.byKey(const Key('views-menu-button')));
+      final workspace = tester.getRect(
+        find.byKey(const Key('centre-workspace')),
+      );
+      final window = tester.getRect(find.byType(DsShell));
+
+      expect(window.top, lessThanOrEqualTo(bar.top));
+      expect(bar.bottom, lessThan(workspace.top));
+      expect(workspace.top, kDsTopBarHeight + DsSpace.seam);
+    });
+
+    testWidgets('Search is centred on the window, not on the workspace', (
+      tester,
+    ) async {
+      await pumpWide(tester);
+
+      final search = tester.getRect(find.byType(DsSearchBar));
+      final window = tester.getRect(find.byType(DsShell));
+      final workspace = tester.getRect(
+        find.byKey(const Key('centre-workspace')),
+      );
+
+      expect(search.center.dx, closeTo(window.center.dx, 0.5));
+      expect(
+        search.center.dx,
+        isNot(closeTo(workspace.center.dx, 0.5)),
+        reason: 'the Knowledge Base pane pushes the workspace centre left',
+      );
+      expect(search.width, kSearchWidth);
+      expect(search.height, kSearchHeight);
+      expect(search.center.dy, closeTo(kDsTopBarHeight / 2, 0.5));
+    });
+
+    testWidgets('Search holds still as the Knowledge Base is resized', (
+      tester,
+    ) async {
+      await pumpWide(tester);
+
+      final before = tester.getRect(find.byType(DsSearchBar));
+      final workspaceBefore = tester.getRect(
+        find.byKey(const Key('centre-workspace')),
+      );
+
+      // Widen the Knowledge Base panel by dragging the seam beside it.
+      await tester.dragFrom(
+        Offset(
+          workspaceBefore.right + DsSpace.seam / 2,
+          workspaceBefore.center.dy,
+        ),
+        const Offset(-80, 0),
+      );
       await tester.pumpAndSettle();
 
-      final editor = tester.getRect(
-        find
-            .ancestor(
-              of: find.byType(EditorScreen),
-              matching: find.byType(DsPane),
-            )
-            .first,
+      expect(
+        tester.getRect(find.byKey(const Key('centre-workspace'))).right,
+        lessThan(workspaceBefore.right),
+        reason: 'the drag did move the seam',
+      );
+      expect(
+        tester.getRect(find.byType(DsSearchBar)),
+        before,
+        reason: 'Search is the window\'s, so a pane resize does not move it',
+      );
+    });
+
+    testWidgets('the menus clear the macOS window buttons', (tester) async {
+      await pumpWide(tester);
+
+      final inset = find.byKey(const Key('window-buttons-inset'));
+      if (!Platform.isMacOS) {
+        expect(
+          inset,
+          findsNothing,
+          reason: 'only macOS floats its buttons over the bar',
+        );
+        return;
+      }
+
+      expect(inset, findsOneWidget);
+      final views = tester.getRect(find.byKey(const Key('views-menu-button')));
+      expect(
+        views.left,
+        greaterThan(20 + 3 * 14 + 2 * 6),
+        reason: 'the buttons sit at x=20 and are 14pt wide, spaced 6pt',
+      );
+    });
+
+    testWidgets('the bottom bar is seated below the panes', (tester) async {
+      await pumpWide(tester);
+
+      final workspace = tester.getRect(
+        find.byKey(const Key('centre-workspace')),
       );
       final bar = tester.getRect(
         find.byKey(const Key('editor-toolbar-menu-footprint')),
       );
 
       expect(
-        bar.top - editor.bottom,
+        bar.top - workspace.bottom,
         DsSpace.seam,
         reason: 'the footer is seated against the panes above it',
       );
     });
 
-    testWidgets('Home reserves the Editor bar spacing below its menus', (
+    testWidgets('a view without a toolbar reserves the same bar height', (
       tester,
     ) async {
       await pumpWide(tester);
 
-      final views = tester.getRect(find.byType(ViewsMenu));
-      final notifications = tester.getRect(find.byType(NotificationsPanel));
-      final hiddenButton = tester.getRect(
+      final editorBar = tester.getRect(
+        find.byKey(const Key('editor-toolbar-menu-footprint')),
+      );
+
+      await place(tester, 'differences');
+
+      final footprint = tester.getRect(
         find.byKey(const Key('bottom-bar-footprint')),
       );
       final window = tester.getRect(find.byType(DsShell));
 
-      expect(views.left, window.left, reason: 'the rail runs to the edge');
-      expect(notifications.left, window.left);
-      expect(notifications.bottom, greaterThan(views.bottom));
-      expect(hiddenButton.top - notifications.bottom, DsSpace.seam);
-      expect(window.bottom, hiddenButton.bottom);
-    });
-
-    testWidgets('the Search shelf overlays the bottom of Editor', (
-      tester,
-    ) async {
-      await pumpWide(tester);
-
-      await tester.tap(find.text('Editor'));
-      await tester.pumpAndSettle();
-
-      final editor = tester.getRect(
-        find
-            .ancestor(
-              of: find.byKey(const Key('editor-search-card')),
-              matching: find.byType(DsPane),
-            )
-            .first,
-      );
-      final search = tester.getRect(find.byType(DsSearchBar));
-      final card = tester.getRect(find.byKey(const Key('editor-search-card')));
-      final cardWidget = tester.widget<DsCard>(
-        find.byKey(const Key('editor-search-card')),
-      );
-
-      expect(
-        search.center.dx,
-        closeTo(editor.center.dx, 0.5),
-        reason: 'Search is centred inside the editor, not the window',
-      );
-      expect(search.width, kSearchWidth);
-      expect(search.height, kSearchHeight);
-      expect(
-        card.bottom,
-        editor.bottom,
-        reason: 'the shelf sits flush with the bottom of the editor pane',
-      );
-      expect(card.height, kEditorSearchCardHeight);
-      expect(search.top, greaterThan(card.top));
-      expect(search.bottom, lessThan(card.bottom));
-      expect(cardWidget.separator, DsCardSeparator.top);
-    });
-
-    testWidgets('the search bar stays with the editor as panes resize', (
-      tester,
-    ) async {
-      await pumpWide(tester);
-
-      await tester.tap(find.text('Editor'));
-      await tester.pumpAndSettle();
-
-      final before = tester.getRect(find.byType(DsSearchBar)).center.dx;
-      final editorBefore = tester.getRect(
-        find
-            .ancestor(
-              of: find.byKey(const Key('editor-search-card')),
-              matching: find.byType(DsPane),
-            )
-            .first,
-      );
-
-      // Widen the Knowledge Base panel by dragging the gap beside it.
-      await tester.dragFrom(
-        Offset(
-          editorBefore.right + DsSpace.seam / 2,
-          editorBefore.center.dy,
-        ),
-        const Offset(-80, 0),
-      );
-      await tester.pumpAndSettle();
-
-      final editor = tester.getRect(
-        find
-            .ancestor(
-              of: find.byKey(const Key('editor-search-card')),
-              matching: find.byType(DsPane),
-            )
-            .first,
-      );
-      final search = tester.getRect(find.byType(DsSearchBar));
-
-      expect(search.center.dx, closeTo(editor.center.dx, 0.5));
-      expect(
-        search.center.dx,
-        isNot(closeTo(before, 0.5)),
-        reason: 'it moved with the workspace',
-      );
+      expect(footprint.height, editorBar.height);
+      expect(window.bottom, footprint.bottom);
     });
 
     testWidgets('the bar runs to the bottom of the window', (tester) async {
       await pumpWide(tester);
-
-      await tester.tap(find.text('Editor'));
-      await tester.pumpAndSettle();
 
       final bar = tester.getRect(
         find.byKey(const Key('editor-toolbar-menu-footprint')),
@@ -492,6 +489,20 @@ void main() {
       final window = tester.getRect(find.byType(DsShell));
 
       expect(window.bottom, bar.bottom);
+    });
+
+    testWidgets('the Knowledge Base pane spans the panes\' full height', (
+      tester,
+    ) async {
+      await pumpWide(tester);
+
+      final workspace = tester.getRect(
+        find.byKey(const Key('centre-workspace')),
+      );
+      final menu = tester.getRect(find.byType(KnowledgeBaseMenu));
+
+      expect(menu.top, workspace.top);
+      expect(menu.bottom, workspace.bottom);
     });
   });
 
