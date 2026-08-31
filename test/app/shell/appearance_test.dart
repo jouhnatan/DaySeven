@@ -42,8 +42,9 @@ void main() {
   Future<ProviderContainer> renderShell(
     WidgetTester tester, {
     bool knowledgeBaseVisible = true,
+    Size size = const Size(1280, 820),
   }) async {
-    tester.view.physicalSize = const Size(1280, 820);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
@@ -88,6 +89,14 @@ void main() {
     await expectLater(
       find.byType(DsShell),
       matchesGoldenFile('goldens/editor_kb_hidden.png'),
+    );
+  });
+
+  testWidgets('compact title bar', (tester) async {
+    await renderShell(tester, size: const Size(640, 700));
+    await expectLater(
+      find.byType(DsShell),
+      matchesGoldenFile('goldens/editor_compact.png'),
     );
   });
 

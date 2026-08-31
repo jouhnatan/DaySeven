@@ -18,6 +18,13 @@ Widget harness({List<Override> overrides = const []}) => ProviderScope(
   child: MaterialApp(theme: dsTheme(), home: const DsShell()),
 );
 
+Future<void> pumpWideHarness(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(1200, 800);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(harness());
+}
+
 /// Opens the Views menu, which is where everything placeable is listed.
 Future<void> openViews(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('views-menu-button')));
@@ -61,7 +68,7 @@ void main() {
   testWidgets('the top bar carries the menus, Search and the account', (
     tester,
   ) async {
-    await tester.pumpWidget(harness());
+    await pumpWideHarness(tester);
     await tester.pump();
 
     expect(find.byKey(const Key('views-menu-button')), findsOneWidget);
@@ -73,7 +80,7 @@ void main() {
   testWidgets('the Views menu lists Editor, Differences and Knowledge Base', (
     tester,
   ) async {
-    await tester.pumpWidget(harness());
+    await pumpWideHarness(tester);
     await tester.pump();
     await openViews(tester);
 
@@ -89,7 +96,7 @@ void main() {
   testWidgets('Notifications opens from the bell, not from a rail', (
     tester,
   ) async {
-    await tester.pumpWidget(harness());
+    await pumpWideHarness(tester);
     await tester.pump();
 
     expect(find.byType(NotificationsPanel), findsNothing);
@@ -123,7 +130,7 @@ void main() {
   });
 
   testWidgets('the Editor overflow menu contains Differences', (tester) async {
-    await tester.pumpWidget(harness());
+    await pumpWideHarness(tester);
     await tester.pump();
 
     expect(find.byTooltip('Editor menu'), findsOneWidget);
@@ -150,7 +157,7 @@ void main() {
   testWidgets('placing Differences displaces the Editor, and back', (
     tester,
   ) async {
-    await tester.pumpWidget(harness());
+    await pumpWideHarness(tester);
     await tester.pump();
 
     await place(tester, 'differences');
@@ -177,7 +184,7 @@ void main() {
   });
 
   testWidgets('Search is in the top bar in every view', (tester) async {
-    await tester.pumpWidget(harness());
+    await pumpWideHarness(tester);
     await tester.pump();
 
     expect(find.byType(DsSearchBar), findsOneWidget);
@@ -415,6 +422,34 @@ void main() {
         );
       }
       expect(trafficLightCentre, kDsTopBarHeight / 2);
+    });
+
+    testWidgets('compact windows hide menu items without clipping Search', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(640, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(harness());
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('views-menu-button')), findsNothing);
+      expect(find.byKey(const Key('notifications-bell-button')), findsNothing);
+      expect(find.byKey(const Key('hamburger-menu-button')), findsOneWidget);
+
+      final search = tester.getRect(find.byType(DsSearchBar));
+      final window = tester.getRect(find.byType(DsShell));
+      final menu = tester.getRect(
+        find.byKey(const Key('hamburger-menu-button')),
+      );
+
+      expect(search.center.dx, closeTo(window.center.dx, 0.5));
+      expect(search.right, lessThan(menu.left));
+      if (Platform.isMacOS) {
+        const trafficLightsRight = 20 + 3 * 14 + 2 * 6;
+        expect(search.left, greaterThan(trafficLightsRight));
+      }
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('Search holds still as the Knowledge Base is resized', (
