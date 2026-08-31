@@ -416,17 +416,24 @@ class _TitleBar extends StatelessWidget {
                 // clusters leave between them, so it does not shift when the
                 // account name changes length.
                 const Center(child: DsSearchBar()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: DsSpace.s,
-                  ),
-                  child: Row(
-                    children: [
-                      const _WindowButtonsInset(),
-                      ...leading,
-                      const Spacer(),
-                      ...trailing,
-                    ],
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: DsSpace.s),
+                    child: Row(
+                      children: [
+                        Row(
+                          key: const Key('title-bar-leading-controls'),
+                          mainAxisSize: MainAxisSize.min,
+                          children: [const _WindowButtonsInset(), ...leading],
+                        ),
+                        const Spacer(),
+                        Row(
+                          key: const Key('title-bar-trailing-controls'),
+                          mainAxisSize: MainAxisSize.min,
+                          children: trailing,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],

@@ -8,6 +8,7 @@ import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/shell/shell.dart';
 import 'package:dayseven/app/shell/pane_visibility.dart';
+import 'package:dayseven/core/macos_lights/traffic_lights_offset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -387,6 +388,33 @@ void main() {
       expect(search.width, kSearchWidth);
       expect(search.height, kSearchHeight);
       expect(search.center.dy, closeTo(kDsTopBarHeight / 2, 0.5));
+      expect(search.top, 6);
+      expect(kDsTopBarHeight - search.bottom, 6);
+    });
+
+    testWidgets('title-bar actions align with the macOS traffic lights', (
+      tester,
+    ) async {
+      await pumpWide(tester);
+
+      const trafficLightHeight = 14.0;
+      const trafficLightCentre =
+          TrafficLightsOffset.defaultY + trafficLightHeight / 2;
+      final controls = [
+        find.byKey(const Key('title-bar-leading-controls')),
+        find.byKey(const Key('views-menu-button')),
+        find.byKey(const Key('notifications-bell-button')),
+        find.byKey(const Key('title-bar-trailing-controls')),
+        find.byKey(const Key('hamburger-menu-button')),
+      ];
+
+      for (final control in controls) {
+        expect(
+          tester.getRect(control).center.dy,
+          closeTo(trafficLightCentre, 0.5),
+        );
+      }
+      expect(trafficLightCentre, kDsTopBarHeight / 2);
     });
 
     testWidgets('Search holds still as the Knowledge Base is resized', (
