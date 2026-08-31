@@ -10,10 +10,11 @@ class TrafficLightsOffset {
   static const double defaultX = 20.0;
 
   /// Default vertical offset from the top edge of the window in logical pixels.
-  /// Standard macOS position is ~8.0; 18.0 brings the buttons slightly down.
-  static const double defaultY = 18.0;
+  /// The shell's top bar is 48pt tall and the buttons are 14pt, so this
+  /// centres them in the bar the rest of the chrome sits in.
+  static const double defaultY = 17.0;
 
-  /// Standard default offset that moves traffic lights down and to the right slightly.
+  /// Standard default offset that seats the traffic lights in the shell's top bar.
   static const TrafficLightsOffset standard = TrafficLightsOffset();
 
   /// Horizontal offset from the window left edge.

@@ -1,7 +1,8 @@
 /// Renders the shell to an image so the layout can be inspected.
 ///
 /// Run with `--update-goldens` to refresh the checked shell images. They lock
-/// down the side-menu headers and islands, tree guides, and bottom bar.
+/// down the top bar, the Knowledge Base headers and islands, tree guides, and
+/// the bottom bar.
 ///
 /// There is one set of these. The interface has a single palette, so there is
 /// no second appearance to photograph.
@@ -74,31 +75,19 @@ void main() {
     return container;
   }
 
-  testWidgets('home', (tester) async {
-    await renderShell(tester);
-    await expectLater(
-      find.byType(DsShell),
-      matchesGoldenFile('goldens/home.png'),
-    );
-  });
-
-  testWidgets('home with Knowledge Base hidden', (tester) async {
-    await renderShell(tester, knowledgeBaseVisible: false);
-    await expectLater(
-      find.byType(DsShell),
-      matchesGoldenFile('goldens/home_kb_hidden.png'),
-    );
-  });
-
   testWidgets('editor with the tree open', (tester) async {
     await renderShell(tester);
-
-    await tester.tap(find.text('Editor'));
-    await tester.pumpAndSettle();
-
     await expectLater(
       find.byType(DsShell),
       matchesGoldenFile('goldens/editor.png'),
+    );
+  });
+
+  testWidgets('editor with the Knowledge Base hidden', (tester) async {
+    await renderShell(tester, knowledgeBaseVisible: false);
+    await expectLater(
+      find.byType(DsShell),
+      matchesGoldenFile('goldens/editor_kb_hidden.png'),
     );
   });
 

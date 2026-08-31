@@ -82,9 +82,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Editor'));
-    await tester.pumpAndSettle();
-
     final searchField = find.descendant(
       of: find.byType(DsSearchBar),
       matching: find.byType(TextField),
@@ -108,9 +105,9 @@ void main() {
           .getRect(
             find.textContaining('He keeps the causeway.', findRichText: true),
           )
-          .bottom,
-      lessThan(tester.getRect(searchField).top),
-      reason: 'bottom-anchored Search opens its results over the document',
+          .top,
+      greaterThan(tester.getRect(searchField).bottom),
+      reason: 'top-bar Search hangs its results down over the workspace',
     );
   });
 
@@ -130,9 +127,6 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Editor'));
     await tester.pumpAndSettle();
 
     final searchField = find.descendant(

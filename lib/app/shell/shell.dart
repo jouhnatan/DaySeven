@@ -1,8 +1,10 @@
-/// The application frame: search across the top, feature menus on each side,
-/// the selected view in the centre, and one bottom-bar control.
+/// The application frame: one bar across the top carrying the menus, Search
+/// and the account control, the placed workspace in the centre, the Knowledge
+/// Base beside it, and one bottom-bar control.
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,8 +34,7 @@ import 'package:dayseven/features/differences/ui/differences_workspace.dart';
 import 'package:dayseven/features/differences/ui/sync_status_indicator.dart';
 import 'package:dayseven/app/workspace/sharing.dart';
 import 'package:dayseven/features/editor/ui/editor_screen.dart';
-import 'package:dayseven/features/home/ui/home_screen.dart';
-import 'package:dayseven/features/notifications/ui/notifications_panel.dart';
+import 'package:dayseven/features/notifications/ui/notifications_bell_button.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_menu.dart';
 import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart';
 import 'package:dayseven/features/search/ui/search_bar.dart';
@@ -86,135 +87,79 @@ class DsShell extends ConsumerWidget {
                   final paneVisibility = ref.read(
                     paneVisibilityProvider.notifier,
                   );
-                  final fullyOpenAvailable =
-                      constraints.maxWidth - DsSpace.seam * 2;
                   final panelProgress = visibility.knowledgeBase ? 1.0 : 0.0;
                   final available =
-                      constraints.maxWidth -
-                      DsSpace.seam * (1 + panelProgress);
+                      constraints.maxWidth - DsSpace.seam * panelProgress;
 
                   return Column(
                     children: [
                       _TitleBar(
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Collaboration needs a server; without
-                              // one there is nothing to sign in to.
-                              if (isSupabaseConfigured) ...[
-                                const AuthButton(),
-                                const SizedBox(width: DsSpace.controlGap),
+                        leading: [
+                          ViewsMenuButton(
+                            knowledgeBaseVisible: visibility.knowledgeBase,
+                            onToggleKnowledgeBase:
+                                paneVisibility.toggleKnowledgeBase,
+                            pendingDifferencesCount: pendingDifferencesCount,
+                          ),
+                          const SizedBox(width: DsSpace.controlGap),
+                          const NotificationsBellButton(),
+                        ],
+                        trailing: [
+                          // Collaboration needs a server; without one there is
+                          // nothing to sign in to.
+                          if (isSupabaseConfigured) ...[
+                            const AuthButton(),
+                            const SizedBox(width: DsSpace.controlGap),
+                          ],
+                          HamburgerMenuButton(
+                            entries: [
+                              if (canOpenNewWindow) ...[
+                                HamburgerMenuEntry.action(
+                                  label: 'New Window',
+                                  onSelected: () =>
+                                      _openNewWindow(context, fresh: false),
+                                ),
+                                HamburgerMenuEntry.action(
+                                  label: 'New Window as Different Account…',
+                                  onSelected: () =>
+                                      _openNewWindow(context, fresh: true),
+                                ),
                               ],
-                              HamburgerMenuButton(
-                                entries: [
-                                  HamburgerMenuEntry.toggle(
-                                    label: 'Knowledge Base',
-                                    checked: visibility.knowledgeBase,
-                                    onSelected:
-                                        paneVisibility.toggleKnowledgeBase,
-                                  ),
-                                  if (canOpenNewWindow) ...[
-                                    HamburgerMenuEntry.action(
-                                      label: 'New Window',
-                                      onSelected: () => _openNewWindow(
-                                        context,
-                                        fresh: false,
-                                      ),
-                                    ),
-                                    HamburgerMenuEntry.action(
-                                      label:
-                                          'New Window as '
-                                          'Different Account…',
-                                      onSelected: () => _openNewWindow(
-                                        context,
-                                        fresh: true,
-                                      ),
-                                    ),
-                                  ],
-                                  // Shown with or without a
-                                  // server: the version is worth
-                                  // seeing either way, and the
-                                  // dialog says so itself when
-                                  // there is nothing to check
-                                  // against.
-                                  HamburgerMenuEntry.action(
-                                    label: 'Settings',
-                                    onSelected: () =>
-                                        _openAppSettings(context),
-                                  ),
-                                ],
+                              // Shown with or without a server: the version is
+                              // worth seeing either way, and the dialog says so
+                              // itself when there is nothing to check against.
+                              HamburgerMenuEntry.action(
+                                label: 'Settings',
+                                onSelected: () => _openAppSettings(context),
                               ),
                             ],
                           ),
-                        ),
+                        ],
                       ),
                       Expanded(
                         child: _PaneRow(
-                          railSeamLeft: widths.rail,
                           panelSlotWidth:
                               (widths.panel + DsSpace.seam) * panelProgress,
-                          onDragRail: (dx) => panes.dragRail(
-                            dx,
-                            available,
-                            reservedPanelWidth:
-                                widths.panel * panelProgress,
-                          ),
                           onDragPanel: panelProgress == 0
                               ? null
-                              : (dx) =>
-                                    panes.dragPanel(dx, fullyOpenAvailable),
+                              : (dx) => panes.dragPanel(dx, available),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              SizedBox(
-                                width: widths.rail,
-                                child: DsPane(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Expanded(
-                                        child: ViewsMenu(
-                                          pendingDifferencesCount:
-                                              pendingDifferencesCount,
-                                        ),
-                                      ),
-                                      const DsSeam.horizontal(),
-                                      const DsMenuHeader('Notifications'),
-                                      const Expanded(
-                                        child: NotificationsPanel(),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const DsSeam.vertical(),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    Expanded(
-                                      child: switch (view) {
-                                        DsView.home => const HomeScreen(),
-                                        DsView.editor => const DsPane(
-                                          editorSurface: true,
-                                          child: EditorScreen(
-                                            timelineWidget:
-                                                TimelineWidget(),
-                                            searchCard: DsSearchBar(
-                                              resultsAbove: true,
-                                            ),
-                                          ),
-                                        ),
-                                        DsView.differences =>
-                                          const DifferencesWorkspace(),
-                                      },
+                                child: switch (view) {
+                                  DsView.editor => const DsPane(
+                                    key: Key('centre-workspace'),
+                                    editorSurface: true,
+                                    child: EditorScreen(
+                                      timelineWidget: TimelineWidget(),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  DsView.differences => const KeyedSubtree(
+                                    key: Key('centre-workspace'),
+                                    child: DifferencesWorkspace(),
+                                  ),
+                                },
                               ),
                               _SlidingKnowledgeBasePane(
                                 progress: panelProgress,
@@ -378,29 +323,21 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
   }
 }
 
-/// The pane row, with a grab strip floated over each seam.
+/// The pane row, with a grab strip floated over the seam.
 ///
-/// The seams themselves stay one pixel wide, so the panes keep every pixel of
+/// The seam itself stays one pixel wide, so the panes keep every pixel of
 /// their width. Resizing is done through a wider transparent strip laid over
 /// the seam: it sits above both neighbours, so the whole strip catches the
 /// pointer rather than only the hairline the neighbours leave exposed.
 class _PaneRow extends StatelessWidget {
   const _PaneRow({
-    required this.railSeamLeft,
     required this.panelSlotWidth,
-    required this.onDragRail,
     required this.onDragPanel,
     required this.child,
   });
 
-  /// Distance from the row's left edge to the seam beside the rail.
-  final double railSeamLeft;
-
-  /// Width of the Knowledge Base slot, seam included. Zero while it is closed,
-  /// and part-way through while it slides.
+  /// Width of the Knowledge Base slot, seam included. Zero while it is closed.
   final double panelSlotWidth;
-
-  final void Function(double delta) onDragRail;
 
   /// Null while the Knowledge Base pane is closed, when there is no seam to
   /// take hold of.
@@ -413,7 +350,6 @@ class _PaneRow extends StatelessWidget {
     return Stack(
       children: [
         child,
-        _ResizeGrabStrip(left: railSeamLeft, onDrag: onDragRail),
         if (onDragPanel != null)
           _ResizeGrabStrip(
             right: panelSlotWidth - DsSpace.seam,
@@ -427,12 +363,10 @@ class _PaneRow extends StatelessWidget {
 /// A transparent, full-height strip over one seam, which is where a pane is
 /// resized from.
 class _ResizeGrabStrip extends StatelessWidget {
-  const _ResizeGrabStrip({this.left, this.right, required this.onDrag});
+  const _ResizeGrabStrip({required this.right, required this.onDrag});
 
-  /// Distance from the row's left edge to the seam this strip covers, or from
-  /// the row's right edge for [right]. Exactly one of the two is given.
-  final double? left;
-  final double? right;
+  /// Distance from the row's right edge to the seam this strip covers.
+  final double right;
 
   final void Function(double delta) onDrag;
 
@@ -443,8 +377,7 @@ class _ResizeGrabStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      left: left == null ? null : left! - _reach,
-      right: right == null ? null : right! - _reach,
+      right: right - _reach,
       top: 0,
       bottom: 0,
       width: DsSpace.seam + _reach * 2,
@@ -459,27 +392,74 @@ class _ResizeGrabStrip extends StatelessWidget {
   }
 }
 
-/// The strip across the top of the window: the account control and the
-/// application menu, on the toolbar surface, closed by a seam.
+/// The strip across the top of the window: the menus beside the window
+/// buttons, Search in the middle of the window, and the account control at the
+/// far end, on the toolbar surface, closed by a seam.
 class _TitleBar extends StatelessWidget {
-  const _TitleBar({required this.child});
+  const _TitleBar({required this.leading, required this.trailing});
 
-  final Widget child;
+  final List<Widget> leading;
+  final List<Widget> trailing;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          height: kSearchHeight,
-          padding: const EdgeInsets.symmetric(horizontal: DsSpace.sm),
-          color: context.ds.bar,
-          child: child,
+        SizedBox(
+          height: kDsTopBarHeight,
+          child: ColoredBox(
+            color: context.ds.bar,
+            child: Stack(
+              children: [
+                // Search centres on the window, not on whatever the two
+                // clusters leave between them, so it does not shift when the
+                // account name changes length.
+                const Center(child: DsSearchBar()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DsSpace.s,
+                  ),
+                  child: Row(
+                    children: [
+                      const _WindowButtonsInset(),
+                      ...leading,
+                      const Spacer(),
+                      ...trailing,
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
         const DsSeam.horizontal(),
       ],
     );
+  }
+}
+
+/// The height of the top bar. The macOS window buttons are seated inside it,
+/// so `TrafficLightsOffset` is measured against this.
+const double kDsTopBarHeight = 48;
+
+/// Space held clear for the macOS window buttons, which float over the top bar
+/// rather than sitting in a titlebar of their own.
+///
+/// Windows keeps its native caption bar and needs none of this.
+class _WindowButtonsInset extends StatelessWidget {
+  const _WindowButtonsInset();
+
+  /// The buttons start at `TrafficLightsOffset.defaultX` (20), are 14pt wide,
+  /// and are spaced 6pt apart — then a gap before the first menu.
+  static const double _width = 20 + 3 * 14 + 2 * 6 - DsSpace.s + DsSpace.gap;
+
+  @override
+  Widget build(BuildContext context) {
+    // Platform, not defaultTargetPlatform: the latter reports Android under
+    // `flutter test`, which would take the inset out of every golden.
+    if (!Platform.isMacOS) return const SizedBox.shrink();
+    return const SizedBox(key: Key('window-buttons-inset'), width: _width);
   }
 }
 
@@ -508,7 +488,6 @@ class _BottomBar extends ConsumerWidget {
       return _Footer(
         child: Row(
           children: [
-            SizedBox(width: widths.rail + DsSpace.seam),
             const Expanded(child: _EditingToolbarIsland()),
             SizedBox(width: (widths.panel + DsSpace.seam) * panelProgress),
           ],
@@ -609,7 +588,7 @@ class _EditingToolbarIsland extends StatelessWidget {
 }
 
 /// An invisible control-sized spacer. Its padding matches the toolbar island,
-/// keeping the Views, workspace, and Knowledge Base islands equally short.
+/// keeping the workspace and Knowledge Base islands equally short.
 class _BottomBarFootprint extends StatelessWidget {
   const _BottomBarFootprint();
 

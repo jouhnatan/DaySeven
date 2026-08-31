@@ -284,12 +284,6 @@ He keeps the causeway.
       await store.recentEditedDocuments(session.kb.manifest.kbId),
       paths.reversed,
     );
-    expect(
-      await container.read(recentEditedDocumentsProvider.future),
-      paths.reversed.take(5),
-      reason: 'Home exposes only the five most recently edited files',
-    );
-
     final renamed = await container
         .read(kbControllerProvider.notifier)
         .renameDocument(paths.first, 'Renamed');
@@ -311,30 +305,20 @@ He keeps the causeway.
       panes.dragPanel(-5000, 900);
       final widths = container.read(paneWidthsProvider);
 
-      expect(widths.panel, lessThanOrEqualTo(900 - widths.rail - 320));
+      expect(widths.panel, lessThanOrEqualTo(900 - 320));
       expect(widths.panel, greaterThanOrEqualTo(PaneWidths.minPanel));
     });
 
-    test('the rail cannot be dragged past its limits', () {
+    test('the panel cannot be dragged past its limits', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       final panes = container.read(paneWidthsProvider.notifier);
 
-      panes.dragRail(5000, 2000);
-      expect(container.read(paneWidthsProvider).rail, PaneWidths.maxRail);
+      panes.dragPanel(-5000, 2000);
+      expect(container.read(paneWidthsProvider).panel, PaneWidths.maxPanel);
 
-      panes.dragRail(-5000, 2000);
-      expect(container.read(paneWidthsProvider).rail, PaneWidths.minRail);
-    });
-
-    test('a hidden panel releases its width to the rail and editor', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final panes = container.read(paneWidthsProvider.notifier);
-
-      panes.dragRail(5000, 740, reservedPanelWidth: 0);
-
-      expect(container.read(paneWidthsProvider).rail, PaneWidths.maxRail);
+      panes.dragPanel(5000, 2000);
+      expect(container.read(paneWidthsProvider).panel, PaneWidths.minPanel);
     });
   });
 

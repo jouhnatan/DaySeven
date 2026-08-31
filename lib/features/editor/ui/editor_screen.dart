@@ -37,14 +37,8 @@ import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 
-const double kEditorSearchCardHeight = 58;
-
 class EditorScreen extends ConsumerWidget {
-  const EditorScreen({super.key, this.searchCard, this.timelineWidget});
-
-  /// Injected by the app composition root so Editor does not depend directly
-  /// on the separate Search feature.
-  final Widget? searchCard;
+  const EditorScreen({super.key, this.timelineWidget});
 
   /// Injected by the app composition root for the Timeline feature.
   final Widget? timelineWidget;
@@ -70,51 +64,13 @@ class EditorScreen extends ConsumerWidget {
             readOnly: readOnly,
           );
 
-    final content = (timelineWidget != null && open != null)
-        ? Column(
-            children: [
-              timelineWidget!,
-              Expanded(child: editor),
-            ],
-          )
-        : editor;
+    if (timelineWidget == null || open == null) return editor;
 
-    final card = searchCard;
-    if (card == null) return content;
-
-    // Search stays fixed at the bottom Z layer while the document scrolls
-    // independently above it.
-    return Stack(
-      fit: StackFit.expand,
+    return Column(
       children: [
-        Positioned.fill(bottom: kEditorSearchCardHeight, child: content),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: _EditorSearchCard(child: card),
-        ),
+        timelineWidget!,
+        Expanded(child: editor),
       ],
-    );
-  }
-}
-
-class _EditorSearchCard extends StatelessWidget {
-  const _EditorSearchCard({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: kEditorSearchCardHeight,
-      width: double.infinity,
-      child: DsCard(
-        key: const Key('editor-search-card'),
-        separator: DsCardSeparator.top,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          child: Center(child: child),
-        ),
-      ),
     );
   }
 }
