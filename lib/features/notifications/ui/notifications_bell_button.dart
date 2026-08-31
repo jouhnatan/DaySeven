@@ -110,8 +110,8 @@ class _NotificationsBellButtonState
   }
 }
 
-/// The floating panel. A menu is above the page rather than on it, so it is
-/// allowed the one shadow the system spends.
+/// The floating panel. A menu is above the page rather than on it, held apart
+/// by its outline alone.
 class _NotificationsPopover extends StatelessWidget {
   const _NotificationsPopover();
 
@@ -128,13 +128,6 @@ class _NotificationsPopover extends StatelessWidget {
           color: colors.island,
           borderRadius: const BorderRadius.all(DsRadius.island),
           border: Border.all(color: colors.surfaceOutline, width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Theme.of(context).colorScheme.shadow,
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
         ),
         clipBehavior: Clip.antiAlias,
         child: const Column(
