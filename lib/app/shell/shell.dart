@@ -410,33 +410,55 @@ class _TitleBar extends StatelessWidget {
           height: kDsTopBarHeight,
           child: ColoredBox(
             color: context.ds.bar,
-            child: Stack(
-              children: [
-                // Search centres on the window, not on whatever the two
-                // clusters leave between them, so it does not shift when the
-                // account name changes length.
-                const Center(child: DsSearchBar()),
-                Positioned.fill(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: DsSpace.s),
-                    child: Row(
-                      children: [
-                        Row(
-                          key: const Key('title-bar-leading-controls'),
-                          mainAxisSize: MainAxisSize.min,
-                          children: [const _WindowButtonsInset(), ...leading],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact =
+                    constraints.maxWidth < kDsTopBarFullControlsMinWidth;
+
+                return Stack(
+                  children: [
+                    // Search centres on the window, not on whatever the two
+                    // clusters leave between them, so it does not shift when
+                    // the account name changes length. Compact windows keep a
+                    // symmetric clear area for the native buttons and Menu.
+                    Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? _kCompactTopBarSearchInset : 0,
                         ),
-                        const Spacer(),
-                        Row(
-                          key: const Key('title-bar-trailing-controls'),
-                          mainAxisSize: MainAxisSize.min,
-                          children: trailing,
-                        ),
-                      ],
+                        child: const DsSearchBar(),
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    Positioned.fill(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: DsSpace.s,
+                        ),
+                        child: Row(
+                          children: [
+                            Row(
+                              key: const Key('title-bar-leading-controls'),
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const _WindowButtonsInset(),
+                                if (!compact) ...leading,
+                              ],
+                            ),
+                            const Spacer(),
+                            Row(
+                              key: const Key('title-bar-trailing-controls'),
+                              mainAxisSize: MainAxisSize.min,
+                              children: compact
+                                  ? [if (trailing.isNotEmpty) trailing.last]
+                                  : trailing,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -449,6 +471,14 @@ class _TitleBar extends StatelessWidget {
 /// The height of the top bar. The macOS window buttons are seated inside it,
 /// so `TrafficLightsOffset` is measured against this.
 const double kDsTopBarHeight = 48;
+
+/// Below this width the centred Search field and the complete menu clusters
+/// no longer have enough independent space to remain visually separate.
+const double kDsTopBarFullControlsMinWidth = 960;
+
+/// Keeps compact Search clear of the macOS traffic lights. The same symmetric
+/// inset also leaves the right-side hamburger control undisturbed.
+const double _kCompactTopBarSearchInset = 20 + 3 * 14 + 2 * 6 + DsSpace.gap;
 
 /// Space held clear for the macOS window buttons, which float over the top bar
 /// rather than sitting in a titlebar of their own.
