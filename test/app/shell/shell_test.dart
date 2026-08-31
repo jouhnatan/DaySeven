@@ -180,7 +180,7 @@ void main() {
     expect(find.byKey(const Key('hamburger-menu-toggle-1')), findsNothing);
   });
 
-  testWidgets('the hamburger slides the Knowledge Base out and back in', (
+  testWidgets('the hamburger toggles the Knowledge Base out and back in instantly', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1400, 900);
@@ -208,23 +208,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('hamburger-menu-toggle-0')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    final slideMid = tester.getSize(
-      find.byKey(const Key('knowledge-base-slide-region')),
-    );
-    final panelMid = tester.getRect(
-      find.byKey(const Key('knowledge-base-pane')),
-    );
-    final workspaceMid = tester.getRect(
-      find.byKey(const Key('home-workspace')),
-    );
-    expect(slideMid.width, greaterThan(0));
-    expect(slideMid.width, lessThan(panelBefore.width + DsSpace.seam));
-    expect(panelMid.left, greaterThan(panelBefore.left));
-    expect(workspaceMid.right, greaterThan(workspaceBefore.right));
-
     await tester.pumpAndSettle();
 
     final workspaceHidden = tester.getRect(
@@ -269,18 +252,18 @@ void main() {
     final visibility = container.read(paneVisibilityProvider.notifier);
     visibility.setKnowledgeBaseVisible(false);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 75));
     expect(
-      tester.getRect(find.byKey(const Key('knowledge-base-pane'))).left,
-      greaterThan(panelBefore.left),
+      tester.getSize(find.byKey(const Key('knowledge-base-slide-region'))).width,
+      0,
+      reason: 'closes instantly on state change without animation lag',
     );
 
     visibility.setKnowledgeBaseVisible(true);
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(
       tester.getRect(find.byKey(const Key('knowledge-base-pane'))),
       panelBefore,
-      reason: 'reversing mid-animation returns smoothly to the stored width',
+      reason: 'opens instantly on state change without animation lag',
     );
   });
 

@@ -88,154 +88,144 @@ class DsShell extends ConsumerWidget {
                   );
                   final fullyOpenAvailable =
                       constraints.maxWidth - DsSpace.seam * 2;
+                  final panelProgress = visibility.knowledgeBase ? 1.0 : 0.0;
+                  final available =
+                      constraints.maxWidth -
+                      DsSpace.seam * (1 + panelProgress);
 
-                  return TweenAnimationBuilder<double>(
-                    tween: Tween<double>(
-                      begin: 1,
-                      end: visibility.knowledgeBase ? 1 : 0,
-                    ),
-                    duration: DsMotion.pane,
-                    curve: Curves.easeInOutCubic,
-                    builder: (context, panelProgress, _) {
-                      final available =
-                          constraints.maxWidth -
-                          DsSpace.seam * (1 + panelProgress);
-
-                      return Column(
-                        children: [
-                          _TitleBar(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Collaboration needs a server; without
-                                  // one there is nothing to sign in to.
-                                  if (isSupabaseConfigured) ...[
-                                    const AuthButton(),
-                                    const SizedBox(width: DsSpace.controlGap),
-                                  ],
-                                  HamburgerMenuButton(
-                                    entries: [
-                                      HamburgerMenuEntry.toggle(
-                                        label: 'Knowledge Base',
-                                        checked: visibility.knowledgeBase,
-                                        onSelected:
-                                            paneVisibility.toggleKnowledgeBase,
+                  return Column(
+                    children: [
+                      _TitleBar(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Collaboration needs a server; without
+                              // one there is nothing to sign in to.
+                              if (isSupabaseConfigured) ...[
+                                const AuthButton(),
+                                const SizedBox(width: DsSpace.controlGap),
+                              ],
+                              HamburgerMenuButton(
+                                entries: [
+                                  HamburgerMenuEntry.toggle(
+                                    label: 'Knowledge Base',
+                                    checked: visibility.knowledgeBase,
+                                    onSelected:
+                                        paneVisibility.toggleKnowledgeBase,
+                                  ),
+                                  if (canOpenNewWindow) ...[
+                                    HamburgerMenuEntry.action(
+                                      label: 'New Window',
+                                      onSelected: () => _openNewWindow(
+                                        context,
+                                        fresh: false,
                                       ),
-                                      if (canOpenNewWindow) ...[
-                                        HamburgerMenuEntry.action(
-                                          label: 'New Window',
-                                          onSelected: () => _openNewWindow(
-                                            context,
-                                            fresh: false,
-                                          ),
+                                    ),
+                                    HamburgerMenuEntry.action(
+                                      label:
+                                          'New Window as '
+                                          'Different Account…',
+                                      onSelected: () => _openNewWindow(
+                                        context,
+                                        fresh: true,
+                                      ),
+                                    ),
+                                  ],
+                                  // Shown with or without a
+                                  // server: the version is worth
+                                  // seeing either way, and the
+                                  // dialog says so itself when
+                                  // there is nothing to check
+                                  // against.
+                                  HamburgerMenuEntry.action(
+                                    label: 'Settings',
+                                    onSelected: () =>
+                                        _openAppSettings(context),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: _PaneRow(
+                          railSeamLeft: widths.rail,
+                          panelSlotWidth:
+                              (widths.panel + DsSpace.seam) * panelProgress,
+                          onDragRail: (dx) => panes.dragRail(
+                            dx,
+                            available,
+                            reservedPanelWidth:
+                                widths.panel * panelProgress,
+                          ),
+                          onDragPanel: panelProgress == 0
+                              ? null
+                              : (dx) =>
+                                    panes.dragPanel(dx, fullyOpenAvailable),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SizedBox(
+                                width: widths.rail,
+                                child: DsPane(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(
+                                        child: ViewsMenu(
+                                          pendingDifferencesCount:
+                                              pendingDifferencesCount,
                                         ),
-                                        HamburgerMenuEntry.action(
-                                          label:
-                                              'New Window as '
-                                              'Different Account…',
-                                          onSelected: () => _openNewWindow(
-                                            context,
-                                            fresh: true,
-                                          ),
-                                        ),
-                                      ],
-                                      // Shown with or without a
-                                      // server: the version is worth
-                                      // seeing either way, and the
-                                      // dialog says so itself when
-                                      // there is nothing to check
-                                      // against.
-                                      HamburgerMenuEntry.action(
-                                        label: 'Settings',
-                                        onSelected: () =>
-                                            _openAppSettings(context),
+                                      ),
+                                      const DsSeam.horizontal(),
+                                      const DsMenuHeader('Notifications'),
+                                      const Expanded(
+                                        child: NotificationsPanel(),
                                       ),
                                     ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                          Expanded(
-                            child: _PaneRow(
-                              railSeamLeft: widths.rail,
-                              panelSlotWidth:
-                                  (widths.panel + DsSpace.seam) * panelProgress,
-                              onDragRail: (dx) => panes.dragRail(
-                                dx,
-                                available,
-                                reservedPanelWidth:
-                                    widths.panel * panelProgress,
-                              ),
-                              onDragPanel: panelProgress == 0
-                                  ? null
-                                  : (dx) =>
-                                        panes.dragPanel(dx, fullyOpenAvailable),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  SizedBox(
-                                    width: widths.rail,
-                                    child: DsPane(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          Expanded(
-                                            child: ViewsMenu(
-                                              pendingDifferencesCount:
-                                                  pendingDifferencesCount,
+                              const DsSeam.vertical(),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Expanded(
+                                      child: switch (view) {
+                                        DsView.home => const HomeScreen(),
+                                        DsView.editor => const DsPane(
+                                          editorSurface: true,
+                                          child: EditorScreen(
+                                            timelineWidget:
+                                                TimelineWidget(),
+                                            searchCard: DsSearchBar(
+                                              resultsAbove: true,
                                             ),
                                           ),
-                                          const DsSeam.horizontal(),
-                                          const DsMenuHeader('Notifications'),
-                                          const Expanded(
-                                            child: NotificationsPanel(),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const DsSeam.vertical(),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        Expanded(
-                                          child: switch (view) {
-                                            DsView.home => const HomeScreen(),
-                                            DsView.editor => const DsPane(
-                                              editorSurface: true,
-                                              child: EditorScreen(
-                                                timelineWidget:
-                                                    TimelineWidget(),
-                                                searchCard: DsSearchBar(
-                                                  resultsAbove: true,
-                                                ),
-                                              ),
-                                            ),
-                                            DsView.differences =>
-                                              const DifferencesWorkspace(),
-                                          },
                                         ),
-                                      ],
+                                        DsView.differences =>
+                                          const DifferencesWorkspace(),
+                                      },
                                     ),
-                                  ),
-                                  _SlidingKnowledgeBasePane(
-                                    progress: panelProgress,
-                                    panelWidth: widths.panel,
-                                    visible: visibility.knowledgeBase,
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
+                              _SlidingKnowledgeBasePane(
+                                progress: panelProgress,
+                                panelWidth: widths.panel,
+                                visible: visibility.knowledgeBase,
+                              ),
+                            ],
                           ),
-                        ],
-                      );
-                    },
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -513,24 +503,15 @@ class _BottomBar extends ConsumerWidget {
     if (editing) {
       final widths = ref.watch(paneWidthsProvider);
       final visibility = ref.watch(paneVisibilityProvider);
+      final panelProgress = visibility.knowledgeBase ? 1.0 : 0.0;
 
       return _Footer(
-        child: LayoutBuilder(
-          builder: (context, constraints) => TweenAnimationBuilder<double>(
-            tween: Tween<double>(
-              begin: 1,
-              end: visibility.knowledgeBase ? 1 : 0,
-            ),
-            duration: DsMotion.pane,
-            curve: Curves.easeInOutCubic,
-            builder: (context, panelProgress, _) => Row(
-              children: [
-                SizedBox(width: widths.rail + DsSpace.seam),
-                const Expanded(child: _EditingToolbarIsland()),
-                SizedBox(width: (widths.panel + DsSpace.seam) * panelProgress),
-              ],
-            ),
-          ),
+        child: Row(
+          children: [
+            SizedBox(width: widths.rail + DsSpace.seam),
+            const Expanded(child: _EditingToolbarIsland()),
+            SizedBox(width: (widths.panel + DsSpace.seam) * panelProgress),
+          ],
         ),
       );
     }

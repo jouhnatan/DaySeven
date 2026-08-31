@@ -1089,6 +1089,7 @@ class _KbSwitcher extends ConsumerWidget {
                 }
                 return PopupMenuButton<String>(
                   tooltip: 'Switch Knowledge Base',
+                  popUpAnimationStyle: AnimationStyle.noAnimation,
                   onSelected: onPick,
                   itemBuilder: (context) {
                     final menu = DsDropdownMenuList<String>();

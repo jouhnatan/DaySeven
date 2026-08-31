@@ -22,6 +22,7 @@ class TimelineColorPicker extends StatelessWidget {
 
     return PopupMenuButton<TimelineColor>(
       tooltip: 'Item Color: ${selectedColor.label}',
+      popUpAnimationStyle: AnimationStyle.noAnimation,
       initialValue: selectedColor,
       onSelected: onColorSelected,
       offset: const Offset(0, 36),

@@ -158,6 +158,7 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
           // 1. Add Item (+) Button with Popup Menu
           PopupMenuButton<String>(
             tooltip: 'Add Timeline Item',
+            popUpAnimationStyle: AnimationStyle.noAnimation,
             shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.all(DsRadius.menu),
               side: BorderSide(color: CF.line),

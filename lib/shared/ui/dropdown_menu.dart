@@ -366,11 +366,16 @@ class DsDropdownMenuList<T> {
   }
 
   /// Displays this dropdown menu below [context] or at [position].
-  Future<T?> show(BuildContext context, {Offset? position}) {
+  Future<T?> show(
+    BuildContext context, {
+    Offset? position,
+    AnimationStyle? popUpAnimationStyle,
+  }) {
     return showDsMenu<T>(
       context: context,
       items: build(context),
       position: position,
+      popUpAnimationStyle: popUpAnimationStyle,
     );
   }
 }

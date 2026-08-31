@@ -763,7 +763,7 @@ weight. **Destructive items** are `danger` text; on hover they take a `dangerWas
 **Sections** — a 1px `hairline` divider with 6px margins. A section may carry a header:
 12px, `muted`, sentence case, 6px padding — **never capitals**.
 
-**Motion** — fade + 4px rise over 140ms; instant on close.
+**Motion** — instant on open and instant on close.
 
 ```dart
 MenuAnchor(

@@ -140,10 +140,13 @@ class _DsMenuItemState<T> extends PopupMenuItemState<T, DsMenuItem<T>> {
 }
 
 /// Shows a DaySeven menu below [context], or at the global pointer [position].
+///
+/// Dropdown menus open and close instantly without route animation.
 Future<T?> showDsMenu<T>({
   required BuildContext context,
   required List<PopupMenuEntry<T>> items,
   Offset? position,
+  AnimationStyle? popUpAnimationStyle,
 }) {
   final anchor = context.findRenderObject() as RenderBox?;
   final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
@@ -175,5 +178,6 @@ Future<T?> showDsMenu<T>({
       side: BorderSide(color: colors.surfaceOutline),
     ),
     items: items,
+    popUpAnimationStyle: popUpAnimationStyle ?? AnimationStyle.noAnimation,
   );
 }
