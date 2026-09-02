@@ -24,88 +24,161 @@ class TimelineFormatException implements Exception {
   String toString() => message;
 }
 
+/// A nation, defined once on the timeline and referenced by the items it was
+/// party to.
+///
+/// Held here rather than as free text on each item so that renaming a nation
+/// is one edit rather than one per event, and rather than as a link to a
+/// document so that a nation can be named before anybody has written it up.
+class TimelineNation {
+  const TimelineNation({
+    required this.id,
+    required this.name,
+    this.color = TimelineColor.slate,
+  });
+
+  final String id;
+  final String name;
+  final TimelineColor color;
+
+  TimelineNation copyWith({String? id, String? name, TimelineColor? color}) =>
+      TimelineNation(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        color: color ?? this.color,
+      );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'color': color.id,
+  };
+
+  static TimelineNation? fromJson(Map<String, Object?> json) {
+    final id = _string(json['id']);
+    if (id.isEmpty) return null;
+    return TimelineNation(
+      id: id,
+      name: _string(json['name']),
+      color: TimelineColor.fromId(json['color'] as String?),
+    );
+  }
+}
+
 /// An item on the timeline: either a point event or a period/span.
 sealed class TimelineItem {
   const TimelineItem({
     required this.id,
     required this.title,
-    required this.startYear,
-    required this.startDateLabel,
+    required this.year,
+    this.month,
     this.color = TimelineColor.fern,
     this.description = '',
-    this.documentPath,
+    this.mainDocumentPath,
+    this.documentPaths = const [],
+    this.nationIds = const [],
   });
 
   final String id;
   final String title;
-  final double startYear;
-  final String startDateLabel;
+
+  /// The year this happens in. Whole years; a world's own calendar decides
+  /// what a year means.
+  final int year;
+
+  /// The month within [year], or null for something dated only to the year.
+  ///
+  /// Deliberately unbounded: a world is allowed a thirteenth month, and the
+  /// timeline's own [Timeline.monthsPerYear] says how many it has.
+  final int? month;
+
   final TimelineColor color;
+
+  /// Used on the right when there is no [mainDocumentPath] to read instead.
   final String description;
 
-  /// The Knowledge Base document this item stands for, if any. Relative to the
-  /// Knowledge Base root, POSIX-style, exactly as `KbFile.relativePath` is.
-  final String? documentPath;
+  /// The document this item is really about: what the reader shows, and what
+  /// it takes its heading from.
+  final String? mainDocumentPath;
+
+  /// Every other document this item connects to, in the order they were added.
+  /// Does not repeat [mainDocumentPath].
+  final List<String> documentPaths;
+
+  /// The nations party to this, by [TimelineNation.id].
+  final List<String> nationIds;
 
   bool get isPeriod;
 
-  /// Whether this item points at a Knowledge Base document.
-  bool get isDocumentLink =>
-      documentPath != null && documentPath!.trim().isNotEmpty;
+  bool get hasMainDocument =>
+      mainDocumentPath != null && mainDocumentPath!.trim().isNotEmpty;
+
+  /// Every document this item touches, the main one first.
+  List<String> get allDocumentPaths => [
+    if (hasMainDocument) mainDocumentPath!,
+    ...documentPaths,
+  ];
 
   /// Converts this item into a period stretching over time.
-  TimelinePeriodItem toPeriod({double? endYear, String? endDateLabel}) {
-    final end = endYear ?? (startYear + 20.0);
-    return TimelinePeriodItem(
-      id: id,
-      title: title,
-      startYear: startYear,
-      startDateLabel: startDateLabel,
-      endYear: end,
-      endDateLabel: endDateLabel ?? '${end.toInt()}',
-      color: color,
-      description: description,
-      documentPath: documentPath,
-    );
-  }
+  TimelinePeriodItem toPeriod({int? endYear, int? endMonth}) =>
+      TimelinePeriodItem(
+        id: id,
+        title: title,
+        year: year,
+        month: month,
+        endYear: endYear ?? (year + 20),
+        endMonth: endMonth,
+        color: color,
+        description: description,
+        mainDocumentPath: mainDocumentPath,
+        documentPaths: documentPaths,
+        nationIds: nationIds,
+      );
 
   /// Converts this item into a point event.
   TimelineEventItem toPoint() => TimelineEventItem(
     id: id,
     title: title,
-    startYear: startYear,
-    startDateLabel: startDateLabel,
+    year: year,
+    month: month,
     color: color,
     description: description,
-    documentPath: documentPath,
+    mainDocumentPath: mainDocumentPath,
+    documentPaths: documentPaths,
+    nationIds: nationIds,
   );
 
   TimelineItem copyWith({
     String? id,
     String? title,
-    double? startYear,
-    String? startDateLabel,
+    int? year,
+    int? month,
+    bool clearMonth = false,
     TimelineColor? color,
     String? description,
-    String? documentPath,
-    bool clearDocumentPath = false,
+    String? mainDocumentPath,
+    bool clearMainDocumentPath = false,
+    List<String>? documentPaths,
+    List<String>? nationIds,
   });
 
   Map<String, Object?> toJson();
 
   /// The fields both kinds of item share, so the two [toJson] bodies do not
-  /// drift apart. A null [documentPath] is left out rather than written as
-  /// `null`: an absent link and a link to nothing are the same thing, and the
-  /// file reads better without it.
+  /// drift apart. Empty values are left out rather than written as null: the
+  /// file reads better without them, and an absent link and a link to nothing
+  /// are the same thing.
   Map<String, Object?> _sharedJson(String type) => {
     'id': id,
     'type': type,
     'title': title,
-    'start': startYear,
-    'startLabel': startDateLabel,
+    'year': year,
+    if (month != null) 'month': month,
     'color': color.id,
     if (description.isNotEmpty) 'description': description,
-    if (isDocumentLink) 'document': documentPath,
+    if (hasMainDocument) 'document': mainDocumentPath,
+    if (documentPaths.isNotEmpty) 'documents': documentPaths,
+    if (nationIds.isNotEmpty) 'nations': nationIds,
   };
 
   static TimelineItem fromJson(Map<String, Object?> json) {
@@ -113,47 +186,60 @@ sealed class TimelineItem {
     if (id.isEmpty) {
       throw const TimelineFormatException('A timeline item has no id.');
     }
-    final start = _number(json['start']);
-    if (start == null) {
-      throw TimelineFormatException(
-        'Timeline item "$id" has no start year.',
-      );
+
+    // `start` is how version 1 wrote the date, as one scalar. Read as the year
+    // it fell in; the month it never recorded stays absent.
+    final year = _int(json['year']) ?? _number(json['start'])?.floor();
+    if (year == null) {
+      throw TimelineFormatException('Timeline item "$id" has no year.');
     }
-    final startLabel = _string(json['startLabel'], fallback: '${start.toInt()}');
-    final color = TimelineColor.fromId(json['color'] as String?);
-    final description = _string(json['description']);
-    final document = _string(json['document']);
+
+    final main = _string(json['document']);
+    final others = _stringList(json['documents'])
+      ..removeWhere((path) => path == main);
+
+    final shared = (
+      title: _string(json['title']),
+      year: year,
+      month: _positiveInt(json['month']),
+      color: TimelineColor.fromId(json['color'] as String?),
+      description: _string(json['description']),
+      mainDocumentPath: main.isEmpty ? null : main,
+      documentPaths: others,
+      nationIds: _stringList(json['nations']),
+    );
 
     if (_string(json['type']) == 'period') {
+      final rawEnd = _int(json['end']) ?? _number(json['end'])?.floor();
       // A period whose end is missing or before its start is not a reason to
       // refuse the file — it is a hand-edit to be tidied into something the
       // track can draw.
-      final end = _number(json['end']);
-      final resolvedEnd = end == null || end < start ? start + 20 : end;
+      final end = rawEnd == null || rawEnd < year ? year + 20 : rawEnd;
       return TimelinePeriodItem(
         id: id,
-        title: _string(json['title']),
-        startYear: start,
-        startDateLabel: startLabel,
-        endYear: resolvedEnd,
-        endDateLabel: _string(
-          json['endLabel'],
-          fallback: '${resolvedEnd.toInt()}',
-        ),
-        color: color,
-        description: description,
-        documentPath: document.isEmpty ? null : document,
+        title: shared.title,
+        year: shared.year,
+        month: shared.month,
+        endYear: end,
+        endMonth: _positiveInt(json['endMonth']),
+        color: shared.color,
+        description: shared.description,
+        mainDocumentPath: shared.mainDocumentPath,
+        documentPaths: shared.documentPaths,
+        nationIds: shared.nationIds,
       );
     }
 
     return TimelineEventItem(
       id: id,
-      title: _string(json['title']),
-      startYear: start,
-      startDateLabel: startLabel,
-      color: color,
-      description: description,
-      documentPath: document.isEmpty ? null : document,
+      title: shared.title,
+      year: shared.year,
+      month: shared.month,
+      color: shared.color,
+      description: shared.description,
+      mainDocumentPath: shared.mainDocumentPath,
+      documentPaths: shared.documentPaths,
+      nationIds: shared.nationIds,
     );
   }
 }
@@ -163,11 +249,13 @@ class TimelineEventItem extends TimelineItem {
   const TimelineEventItem({
     required super.id,
     required super.title,
-    required super.startYear,
-    required super.startDateLabel,
+    required super.year,
+    super.month,
     super.color = TimelineColor.fern,
     super.description,
-    super.documentPath,
+    super.mainDocumentPath,
+    super.documentPaths,
+    super.nationIds,
   });
 
   @override
@@ -180,41 +268,48 @@ class TimelineEventItem extends TimelineItem {
   TimelineEventItem copyWith({
     String? id,
     String? title,
-    double? startYear,
-    String? startDateLabel,
+    int? year,
+    int? month,
+    bool clearMonth = false,
     TimelineColor? color,
     String? description,
-    String? documentPath,
-    bool clearDocumentPath = false,
+    String? mainDocumentPath,
+    bool clearMainDocumentPath = false,
+    List<String>? documentPaths,
+    List<String>? nationIds,
   }) => TimelineEventItem(
     id: id ?? this.id,
     title: title ?? this.title,
-    startYear: startYear ?? this.startYear,
-    startDateLabel: startDateLabel ?? this.startDateLabel,
+    year: year ?? this.year,
+    month: clearMonth ? null : (month ?? this.month),
     color: color ?? this.color,
     description: description ?? this.description,
-    documentPath: clearDocumentPath
+    mainDocumentPath: clearMainDocumentPath
         ? null
-        : (documentPath ?? this.documentPath),
+        : (mainDocumentPath ?? this.mainDocumentPath),
+    documentPaths: documentPaths ?? this.documentPaths,
+    nationIds: nationIds ?? this.nationIds,
   );
 }
 
-/// A period spanning between a start and an end.
+/// An age: a span between a start and an end.
 class TimelinePeriodItem extends TimelineItem {
   const TimelinePeriodItem({
     required super.id,
     required super.title,
-    required super.startYear,
-    required super.startDateLabel,
+    required super.year,
     required this.endYear,
-    required this.endDateLabel,
+    super.month,
+    this.endMonth,
     super.color = TimelineColor.fern,
     super.description,
-    super.documentPath,
+    super.mainDocumentPath,
+    super.documentPaths,
+    super.nationIds,
   });
 
-  final double endYear;
-  final String endDateLabel;
+  final int endYear;
+  final int? endMonth;
 
   @override
   bool get isPeriod => true;
@@ -223,33 +318,39 @@ class TimelinePeriodItem extends TimelineItem {
   Map<String, Object?> toJson() => {
     ..._sharedJson('period'),
     'end': endYear,
-    'endLabel': endDateLabel,
+    if (endMonth != null) 'endMonth': endMonth,
   };
 
   @override
   TimelinePeriodItem copyWith({
     String? id,
     String? title,
-    double? startYear,
-    String? startDateLabel,
-    double? endYear,
-    String? endDateLabel,
+    int? year,
+    int? month,
+    bool clearMonth = false,
+    int? endYear,
+    int? endMonth,
+    bool clearEndMonth = false,
     TimelineColor? color,
     String? description,
-    String? documentPath,
-    bool clearDocumentPath = false,
+    String? mainDocumentPath,
+    bool clearMainDocumentPath = false,
+    List<String>? documentPaths,
+    List<String>? nationIds,
   }) => TimelinePeriodItem(
     id: id ?? this.id,
     title: title ?? this.title,
-    startYear: startYear ?? this.startYear,
-    startDateLabel: startDateLabel ?? this.startDateLabel,
+    year: year ?? this.year,
+    month: clearMonth ? null : (month ?? this.month),
     endYear: endYear ?? this.endYear,
-    endDateLabel: endDateLabel ?? this.endDateLabel,
+    endMonth: clearEndMonth ? null : (endMonth ?? this.endMonth),
     color: color ?? this.color,
     description: description ?? this.description,
-    documentPath: clearDocumentPath
+    mainDocumentPath: clearMainDocumentPath
         ? null
-        : (documentPath ?? this.documentPath),
+        : (mainDocumentPath ?? this.mainDocumentPath),
+    documentPaths: documentPaths ?? this.documentPaths,
+    nationIds: nationIds ?? this.nationIds,
   );
 }
 
@@ -259,6 +360,8 @@ class Timeline {
     required this.id,
     required this.title,
     this.description = '',
+    this.monthsPerYear = defaultMonthsPerYear,
+    this.nations = const [],
     this.items = const [],
   });
 
@@ -266,38 +369,91 @@ class Timeline {
   /// different `kind` in the same container rather than a second extension.
   static const String kind = 'timeline';
 
-  /// The schema this app writes. A file claiming a higher version is refused
-  /// rather than opened and written back, because saving it would quietly
-  /// strip whatever the newer version knew about and this one did not.
-  static const int version = 1;
+  /// The schema this app writes.
+  ///
+  /// Version 1 dated an item with one scalar, `start`, and knew nothing about
+  /// nations or about a document being the main one. Version 2 is read and
+  /// written here; a version 1 file is upgraded on the way in.
+  static const int version = 2;
 
   /// Years used when a timeline has nothing in it yet, so the track still has
   /// a span to draw.
-  static const double emptyMinYear = 1800;
-  static const double emptyMaxYear = 1850;
+  static const int emptyMinYear = 1800;
+  static const int emptyMaxYear = 1850;
+
+  /// How many months a year has here, when nobody has said otherwise.
+  static const int defaultMonthsPerYear = 12;
 
   final String id;
   final String title;
   final String description;
+
+  /// How many months this world's year has. Only ever used to place a dated
+  /// item between one year mark and the next, so a thirteen-month calendar
+  /// lands where its owner expects rather than spilling into the year after.
+  final int monthsPerYear;
+
+  final List<TimelineNation> nations;
   final List<TimelineItem> items;
 
-  /// The earliest year among all items.
+  /// Where [item] sits on the track.
+  double plotStart(TimelineItem item) => _plot(item.year, item.month);
+
+  /// Where [item] stops. The same as [plotStart] for anything but an age.
+  double plotEnd(TimelineItem item) => switch (item) {
+    final TimelinePeriodItem p => _plot(p.endYear, p.endMonth),
+    _ => plotStart(item),
+  };
+
+  double _plot(int year, int? month) {
+    if (month == null) return year.toDouble();
+    final months = monthsPerYear < 1 ? defaultMonthsPerYear : monthsPerYear;
+    return year + ((month - 1).clamp(0, months - 1) / months);
+  }
+
+  /// How [item]'s date reads. Months have no names here — a world may have any
+  /// number of them — so a month is said as a number.
+  String dateLabel(TimelineItem item) => switch (item) {
+    final TimelinePeriodItem p =>
+      '${_label(p.year, p.month)} → ${_label(p.endYear, p.endMonth)}',
+    _ => _label(item.year, item.month),
+  };
+
+  static String _label(int year, int? month) =>
+      month == null ? '$year' : 'Month $month, $year';
+
+  TimelineNation? nationById(String id) {
+    for (final nation in nations) {
+      if (nation.id == id) return nation;
+    }
+    return null;
+  }
+
+  /// The nations party to [item], in the order the timeline lists them, so two
+  /// items never show the same pair in a different order.
+  List<TimelineNation> nationsOf(TimelineItem item) => [
+    for (final nation in nations)
+      if (item.nationIds.contains(nation.id)) nation,
+  ];
+
+  /// The earliest point among all items.
   double get minYear {
-    if (items.isEmpty) return emptyMinYear;
-    var min = items.first.startYear;
+    if (items.isEmpty) return emptyMinYear.toDouble();
+    var min = plotStart(items.first);
     for (final item in items) {
-      if (item.startYear < min) min = item.startYear;
+      final start = plotStart(item);
+      if (start < min) min = start;
     }
     return min;
   }
 
-  /// The latest year among all items, counting a period's end.
+  /// The latest point among all items, counting where an age ends.
   double get maxYear {
-    if (items.isEmpty) return emptyMaxYear;
-    var max = items.first.startYear;
+    if (items.isEmpty) return emptyMaxYear.toDouble();
+    var max = plotEnd(items.first);
     for (final item in items) {
-      final year = item is TimelinePeriodItem ? item.endYear : item.startYear;
-      if (year > max) max = year;
+      final end = plotEnd(item);
+      if (end > max) max = end;
     }
     return max;
   }
@@ -314,11 +470,15 @@ class Timeline {
     String? id,
     String? title,
     String? description,
+    int? monthsPerYear,
+    List<TimelineNation>? nations,
     List<TimelineItem>? items,
   }) => Timeline(
     id: id ?? this.id,
     title: title ?? this.title,
     description: description ?? this.description,
+    monthsPerYear: monthsPerYear ?? this.monthsPerYear,
+    nations: nations ?? this.nations,
     items: items ?? this.items,
   );
 
@@ -328,6 +488,8 @@ class Timeline {
     'id': id,
     'title': title,
     'description': description,
+    'monthsPerYear': monthsPerYear,
+    'nations': [for (final nation in nations) nation.toJson()],
     'items': [for (final item in items) item.toJson()],
   };
 
@@ -341,7 +503,7 @@ class Timeline {
       );
     }
 
-    final declaredVersion = _number(json['version'])?.toInt() ?? version;
+    final declaredVersion = _int(json['version']) ?? version;
     if (declaredVersion > version) {
       throw TimelineFormatException(
         'That timeline was written by a newer version of DaySeven '
@@ -350,100 +512,81 @@ class Timeline {
       );
     }
 
-    final rawItems = json['items'];
+    final nations = <TimelineNation>[];
+    final rawNations = json['nations'];
+    if (rawNations is List) {
+      for (final raw in rawNations) {
+        if (raw is! Map) continue;
+        final nation = TimelineNation.fromJson(Map<String, Object?>.from(raw));
+        if (nation != null) nations.add(nation);
+      }
+    }
+
     final items = <TimelineItem>[];
+    final rawItems = json['items'];
     if (rawItems is List) {
       for (final raw in rawItems) {
         if (raw is! Map) continue;
         items.add(TimelineItem.fromJson(Map<String, Object?>.from(raw)));
       }
     }
-    // Sorted on the way in: the track draws left to right, and a hand-edited
-    // file has no reason to have kept them in order.
-    items.sort((a, b) => a.startYear.compareTo(b.startYear));
 
-    return Timeline(
+    final known = {for (final nation in nations) nation.id};
+    final timeline = Timeline(
       id: _string(json['id'], fallback: 'timeline'),
       title: _string(json['title']),
       description: _string(json['description']),
-      items: items,
+      monthsPerYear:
+          _positiveInt(json['monthsPerYear']) ?? defaultMonthsPerYear,
+      nations: nations,
+      items: [
+        // A reference to a nation the file does not define is dropped rather
+        // than kept as an id nothing can render.
+        for (final item in items)
+          item.nationIds.every(known.contains)
+              ? item
+              : item.copyWith(
+                  nationIds: [
+                    for (final id in item.nationIds)
+                      if (known.contains(id)) id,
+                  ],
+                ),
+      ],
     );
+
+    // Sorted on the way out: the track draws left to right, and a hand-edited
+    // file has no reason to have kept them in order.
+    final sorted = [...timeline.items]
+      ..sort(
+        (a, b) => timeline.plotStart(a).compareTo(timeline.plotStart(b)),
+      );
+    return timeline.copyWith(items: sorted);
   }
-}
-
-/// Reads a year out of whatever the user typed into a date field.
-///
-/// Dates in an invented world are not dates: "Year 1803", "1803-13-20" with a
-/// thirteenth month, "500 BCE" and plain "1803" all have to land somewhere on
-/// the track. This turns any of them into the single number the track plots
-/// against, and returns null only when there is no number in the text at all.
-///
-/// Carried over from the section parser that used to own it — the format it
-/// read is gone, but a user typing "Year 1803" into the inspector is not.
-double? parseYearLabel(String raw) {
-  final text = raw.replaceAll('*', '').trim();
-  if (text.isEmpty) return null;
-
-  final isBce = RegExp(r'\b(bce|bc)\b', caseSensitive: false).hasMatch(text);
-  double signed(double value) => isBce && value > 0 ? -value : value;
-
-  // "Year 1803", optionally with a month and a day around it.
-  final yearMatch = RegExp(
-    r'Year\s+(-?\d+(?:\.\d+)?)',
-    caseSensitive: false,
-  ).firstMatch(text);
-  if (yearMatch != null) {
-    final year = double.tryParse(yearMatch.group(1)!);
-    if (year != null) {
-      var scalar = year;
-      final monthMatch = RegExp(
-        r'Month\s+(\d+)',
-        caseSensitive: false,
-      ).firstMatch(text);
-      final dayMatch = RegExp(
-        r'(\d+)\s+Month',
-        caseSensitive: false,
-      ).firstMatch(text);
-      if (monthMatch != null) {
-        final month = double.tryParse(monthMatch.group(1)!) ?? 1;
-        // Clamped generously rather than to twelve: a world is allowed more
-        // months than ours has.
-        scalar += (month - 1).clamp(0, 20) / 12;
-      }
-      if (dayMatch != null) {
-        final day = double.tryParse(dayMatch.group(1)!) ?? 1;
-        scalar += day.clamp(0, 31) / 365;
-      }
-      return signed(scalar);
-    }
-  }
-
-  // "1803", "1803-13-20", "1803/13/20".
-  final isoMatch = RegExp(
-    r'^(-?\d{1,6})(?:[-/](\d{1,2}))?(?:[-/](\d{1,2}))?',
-  ).firstMatch(text);
-  if (isoMatch != null) {
-    final year = double.tryParse(isoMatch.group(1)!);
-    if (year != null) {
-      var scalar = year;
-      final month = double.tryParse(isoMatch.group(2) ?? '');
-      final day = double.tryParse(isoMatch.group(3) ?? '');
-      if (month != null) scalar += (month - 1) / 12;
-      if (day != null) scalar += day / 365;
-      return signed(scalar);
-    }
-  }
-
-  // Anything with a number in it at all.
-  final numberMatch = RegExp(r'(-?\d+(?:\.\d+)?)').firstMatch(text);
-  final number = numberMatch == null
-      ? null
-      : double.tryParse(numberMatch.group(1)!);
-  return number == null ? null : signed(number);
 }
 
 String _string(Object? value, {String fallback = ''}) =>
     value is String ? value : fallback;
+
+List<String> _stringList(Object? value) => switch (value) {
+  final List<Object?> list => [
+    for (final entry in list)
+      if (entry is String && entry.trim().isNotEmpty) entry,
+  ],
+  _ => <String>[],
+};
+
+int? _int(Object? value) => switch (value) {
+  final int i => i,
+  final num n => n.toInt(),
+  final String s => int.tryParse(s),
+  _ => null,
+};
+
+/// A month, or a month count, is only meaningful above zero.
+int? _positiveInt(Object? value) {
+  final parsed = _int(value);
+  return parsed == null || parsed < 1 ? null : parsed;
+}
 
 double? _number(Object? value) => switch (value) {
   final num n => n.toDouble(),

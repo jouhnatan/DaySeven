@@ -142,24 +142,36 @@ void main() {
         seed: const Timeline(
           id: 'tl-1',
           title: 'Third Age',
+          nations: [
+            TimelineNation(
+              id: 'vale',
+              name: 'The Vale',
+              color: TimelineColor.teal,
+            ),
+            TimelineNation(
+              id: 'north',
+              name: 'The North',
+              color: TimelineColor.amber,
+            ),
+          ],
           items: [
             TimelinePeriodItem(
-              id: 'north',
+              id: 'rise',
               title: 'Rise of the North',
-              startYear: 1800,
-              startDateLabel: '1800',
+              year: 1800,
               endYear: 1850,
-              endDateLabel: '1850',
               color: TimelineColor.amber,
+              nationIds: ['north'],
             ),
             // Off the period's midpoint on purpose: an event centred on a
             // period's centre draws its pill over the period's own.
             TimelineEventItem(
               id: 'fall',
               title: 'The bridge falls',
-              startYear: 1842,
-              startDateLabel: '1842',
-              documentPath: 'Places/Aldenmoor.md',
+              year: 1842,
+              month: 3,
+              mainDocumentPath: 'Places/Aldenmoor.md',
+              nationIds: ['vale', 'north'],
             ),
           ],
         ).toJson(),

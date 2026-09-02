@@ -1,8 +1,10 @@
 /// The Views menu: what is placed on the screen.
 ///
 /// Editor, Differences and Timelines share the shell's centre slot, so placing
-/// one displaces the other and the menu marks whichever holds it. The
-/// Knowledge Base has a pane of its own beside them and toggles freely.
+/// one displaces the other and the menu marks whichever holds it. Below the
+/// divider are the panes seated beside the centre, which toggle freely — which
+/// panes those are depends on what is placed, so the shell supplies them
+/// rather than this menu knowing.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,34 +15,54 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
-enum _ViewsMenuItem { editor, differences, timelines, knowledgeBase }
+enum _ViewsWorkspace { editor, differences, timelines }
+
+/// One pane the placed workspace has beside it, and how to toggle it.
+@immutable
+class ViewsPaneToggle {
+  const ViewsPaneToggle({
+    required this.id,
+    required this.label,
+    required this.visible,
+    required this.onToggle,
+  });
+
+  /// Identifies the row as `Key(id)`, and its check mark as `Key('<id>-check')`.
+  final String id;
+  final String label;
+  final bool visible;
+  final VoidCallback onToggle;
+}
 
 class ViewsMenuButton extends ConsumerWidget {
   const ViewsMenuButton({
     super.key,
-    required this.knowledgeBaseVisible,
-    required this.onToggleKnowledgeBase,
+    required this.panes,
     this.pendingDifferencesCount = 0,
   });
 
-  final bool knowledgeBaseVisible;
-  final VoidCallback onToggleKnowledgeBase;
+  /// The panes beside whatever is currently placed, in the order they sit on
+  /// screen.
+  final List<ViewsPaneToggle> panes;
+
   final int pendingDifferencesCount;
 
   Future<void> _show(BuildContext context, WidgetRef ref) async {
     final current = ref.read(viewProvider);
-    final menu = DsDropdownMenuList<_ViewsMenuItem>();
+    // Object rather than a single enum: the panes below the divider are
+    // supplied from outside and are not known here as values.
+    final menu = DsDropdownMenuList<Object>();
 
     menu.pushItem(
       key: const Key('views-menu-editor'),
-      value: _ViewsMenuItem.editor,
+      value: _ViewsWorkspace.editor,
       label: 'Editor',
       isChecked: current == DsView.editor,
       leadingKey: const Key('views-menu-editor-check'),
     );
     menu.pushItem(
       key: const Key('views-menu-differences'),
-      value: _ViewsMenuItem.differences,
+      value: _ViewsWorkspace.differences,
       label: 'Differences',
       isChecked: current == DsView.differences,
       leadingKey: const Key('views-menu-differences-check'),
@@ -50,19 +72,22 @@ class ViewsMenuButton extends ConsumerWidget {
     );
     menu.pushItem(
       key: const Key('views-menu-timelines'),
-      value: _ViewsMenuItem.timelines,
+      value: _ViewsWorkspace.timelines,
       label: 'Timelines',
       isChecked: current == DsView.timelines,
       leadingKey: const Key('views-menu-timelines-check'),
     );
-    menu.pushDivider();
-    menu.pushItem(
-      key: const Key('views-menu-knowledge-base'),
-      value: _ViewsMenuItem.knowledgeBase,
-      label: 'Knowledge Base',
-      isChecked: knowledgeBaseVisible,
-      leadingKey: const Key('views-menu-knowledge-base-check'),
-    );
+
+    if (panes.isNotEmpty) menu.pushDivider();
+    for (final pane in panes) {
+      menu.pushItem(
+        key: Key(pane.id),
+        value: pane,
+        label: pane.label,
+        isChecked: pane.visible,
+        leadingKey: Key('${pane.id}-check'),
+      );
+    }
 
     final choice = await menu.show(context);
     if (choice == null) return;
@@ -70,14 +95,14 @@ class ViewsMenuButton extends ConsumerWidget {
     switch (choice) {
       // Selecting the workspace already in the centre slot changes nothing:
       // there is nowhere for it to go, and no empty centre to fall back to.
-      case _ViewsMenuItem.editor:
+      case _ViewsWorkspace.editor:
         ref.read(viewProvider.notifier).state = DsView.editor;
-      case _ViewsMenuItem.differences:
+      case _ViewsWorkspace.differences:
         ref.read(viewProvider.notifier).state = DsView.differences;
-      case _ViewsMenuItem.timelines:
+      case _ViewsWorkspace.timelines:
         ref.read(viewProvider.notifier).state = DsView.timelines;
-      case _ViewsMenuItem.knowledgeBase:
-        onToggleKnowledgeBase();
+      case final ViewsPaneToggle pane:
+        pane.onToggle();
     }
   }
 

@@ -315,7 +315,7 @@ void main() {
       find.byKey(const Key('centre-workspace')),
     );
     final slideHidden = tester.getSize(
-      find.byKey(const Key('side-pane-slide-region')),
+      find.byKey(const Key('side-pane-slide-region-right')),
     );
     final hiddenInput = tester.widget<IgnorePointer>(
       find
@@ -357,7 +357,7 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .getSize(find.byKey(const Key('side-pane-slide-region')))
+          .getSize(find.byKey(const Key('side-pane-slide-region-right')))
           .width,
       0,
       reason: 'closes instantly on state change without animation lag',

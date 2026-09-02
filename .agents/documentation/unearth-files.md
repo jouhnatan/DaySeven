@@ -25,29 +25,35 @@ and `check_layers.sh` fails the build if it does.
 ```json
 {
   "kind": "timeline",
-  "version": 1,
+  "version": 2,
   "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1",
   "title": "Third Age",
   "description": "",
+  "monthsPerYear": 12,
+  "nations": [
+    { "id": "n1", "name": "The Vale", "color": "teal" },
+    { "id": "n2", "name": "The North", "color": "amber" }
+  ],
   "items": [
     {
       "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e2",
       "type": "period",
       "title": "Rise of the North",
-      "start": 1800,
-      "startLabel": "1800",
+      "year": 1800,
       "end": 1850,
-      "endLabel": "1850",
-      "color": "amber"
+      "color": "amber",
+      "nations": ["n2"]
     },
     {
       "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e3",
       "type": "event",
       "title": "The bridge falls",
-      "start": 1842,
-      "startLabel": "1842",
+      "year": 1842,
+      "month": 3,
       "color": "fern",
-      "document": "Places/Aldenmoor.md"
+      "document": "Places/Aldenmoor.md",
+      "documents": ["Characters/Aldric.md"],
+      "nations": ["n1", "n2"]
     }
   ]
 }
@@ -58,11 +64,29 @@ and `check_layers.sh` fails the build if it does.
 | Field | Meaning |
 | --- | --- |
 | `kind` | Which object this is. Must be `"timeline"` to read as one. |
-| `version` | The schema this file was written against. Currently `1`. |
+| `version` | The schema this file was written against. Currently `2`. |
 | `id` | Stable identity, a UUID v7. Not the name. |
 | `title` | Kept in step with the file name — see *The name is the file name*. |
 | `description` | Free text about the timeline as a whole. May be absent. |
-| `items` | Events and periods, in any order. May be absent or empty. |
+| `monthsPerYear` | How many months this world's year has. Defaults to 12. Only used to place a dated item between one year mark and the next. |
+| `nations` | The powers this timeline knows about. May be absent or empty. |
+| `items` | Events and ages, in any order. May be absent or empty. |
+
+### A nation
+
+Defined once on the timeline and referenced by the items party to it — rather
+than written as free text on each item, so that renaming one is a single edit,
+and rather than as a link to a document, so a nation can be named before
+anybody has written it up.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | **Required.** What items reference. A nation without one is dropped. |
+| `name` | What the chip says. |
+| `color` | A `TimelineColor` id. Defaults to `slate`. |
+
+An item referencing a nation the file does not define has that reference
+dropped on read: an id nothing answers to would render as nothing at all.
 
 ### An item
 
@@ -72,24 +96,39 @@ not `"period"` reads as an event.
 | Field | Applies to | Meaning |
 | --- | --- | --- |
 | `id` | both | **Required.** Nothing could select an item without one. |
-| `type` | both | `"event"` or `"period"`. |
+| `type` | both | `"event"` (a point) or `"period"` (an age). Anything else reads as an event. |
 | `title` | both | What the pill on the track says. |
-| `start` | both | **Required.** The number the track plots against. |
-| `startLabel` | both | What the user typed. See *Years and labels*. |
-| `end` | period | Where the span ends. |
-| `endLabel` | period | The typed form of `end`. |
+| `year` | both | **Required.** The year it happens in. |
+| `month` | both | The month within `year`, or absent for something dated only to the year. |
+| `end` | period | The year the age ends in. |
+| `endMonth` | period | The month within `end`, or absent. |
 | `color` | both | A `TimelineColor` id — `fern`, `amber`, `slate`, and so on. An unknown id falls back to `fern` rather than failing. |
-| `document` | both | A Knowledge Base document this item stands for, relative to the Knowledge Base root, POSIX-style. Omitted entirely when there is no link. |
+| `document` | both | The **main** document: what the reader on the right shows. Relative to the Knowledge Base root, POSIX-style. |
+| `documents` | both | Every other document the item connects to. Never repeats `document`. |
+| `nations` | both | Nation ids, referencing the timeline's own `nations`. |
 
-### Years and labels
+### Years and months
 
-`start` is a number so the track can place it; `startLabel` is what the person
-typed, kept verbatim so an invented calendar survives a round trip.
-`parseYearLabel` in `features/timeline/domain/timeline.dart` turns the second
-into the first, and it is deliberately permissive — "Year 1803",
-"20 Month 13, Year 1803" (a thirteenth month is fine), "1803-13-20",
-"500 BCE" and plain "1803" all land somewhere sensible. A month is clamped
-generously rather than to twelve: a world is allowed more months than ours has.
+A year is a whole number and means whatever a year means in that world. A month
+is an optional whole number above zero, and is deliberately unbounded: a world
+is allowed a thirteenth month.
+
+`monthsPerYear` on the timeline is what keeps such a calendar honest. It is used
+for one thing only — placing a dated item between one year mark and the next —
+so a month of 13 in a thirteen-month year lands just short of the following
+year rather than spilling past it. Months have no names, so a date is said as
+"Month 3, 1842".
+
+### The main document
+
+An item can connect to any number of documents, and exactly one of them is the
+main one. That is what the reader on the right renders, and what the item is
+really *about*; the rest are listed under it as connections.
+
+The first document connected to an item becomes the main one, because an item
+with one document and no main one would show nothing. Removing the main one
+promotes another rather than leaving the reader empty while a document is
+still connected.
 
 ## Rules the code depends on
 
@@ -98,16 +137,23 @@ higher than this build writes, throws `TimelineFormatException`. Opening such
 a file and saving it back would quietly discard whatever the newer version
 knew about, which is worse than declining to open it.
 
+**A version 1 file is upgraded, not refused.** Version 1 dated an item with a
+single scalar `start`, and knew nothing about nations or about one document
+being the main one. It is read as the year the scalar fell in, its `document`
+becomes the main document, and it is written back as version 2. Only a *higher*
+version is refused.
+
 **Hand-edits are expected.** The file is written indented precisely so it can
 be edited in a text editor without this app, so `fromJson` tolerates what that
 produces: missing `items`, items out of order (they are sorted on the way in),
-a period whose `end` is before its `start` (tidied, not refused). It does not
-tolerate a missing `id` or `start` — those are the two fields nothing can work
-around.
+an age whose `end` is before its `year` (tidied, not refused), a `month` of zero
+(read as no month), a nation id nothing defines (dropped). It does not tolerate
+a missing `id` or `year` — those are the two fields nothing can work around.
 
-**An absent link and a link to nothing are the same thing.** `document` is left
-out entirely rather than written as `null`, and the reader pane treats a link
-whose document has since been deleted as a message rather than an error.
+**An absent value and an empty one are the same thing.** `month`, `document`,
+`documents` and `nations` are left out entirely rather than written as `null` or
+`[]`, and the reader pane treats a main document that has since been deleted as
+a message rather than an error.
 
 **The name is the file name.** As with documents, renaming the file renames
 the thing. `TimelineController.open` overwrites `title` from the file name when
@@ -138,7 +184,7 @@ server-authored (see the `kb:%` topic notes in `AGENTS.md`).
 | --- | --- |
 | Extension, `isObjectPath`, read/write/create/rename, `readObjects` | `lib/shared/kb/bundle.dart` |
 | Generic create/rename on the controller | `lib/app/workspace/kb_session.dart` |
-| The timeline model, its JSON, `parseYearLabel` | `lib/features/timeline/domain/timeline.dart` |
+| The timeline model, its JSON, the v1 upgrade | `lib/features/timeline/domain/timeline.dart` |
 | Open/edit/debounced-save of the open object | `lib/features/timeline/application/timeline_controller.dart` |
 | Format tests | `test/features/timeline/timeline_test.dart` |
 | Filesystem and listing tests | `test/shared/kb/objects_test.dart` |

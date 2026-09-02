@@ -11,7 +11,7 @@ import 'package:dayseven/app/app_store.dart';
 /// so the pane is what the user drags. Persisted, so a window comes back the
 /// way it was left.
 class PaneWidths {
-  const PaneWidths({this.panel = 248, this.reader = 320});
+  const PaneWidths({this.panel = 248, this.reader = 320, this.editor = 268});
 
   /// The Knowledge Base pane, beside the Editor and Differences.
   final double panel;
@@ -20,6 +20,9 @@ class PaneWidths {
   /// carries a document rather than a list of file names.
   final double reader;
 
+  /// The event and age editor, left of the map in the Timelines view.
+  final double editor;
+
   static const double minPanel = 180;
   static const double maxPanel = 560;
 
@@ -27,8 +30,12 @@ class PaneWidths {
   /// dragged.
   static const double minEditor = 320;
 
-  PaneWidths copyWith({double? panel, double? reader}) =>
-      PaneWidths(panel: panel ?? this.panel, reader: reader ?? this.reader);
+  PaneWidths copyWith({double? panel, double? reader, double? editor}) =>
+      PaneWidths(
+        panel: panel ?? this.panel,
+        reader: reader ?? this.reader,
+        editor: editor ?? this.editor,
+      );
 }
 
 class PaneWidthsController extends StateNotifier<PaneWidths> {
@@ -46,6 +53,7 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
     state = PaneWidths(
       panel: widths['panel'] ?? state.panel,
       reader: widths['reader'] ?? state.reader,
+      editor: widths['editor'] ?? state.editor,
     );
   }
 
@@ -63,6 +71,15 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
     );
   }
 
+  /// The editor is left of the workspace, so a drag to the right widens it —
+  /// the opposite sign to the panes on the other side.
+  void dragEditor(double delta, double available) {
+    _set(
+      'editor',
+      state.copyWith(editor: _clamp(state.editor + delta, available)),
+    );
+  }
+
   /// Stops a drag before the workspace beside the pane is squeezed out.
   static double _clamp(double width, double available) {
     final headroom = available - PaneWidths.minEditor;
@@ -77,10 +94,11 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
     _saveDebounce?.cancel();
     _saveDebounce = Timer(_saveDelay, () async {
       final store = await _ref.read(appStoreProvider.future);
-      await store.setPaneWidth(
-        key,
-        key == 'panel' ? state.panel : state.reader,
-      );
+      await store.setPaneWidth(key, switch (key) {
+        'panel' => state.panel,
+        'editor' => state.editor,
+        _ => state.reader,
+      });
     });
   }
 

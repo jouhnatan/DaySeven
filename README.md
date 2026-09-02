@@ -145,20 +145,34 @@ constructs, and it lives beside the documents in its own file:
 ```json
 {
   "kind": "timeline",
-  "version": 1,
+  "version": 2,
   "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1",
   "title": "Third Age",
   "description": "",
+  "monthsPerYear": 12,
+  "nations": [
+    { "id": "n1", "name": "The Vale", "color": "teal" },
+    { "id": "n2", "name": "The North", "color": "amber" }
+  ],
   "items": [
     { "id": "…", "type": "period", "title": "Rise of the North",
-      "start": 1800, "startLabel": "1800",
-      "end": 1850, "endLabel": "1850", "color": "amber" },
+      "year": 1800, "end": 1850, "color": "amber", "nations": ["n2"] },
     { "id": "…", "type": "event", "title": "The bridge falls",
-      "start": 1842, "startLabel": "1842", "color": "fern",
-      "document": "Places/Aldenmoor.md" }
+      "year": 1842, "month": 3, "color": "fern", "nations": ["n1", "n2"],
+      "document": "Places/Aldenmoor.md",
+      "documents": ["Characters/Aldric.md"] }
   ]
 }
 ```
+
+A year is whatever a year means in that world, and a month is optional and
+unbounded — a thirteenth month is allowed, and `monthsPerYear` is what places
+it inside its own year rather than spilling into the next. Nations are named
+once on the timeline and referenced by the items party to them, so renaming one
+is a single edit. Of the documents an item connects to, `document` is the main
+one: what the reader shows, and what the item is really about.
+
+`.agents/documentation/unearth-files.md` covers the format in full.
 
 One extension carries every object type; the `kind` at the root says which one
 this is. A map, when there is one, is a new `kind` rather than a second
@@ -315,8 +329,10 @@ server-authored.
   and the account control and Menu at the other.
 - **Views** — *Editor*, *Differences* and *Timelines* share the centre slot, so
   placing one displaces the other and the menu marks whichever holds it;
-  Differences carries the durable pending count. *Knowledge Base* below the
-  divider is a pane toggle rather than a placement, and toggles freely.
+  Differences carries the durable pending count. Below the divider are the panes
+  seated beside whatever is placed — *Knowledge Base* for the Editor and
+  Differences, *Events & ages* and *Reader* for Timelines. Those are toggles
+  rather than placements, and toggle freely.
 - **Notifications** — the bell opens a panel listing the latest five events —
   publishes, sync results, sharing, errors — newest first. A new notification
   fades in while the rest slide down one notch; each row shows its event's icon
@@ -334,15 +350,19 @@ server-authored.
   a document or folder onto another folder to move it, or onto the panel
   background to bring it back out to the top level; the file is renamed on
   disk, not copied.
-- **Timelines** — the centre is the map surface, the pane beside it is a
-  reader, and the timeline runs the full width of the window along the bottom,
-  edge to edge rather than stopping where the pane above it begins. The
-  reader's header is a *Detail* / *Timelines* control: *Timelines* is this
-  view's directory, a flat list of the `.unearth` objects in the Knowledge
-  Base; *Detail* is the selected event or age, its date span, and the document
-  it points at, shown read-only. Both the reader and the timeline expand into
-  full view over the map and retract again. The map itself is a placeholder —
-  the surface and its bounds are settled, the image is not there yet.
+- **Timelines** — three regions around a map. The centre is the map surface and
+  only ever the map: nothing expands over it. Left is where an event or an age
+  is edited — its name, its year and optional month (an age gets a second pair
+  for where it ends), the nations party to it, and the documents it connects
+  to, one of them starred as the main one. Right is the reader: a *Detail* /
+  *Timelines* control, where *Timelines* is this view's directory — a flat list
+  of the `.unearth` objects in the Knowledge Base — and *Detail* shows the
+  selected item, its date, its nations, and its main document rendered
+  read-only. Along the bottom the timeline runs the full width of the window,
+  edge to edge rather than stopping where the panes above it begin; the track
+  selects, and drags a thing through time, but does not otherwise edit it. Both
+  side panes retract from the Views menu. The map itself is a placeholder — the
+  surface and its bounds are settled, the image is not there yet.
   Right-click a document to rename it, or edit its title in the editor and
   press Enter or click away; the Markdown filename is the canonical title
   everywhere. Right-click any item to delete it after a permanent-deletion

@@ -57,9 +57,8 @@ void main() {
             TimelineEventItem(
               id: 'fall',
               title: 'The bridge falls',
-              startYear: 1825,
-              startDateLabel: '1825',
-              documentPath: 'Places/Aldenmoor.md',
+              year: 1825,
+              mainDocumentPath: 'Places/Aldenmoor.md',
             ),
           ],
         ).toJson(),
@@ -86,6 +85,18 @@ void main() {
   ) async {
     await tester.tap(tab('Timelines'));
     await tester.pumpAndSettle();
+  }
+
+  /// Lets the debounced save fall due and land, so a test that edited does not
+  /// end with a timer still pending.
+  Future<void> settleSaves(
+    WidgetTester tester,
+    ProviderContainer container,
+  ) async {
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.runAsync(
+      () => container.read(openTimelineProvider.notifier).flush(),
+    );
   }
 
   Future<void> openThirdAge(
@@ -163,7 +174,48 @@ void main() {
     expect(container.read(documentControllerProvider), isNull);
   });
 
-  testWidgets('the reader expands over the map and retracts again', (
+  testWidgets('the centre is the map, and stays the map', (tester) async {
+    final container = await timelinesView(tester);
+
+    await showTimelines(tester, container);
+    await openThirdAge(tester, container);
+    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
+    await tester.pumpAndSettle();
+
+    // Nothing selects, expands or edits its way into the centre slot: the map
+    // is what the centre is for.
+    expect(find.byKey(const Key('timeline-map-canvas')), findsOneWidget);
+    expect(find.byKey(const Key('timeline-item-editor')), findsOneWidget);
+    expect(find.byKey(const Key('timeline-strip')), findsOneWidget);
+  });
+
+  testWidgets('the left pane edits the selected item', (tester) async {
+    final container = await timelinesView(tester);
+
+    await showTimelines(tester, container);
+    await openThirdAge(tester, container);
+
+    // Nothing selected yet: the pane says so rather than showing empty fields.
+    expect(find.byKey(const Key('timeline-item-editor')), findsNothing);
+    expect(find.text('Select something on the timeline to edit it.'),
+        findsOneWidget);
+
+    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('timeline-item-year')), '1899');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('timeline-item-month')), '7');
+    await tester.pumpAndSettle();
+
+    final item = container.read(selectedTimelineItemProvider)!;
+    expect(item.year, 1899);
+    expect(item.month, 7);
+
+    await settleSaves(tester, container);
+  });
+
+  testWidgets('emptying the month dates the item to the year alone', (
     tester,
   ) async {
     final container = await timelinesView(tester);
@@ -171,39 +223,85 @@ void main() {
     await showTimelines(tester, container);
     await openThirdAge(tester, container);
     container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
-    await tester.tap(tab('Detail'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('timeline-reader-expand-button')));
+    await tester.enterText(find.byKey(const Key('timeline-item-month')), '5');
     await tester.pumpAndSettle();
+    expect(container.read(selectedTimelineItemProvider)!.month, 5);
 
-    expect(find.byKey(const Key('timeline-reader-expanded')), findsOneWidget);
-    expect(find.byKey(const Key('timeline-map-canvas')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('timeline-reader-retract-button')));
+    await tester.enterText(find.byKey(const Key('timeline-item-month')), '');
     await tester.pumpAndSettle();
+    expect(container.read(selectedTimelineItemProvider)!.month, isNull);
 
-    expect(find.byKey(const Key('timeline-map-canvas')), findsOneWidget);
+    await settleSaves(tester, container);
   });
 
-  testWidgets('the strip expands into the workspace, leaving one track', (
+  testWidgets('a nation is named once and worn by the items', (tester) async {
+    final container = await timelinesView(tester);
+
+    await showTimelines(tester, container);
+    await openThirdAge(tester, container);
+    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
+    await tester.pumpAndSettle();
+
+    final actions = container.read(timelineActionControllerProvider);
+    final nation = actions.addNation('The Vale')!;
+    await tester.pumpAndSettle();
+
+    // Named from an item, so it is already on that item.
+    expect(container.read(selectedTimelineItemProvider)!.nationIds, isEmpty);
+    actions.toggleNationOnItem(
+      container.read(selectedTimelineItemProvider)!,
+      nation.id,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      container.read(selectedTimelineItemProvider)!.nationIds,
+      [nation.id],
+    );
+
+    // Renaming is one edit, not one per item.
+    actions.updateNation(nation.copyWith(name: 'The High Vale'));
+    await tester.pumpAndSettle();
+    expect(find.text('The High Vale'), findsWidgets);
+
+    // Removing takes it off the items too, so no id is left unanswered.
+    actions.removeNation(nation.id);
+    await tester.pumpAndSettle();
+    expect(container.read(selectedTimelineItemProvider)!.nationIds, isEmpty);
+
+    await settleSaves(tester, container);
+  });
+
+  testWidgets('the first document connected becomes the main one', (
     tester,
   ) async {
     final container = await timelinesView(tester);
 
     await showTimelines(tester, container);
     await openThirdAge(tester, container);
-
-    await tester.tap(find.byKey(const Key('timeline-strip-expand-button')));
+    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('timeline-full-view')), findsOneWidget);
-    expect(find.byKey(const Key('timeline-map-canvas')), findsNothing);
-    // The band keeps its header but gives up its track, so there are never two
-    // scroll positions disagreeing about where you are.
-    expect(find.byKey(const Key('timeline-strip')), findsOneWidget);
-    expect(find.byKey(const Key('timeline-strip-expand-button')),
-        findsOneWidget);
+    final actions = container.read(timelineActionControllerProvider);
+    var item = container.read(selectedTimelineItemProvider)!;
+    expect(item.mainDocumentPath, 'Places/Aldenmoor.md');
+
+    actions.linkDocument(item, 'Characters/Aldric.md');
+    await tester.pumpAndSettle();
+    item = container.read(selectedTimelineItemProvider)!;
+    expect(item.mainDocumentPath, 'Places/Aldenmoor.md');
+    expect(item.documentPaths, ['Characters/Aldric.md']);
+
+    // Dropping the main one promotes another rather than leaving the reader
+    // with nothing while a document is still connected.
+    actions.unlinkDocument(item, 'Places/Aldenmoor.md');
+    await tester.pumpAndSettle();
+    item = container.read(selectedTimelineItemProvider)!;
+    expect(item.mainDocumentPath, 'Characters/Aldric.md');
+    expect(item.documentPaths, isEmpty);
+
+    await settleSaves(tester, container);
   });
 
   testWidgets('a new timeline is created and opened', (tester) async {

@@ -107,18 +107,15 @@ class _TimelineReaderPaneState extends ConsumerState<TimelineReaderPane> {
   }
 }
 
-/// The reading half of the pane, also used on its own when it is expanded over
-/// the map canvas.
+/// The reading half of the pane: the selected item, and the document it is
+/// really about.
 class TimelineDescriptionPanel extends ConsumerWidget {
-  const TimelineDescriptionPanel({super.key, this.expanded = false});
-
-  /// True when this is the full-view copy laid over the map, which has room
-  /// for the document at its ordinary size.
-  final bool expanded;
+  const TimelineDescriptionPanel({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
+    final open = ref.watch(openTimelineProvider);
     final item = ref.watch(selectedTimelineItemProvider);
 
     if (item == null) {
@@ -161,30 +158,52 @@ class TimelineDescriptionPanel extends ConsumerWidget {
                 child: Text(
                   item.title.isEmpty ? 'Untitled' : item.title,
                   style: uiHeaderTextStyle(
-                    size: expanded ? 20 : 16,
+                    size: 16,
                     weight: 600,
                     color: colors.text,
                   ),
                 ),
               ),
-              // The expanded copy has its own Retract control in the header
-              // above it; a second one here would be two ways to do one thing.
-              if (!expanded) const _ExpandReaderButton(),
             ],
           ),
           const SizedBox(height: DsSpace.xxs),
           Text(
-            switch (item) {
-              final TimelinePeriodItem p =>
-                '${p.startDateLabel} → ${p.endDateLabel}',
-              final TimelineEventItem e => e.startDateLabel,
-            },
+            open?.timeline.dateLabel(item) ?? '',
             style: uiTextStyle(size: 12, color: colors.muted, tabular: true),
           ),
+          if (open != null && open.timeline.nationsOf(item).isNotEmpty) ...[
+            const SizedBox(height: DsSpace.s),
+            Wrap(
+              key: const Key('timeline-reader-nations'),
+              spacing: DsSpace.row,
+              runSpacing: DsSpace.xs,
+              children: [
+                for (final nation in open.timeline.nationsOf(item))
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DsSpace.s,
+                      vertical: DsSpace.xxs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: nation.color.color,
+                      borderRadius: const BorderRadius.all(DsRadius.pill),
+                    ),
+                    child: Text(
+                      nation.name,
+                      style: uiTextStyle(
+                        size: 11,
+                        weight: 500,
+                        color: colors.onFern,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: DsSpace.sm),
           const DsSeam.horizontal(),
           const SizedBox(height: DsSpace.sm),
-          _ItemBody(item: item, expanded: expanded),
+          _ItemBody(item: item),
         ],
       ),
     );
@@ -194,19 +213,18 @@ class TimelineDescriptionPanel extends ConsumerWidget {
 /// The linked document, the item's own words, or a line saying there are
 /// neither.
 class _ItemBody extends ConsumerWidget {
-  const _ItemBody({required this.item, required this.expanded});
+  const _ItemBody({required this.item});
 
   final TimelineItem item;
-  final bool expanded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
 
-    if (!item.isDocumentLink) {
+    if (!item.hasMainDocument) {
       return Text(
         item.description.isEmpty
-            ? 'No description, and no document linked.'
+            ? 'No description, and no document connected.'
             : item.description,
         style: uiTextStyle(
           size: 13,
@@ -220,18 +238,43 @@ class _ItemBody extends ConsumerWidget {
 
     return document.when(
       loading: () => Text(
-        'Reading ${item.documentPath}…',
+        'Reading ${item.mainDocumentPath}…',
         style: uiTextStyle(size: 13, color: colors.faint),
       ),
-      error: (_, _) => DsErrorBox('Could not read ${item.documentPath}.'),
+      error: (_, _) => DsErrorBox('Could not read ${item.mainDocumentPath}.'),
       data: (document) {
         if (document == null) {
           return DsErrorBox(
-            'This item links to "${item.documentPath}", which is no longer '
-            'in the Knowledge Base.',
+            'This item\'s main document, "${item.mainDocumentPath}", is no '
+            'longer in the Knowledge Base.',
           );
         }
-        return DsDocumentPreview(document: document, compact: !expanded);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DsDocumentPreview(document: document),
+            if (item.documentPaths.isNotEmpty) ...[
+              const SizedBox(height: DsSpace.m),
+              const DsSeam.horizontal(),
+              const SizedBox(height: DsSpace.s),
+              Text(
+                'Also connected',
+                style: uiTextStyle(size: 11.5, weight: 500, color: colors.muted),
+              ),
+              const SizedBox(height: DsSpace.xs),
+              for (final path in item.documentPaths)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DsSpace.xxs),
+                  child: Text(
+                    path,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: uiTextStyle(size: 12, color: colors.muted),
+                  ),
+                ),
+            ],
+          ],
+        );
       },
     );
   }
@@ -526,42 +569,6 @@ class _NewTimelineButton extends ConsumerWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExpandReaderButton extends ConsumerWidget {
-  const _ExpandReaderButton();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final expanded = ref.watch(readerExpandedProvider);
-    final hasItem = ref.watch(selectedTimelineItemProvider) != null;
-
-    return Tooltip(
-      message: expanded ? 'Retract' : 'Expand to full view',
-      child: SizedBox.square(
-        dimension: _kControlHeight,
-        child: DsButton(
-          key: const Key('timeline-reader-expand-button'),
-          height: _kControlHeight,
-          padding: EdgeInsets.zero,
-          active: expanded,
-          onPressed: !hasItem
-              ? null
-              : () => ref.read(readerExpandedProvider.notifier).state =
-                    !expanded,
-          child: Icon(
-            expanded ? Icons.close_fullscreen : Icons.open_in_full,
-            size: 15,
-            color: !hasItem
-                ? context.ds.faint
-                : expanded
-                ? context.ds.onFern
-                : context.ds.text,
-          ),
         ),
       ),
     );
