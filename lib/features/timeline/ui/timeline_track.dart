@@ -275,11 +275,11 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
     final displayStartYear =
         (isDragging && _draggedStartYear != null)
             ? _draggedStartYear!
-            : item.startYear;
+            : widget.timeline.plotStart(item);
     final displayEndYear =
         (isDragging && _draggedEndYear != null)
             ? _draggedEndYear!
-            : item.endYear;
+            : widget.timeline.plotEnd(item);
 
     final startX = xForYear(displayStartYear);
     final endX = xForYear(displayEndYear);
@@ -307,17 +307,19 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
         onHorizontalDragStart: (details) {
           setState(() {
             _draggingItemId = item.id;
-            _draggedStartYear = item.startYear;
-            _draggedEndYear = item.endYear;
+            _draggedStartYear = widget.timeline.plotStart(item);
+            _draggedEndYear = widget.timeline.plotEnd(item);
             _dragOffsetDx = 0.0;
           });
           ref.read(timelineActionControllerProvider).selectItem(item.id);
         },
         onHorizontalDragUpdate: (details) {
           _dragOffsetDx += details.delta.dx;
-          final currentStartX = xForYear(item.startYear) + _dragOffsetDx;
+          final currentStartX =
+              xForYear(widget.timeline.plotStart(item)) + _dragOffsetDx;
           final snappedStart = yearForX(currentStartX).roundToDouble();
-          final duration = item.endYear - item.startYear;
+          final duration =
+              widget.timeline.plotEnd(item) - widget.timeline.plotStart(item);
           setState(() {
             _draggedStartYear = snappedStart;
             _draggedEndYear = snappedStart + duration;
@@ -326,13 +328,16 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
         onHorizontalDragEnd: (details) {
           if (_draggingItemId == item.id && _draggedStartYear != null) {
             final newStart = _draggedStartYear!.roundToDouble();
-            final newEnd = (_draggedEndYear ?? (newStart + (item.endYear - item.startYear))).roundToDouble();
+            final newEnd =
+                (_draggedEndYear ??
+                        (newStart +
+                            (widget.timeline.plotEnd(item) -
+                                widget.timeline.plotStart(item))))
+                    .roundToDouble();
             ref.read(timelineActionControllerProvider).updateItem(
                   item.copyWith(
-                    startYear: newStart,
-                    startDateLabel: '${newStart.toInt()}',
-                    endYear: newEnd,
-                    endDateLabel: '${newEnd.toInt()}',
+                    year: newStart.round(),
+                    endYear: newEnd.round(),
                   ),
                 );
           }
@@ -372,7 +377,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (item.isDocumentLink) ...[
+                          if (item.hasMainDocument) ...[
                             Icon(
                               Icons.link,
                               size: 13,
@@ -457,7 +462,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
     final displayStartYear =
         (isDragging && _draggedStartYear != null)
             ? _draggedStartYear!
-            : item.startYear;
+            : widget.timeline.plotStart(item);
 
     final centerX = xForYear(displayStartYear);
     final containerHeight = (widget.trackHeight / 2) + 8; // Bottom at 88px (center at 81px)
@@ -479,14 +484,15 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
         onHorizontalDragStart: (details) {
           setState(() {
             _draggingItemId = item.id;
-            _draggedStartYear = item.startYear;
+            _draggedStartYear = widget.timeline.plotStart(item);
             _dragOffsetDx = 0.0;
           });
           ref.read(timelineActionControllerProvider).selectItem(item.id);
         },
         onHorizontalDragUpdate: (details) {
           _dragOffsetDx += details.delta.dx;
-          final currentX = xForYear(item.startYear) + _dragOffsetDx;
+          final currentX =
+              xForYear(widget.timeline.plotStart(item)) + _dragOffsetDx;
           final snappedStart = yearForX(currentX).roundToDouble();
           setState(() {
             _draggedStartYear = snappedStart;
@@ -497,8 +503,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
             final newStart = _draggedStartYear!.roundToDouble();
             ref.read(timelineActionControllerProvider).updateItem(
                   item.copyWith(
-                    startYear: newStart,
-                    startDateLabel: '${newStart.toInt()}',
+                    year: newStart.round(),
                   ),
                 );
           }
@@ -537,7 +542,7 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (item.isDocumentLink) ...[
+                          if (item.hasMainDocument) ...[
                             Icon(
                               Icons.link,
                               size: 12,

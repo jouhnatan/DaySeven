@@ -10,7 +10,11 @@ import 'package:dayseven/app/app_store.dart';
 
 @immutable
 class PaneVisibility {
-  const PaneVisibility({this.knowledgeBase = true, this.timelineReader = true});
+  const PaneVisibility({
+    this.knowledgeBase = true,
+    this.timelineReader = true,
+    this.timelineEditor = true,
+  });
 
   /// The Knowledge Base tree, beside the Editor and Differences.
   final bool knowledgeBase;
@@ -20,11 +24,18 @@ class PaneVisibility {
   /// close the reader the next time somebody opens a timeline.
   final bool timelineReader;
 
-  PaneVisibility copyWith({bool? knowledgeBase, bool? timelineReader}) =>
-      PaneVisibility(
-        knowledgeBase: knowledgeBase ?? this.knowledgeBase,
-        timelineReader: timelineReader ?? this.timelineReader,
-      );
+  /// The event and age editor, left of the map.
+  final bool timelineEditor;
+
+  PaneVisibility copyWith({
+    bool? knowledgeBase,
+    bool? timelineReader,
+    bool? timelineEditor,
+  }) => PaneVisibility(
+    knowledgeBase: knowledgeBase ?? this.knowledgeBase,
+    timelineReader: timelineReader ?? this.timelineReader,
+    timelineEditor: timelineEditor ?? this.timelineEditor,
+  );
 }
 
 class PaneVisibilityController extends StateNotifier<PaneVisibility> {
@@ -36,6 +47,7 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
   static const _saveDelay = Duration(milliseconds: 400);
   static const _knowledgeBaseKey = 'knowledgeBase';
   static const _timelineReaderKey = 'timelineReader';
+  static const _timelineEditorKey = 'timelineEditor';
 
   Timer? _saveDebounce;
   bool _changedLocally = false;
@@ -47,6 +59,7 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
     state = state.copyWith(
       knowledgeBase: saved[_knowledgeBaseKey] ?? state.knowledgeBase,
       timelineReader: saved[_timelineReaderKey] ?? state.timelineReader,
+      timelineEditor: saved[_timelineEditorKey] ?? state.timelineEditor,
     );
   }
 
@@ -64,6 +77,13 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
     _set(state.copyWith(timelineReader: visible));
   }
 
+  void toggleTimelineEditor() => setTimelineEditorVisible(!state.timelineEditor);
+
+  void setTimelineEditorVisible(bool visible) {
+    if (state.timelineEditor == visible) return;
+    _set(state.copyWith(timelineEditor: visible));
+  }
+
   void _set(PaneVisibility next) {
     _changedLocally = true;
     state = next;
@@ -72,6 +92,7 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
       final store = await _ref.read(appStoreProvider.future);
       await store.setPaneVisibility(_knowledgeBaseKey, state.knowledgeBase);
       await store.setPaneVisibility(_timelineReaderKey, state.timelineReader);
+      await store.setPaneVisibility(_timelineEditorKey, state.timelineEditor);
     });
   }
 

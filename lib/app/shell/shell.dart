@@ -41,9 +41,10 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
+import 'package:dayseven/features/timeline/ui/timeline_editor_pane.dart';
+import 'package:dayseven/features/timeline/ui/timeline_map_canvas.dart';
 import 'package:dayseven/features/timeline/ui/timeline_reader_pane.dart';
 import 'package:dayseven/features/timeline/ui/timeline_strip.dart';
-import 'package:dayseven/features/timeline/ui/timelines_workspace.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
 import 'package:dayseven/shared/platform/new_instance.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
@@ -89,28 +90,58 @@ class DsShell extends ConsumerWidget {
                   final paneVisibility = ref.read(
                     paneVisibilityProvider.notifier,
                   );
-                  // One slot beside the centre, holding whichever pane the
-                  // placed workspace belongs with, at its own width and its
-                  // own visibility.
+                  // A slot each side of the centre, holding whichever panes
+                  // the placed workspace belongs with, each at its own width
+                  // and its own visibility. Only Timelines fills the left one:
+                  // the Editor and Differences have nothing to put there.
                   final showingTimelines = view == DsView.timelines;
-                  final paneVisible = showingTimelines
+                  final rightVisible = showingTimelines
                       ? visibility.timelineReader
                       : visibility.knowledgeBase;
-                  final paneWidth = showingTimelines
+                  final rightWidth = showingTimelines
                       ? widths.reader
                       : widths.panel;
-                  final panelProgress = paneVisible ? 1.0 : 0.0;
+                  final leftVisible =
+                      showingTimelines && visibility.timelineEditor;
+                  final rightProgress = rightVisible ? 1.0 : 0.0;
+                  final leftProgress = leftVisible ? 1.0 : 0.0;
                   final available =
-                      constraints.maxWidth - DsSpace.seam * panelProgress;
+                      constraints.maxWidth -
+                      DsSpace.seam * (rightProgress + leftProgress);
 
                   return Column(
                     children: [
                       _TitleBar(
                         leading: [
                           ViewsMenuButton(
-                            knowledgeBaseVisible: visibility.knowledgeBase,
-                            onToggleKnowledgeBase:
-                                paneVisibility.toggleKnowledgeBase,
+                            // Which panes exist depends on what is placed, so
+                            // the composition root says; the menu only draws.
+                            panes: showingTimelines
+                                ? [
+                                    ViewsPaneToggle(
+                                      id: 'views-menu-timeline-editor',
+                                      label: 'Events & ages',
+                                      visible: visibility.timelineEditor,
+                                      onToggle:
+                                          paneVisibility.toggleTimelineEditor,
+                                    ),
+                                    ViewsPaneToggle(
+                                      id: 'views-menu-timeline-reader',
+                                      label: 'Reader',
+                                      visible: visibility.timelineReader,
+                                      onToggle:
+                                          paneVisibility.toggleTimelineReader,
+                                    ),
+                                  ]
+                                : [
+                                    ViewsPaneToggle(
+                                      id: 'views-menu-knowledge-base',
+                                      label: 'Knowledge Base',
+                                      visible: visibility.knowledgeBase,
+                                      onToggle:
+                                          paneVisibility.toggleKnowledgeBase,
+                                    ),
+                                  ],
                             pendingDifferencesCount: pendingDifferencesCount,
                           ),
                           const SizedBox(width: DsSpace.controlGap),
@@ -150,16 +181,31 @@ class DsShell extends ConsumerWidget {
                       ),
                       Expanded(
                         child: _PaneRow(
-                          panelSlotWidth:
-                              (paneWidth + DsSpace.seam) * panelProgress,
-                          onDragPanel: panelProgress == 0
+                          rightSlotWidth:
+                              (rightWidth + DsSpace.seam) * rightProgress,
+                          leftSlotWidth:
+                              (widths.editor + DsSpace.seam) * leftProgress,
+                          onDragRight: rightProgress == 0
                               ? null
                               : (dx) => showingTimelines
                                     ? panes.dragReader(dx, available)
                                     : panes.dragPanel(dx, available),
+                          onDragLeft: leftProgress == 0
+                              ? null
+                              : (dx) => panes.dragEditor(dx, available),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              _SlidingSidePane(
+                                progress: leftProgress,
+                                panelWidth: widths.editor,
+                                visible: leftVisible,
+                                side: DsPaneSide.left,
+                                child: const KeyedSubtree(
+                                  key: Key('timeline-editor-pane'),
+                                  child: TimelineEditorPane(),
+                                ),
+                              ),
                               Expanded(
                                 child: switch (view) {
                                   DsView.editor => const DsPane(
@@ -171,16 +217,17 @@ class DsShell extends ConsumerWidget {
                                     key: Key('centre-workspace'),
                                     child: DifferencesWorkspace(),
                                   ),
+                                  // The centre is the map, and only the map.
                                   DsView.timelines => const KeyedSubtree(
                                     key: Key('centre-workspace'),
-                                    child: TimelinesWorkspace(),
+                                    child: TimelineMapCanvas(),
                                   ),
                                 },
                               ),
                               _SlidingSidePane(
-                                progress: panelProgress,
-                                panelWidth: paneWidth,
-                                visible: paneVisible,
+                                progress: rightProgress,
+                                panelWidth: rightWidth,
+                                visible: rightVisible,
                                 child: showingTimelines
                                     ? const KeyedSubtree(
                                         key: Key('timeline-reader-pane'),
@@ -299,35 +346,46 @@ AppSettingsDeveloperOptions _developerOptions(WidgetRef ref) {
   );
 }
 
-/// A fixed-width right pane revealed through an animated slot. As the slot
-/// narrows, its child stays anchored to the slot's left and travels out past
-/// the window's right edge instead of being squeezed.
+/// Which side of the centre a pane is seated on.
+enum DsPaneSide { left, right }
+
+/// A fixed-width pane revealed through an animated slot. As the slot narrows,
+/// its child stays anchored to the slot's outer edge and travels out past the
+/// window's edge instead of being squeezed.
 ///
-/// One mechanism for every view's side pane: which pane is in it, and how wide
-/// it is, is the shell's decision rather than this widget's.
+/// One mechanism for every view's side panes: which pane is in it, how wide it
+/// is, and which side it is on are the shell's decisions rather than this
+/// widget's.
 class _SlidingSidePane extends StatelessWidget {
   const _SlidingSidePane({
     required this.progress,
     required this.panelWidth,
     required this.visible,
     required this.child,
+    this.side = DsPaneSide.right,
   });
 
   final double progress;
   final double panelWidth;
   final bool visible;
+  final DsPaneSide side;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final fullWidth = panelWidth + DsSpace.seam;
+    final pane = SizedBox(width: panelWidth, child: child);
 
     return SizedBox(
-      key: const Key('side-pane-slide-region'),
+      key: Key('side-pane-slide-region-${side.name}'),
       width: fullWidth * progress,
       child: ClipRect(
         child: OverflowBox(
-          alignment: Alignment.topLeft,
+          // A left pane slides out past the left edge, so it is its right edge
+          // that stays put as the slot closes.
+          alignment: side == DsPaneSide.left
+              ? Alignment.topRight
+              : Alignment.topLeft,
           minWidth: fullWidth,
           maxWidth: fullWidth,
           child: ExcludeSemantics(
@@ -336,10 +394,9 @@ class _SlidingSidePane extends StatelessWidget {
               ignoring: !visible,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const DsSeam.vertical(),
-                  SizedBox(width: panelWidth, child: child),
-                ],
+                children: side == DsPaneSide.left
+                    ? [pane, const DsSeam.vertical()]
+                    : [const DsSeam.vertical(), pane],
               ),
             ),
           ),
@@ -349,25 +406,32 @@ class _SlidingSidePane extends StatelessWidget {
   }
 }
 
-/// The pane row, with a grab strip floated over the seam.
+/// The pane row, with a grab strip floated over each seam.
 ///
-/// The seam itself stays one pixel wide, so the panes keep every pixel of
+/// The seams themselves stay one pixel wide, so the panes keep every pixel of
 /// their width. Resizing is done through a wider transparent strip laid over
-/// the seam: it sits above both neighbours, so the whole strip catches the
+/// each seam: it sits above both neighbours, so the whole strip catches the
 /// pointer rather than only the hairline the neighbours leave exposed.
 class _PaneRow extends StatelessWidget {
   const _PaneRow({
-    required this.panelSlotWidth,
-    required this.onDragPanel,
+    required this.rightSlotWidth,
+    required this.leftSlotWidth,
+    required this.onDragRight,
+    required this.onDragLeft,
     required this.child,
   });
 
-  /// Width of the Knowledge Base slot, seam included. Zero while it is closed.
-  final double panelSlotWidth;
+  /// Width of the right-hand slot, seam included. Zero while it is closed.
+  final double rightSlotWidth;
 
-  /// Null while the Knowledge Base pane is closed, when there is no seam to
-  /// take hold of.
-  final void Function(double delta)? onDragPanel;
+  /// Width of the left-hand slot, seam included. Zero while it is closed, and
+  /// in every view that has no left pane.
+  final double leftSlotWidth;
+
+  /// Null while the pane on that side is closed, when there is no seam to take
+  /// hold of.
+  final void Function(double delta)? onDragRight;
+  final void Function(double delta)? onDragLeft;
 
   final Widget child;
 
@@ -376,10 +440,15 @@ class _PaneRow extends StatelessWidget {
     return Stack(
       children: [
         child,
-        if (onDragPanel != null)
+        if (onDragRight != null)
           _ResizeGrabStrip(
-            right: panelSlotWidth - DsSpace.seam,
-            onDrag: onDragPanel!,
+            right: rightSlotWidth - DsSpace.seam,
+            onDrag: onDragRight!,
+          ),
+        if (onDragLeft != null)
+          _ResizeGrabStrip(
+            left: leftSlotWidth - DsSpace.seam,
+            onDrag: onDragLeft!,
           ),
       ],
     );
@@ -387,12 +456,14 @@ class _PaneRow extends StatelessWidget {
 }
 
 /// A transparent, full-height strip over one seam, which is where a pane is
-/// resized from.
+/// resized from. Positioned from whichever edge its seam belongs to.
 class _ResizeGrabStrip extends StatelessWidget {
-  const _ResizeGrabStrip({required this.right, required this.onDrag});
+  const _ResizeGrabStrip({required this.onDrag, this.left, this.right});
 
-  /// Distance from the row's right edge to the seam this strip covers.
-  final double right;
+  /// Distance from the row's own edge to the seam this strip covers. Exactly
+  /// one of the two is set.
+  final double? left;
+  final double? right;
 
   final void Function(double delta) onDrag;
 
@@ -403,7 +474,8 @@ class _ResizeGrabStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      right: right - _reach,
+      left: left == null ? null : left! - _reach,
+      right: right == null ? null : right! - _reach,
       top: 0,
       bottom: 0,
       width: DsSpace.seam + _reach * 2,

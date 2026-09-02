@@ -6,13 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  /// Mounts the button with the Knowledge Base state the shell would hand it,
-  /// and reports what it asked to be toggled.
+  /// Mounts the button with the panes the shell would hand it, and reports
+  /// what it asked to be toggled.
   Future<ProviderContainer> pumpMenu(
     WidgetTester tester, {
     bool knowledgeBaseVisible = true,
     int pendingDifferencesCount = 0,
     VoidCallback? onToggleKnowledgeBase,
+    List<ViewsPaneToggle>? panes,
   }) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -26,8 +27,16 @@ void main() {
             body: Align(
               alignment: Alignment.topLeft,
               child: ViewsMenuButton(
-                knowledgeBaseVisible: knowledgeBaseVisible,
-                onToggleKnowledgeBase: onToggleKnowledgeBase ?? () {},
+                panes:
+                    panes ??
+                    [
+                      ViewsPaneToggle(
+                        id: 'views-menu-knowledge-base',
+                        label: 'Knowledge Base',
+                        visible: knowledgeBaseVisible,
+                        onToggle: onToggleKnowledgeBase ?? () {},
+                      ),
+                    ],
                 pendingDifferencesCount: pendingDifferencesCount,
               ),
             ),
@@ -109,6 +118,43 @@ void main() {
     await tester.tap(find.byKey(const Key('views-menu-editor')));
     await tester.pumpAndSettle();
     expect(container.read(viewProvider), DsView.editor);
+  });
+
+  testWidgets('the panes it lists are the ones it was handed', (tester) async {
+    var toggled = '';
+    await pumpMenu(
+      tester,
+      panes: [
+        ViewsPaneToggle(
+          id: 'views-menu-timeline-editor',
+          label: 'Events & ages',
+          visible: true,
+          onToggle: () => toggled = 'editor',
+        ),
+        ViewsPaneToggle(
+          id: 'views-menu-timeline-reader',
+          label: 'Reader',
+          visible: false,
+          onToggle: () => toggled = 'reader',
+        ),
+      ],
+    );
+    await openMenu(tester);
+
+    expect(find.byKey(const Key('views-menu-knowledge-base')), findsNothing);
+    expect(
+      find.byKey(const Key('views-menu-timeline-editor-check')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('views-menu-timeline-reader-check')),
+      findsNothing,
+      reason: 'a hidden pane carries no mark',
+    );
+
+    await tester.tap(find.byKey(const Key('views-menu-timeline-reader')));
+    await tester.pumpAndSettle();
+    expect(toggled, 'reader');
   });
 
   testWidgets('choosing the workspace already placed changes nothing', (

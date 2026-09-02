@@ -15,6 +15,7 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/features/timeline/domain/timeline.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/shared/ui/theme.dart';
 
 const Uuid _uuid = Uuid();
 
@@ -25,7 +26,7 @@ const String kNewTimelineName = 'New timeline';
 /// the track has something to draw and the shape of the thing is visible
 /// before anything has been typed.
 Map<String, Object?> newTimelineSeed({String title = kNewTimelineName}) {
-  final start = Timeline.emptyMinYear;
+  const start = Timeline.emptyMinYear;
   return Timeline(
     id: _uuid.v7(),
     title: title,
@@ -33,17 +34,10 @@ Map<String, Object?> newTimelineSeed({String title = kNewTimelineName}) {
       TimelinePeriodItem(
         id: _uuid.v7(),
         title: 'New age',
-        startYear: start,
-        startDateLabel: '${start.toInt()}',
+        year: start,
         endYear: start + 50,
-        endDateLabel: '${(start + 50).toInt()}',
       ),
-      TimelineEventItem(
-        id: _uuid.v7(),
-        title: 'New event',
-        startYear: start + 25,
-        startDateLabel: '${(start + 25).toInt()}',
-      ),
+      TimelineEventItem(id: _uuid.v7(), title: 'New event', year: start + 25),
     ],
   ).toJson();
 }
@@ -212,21 +206,15 @@ final timelineReaderDocumentProvider = FutureProvider<BlockDocument?>((
 ) async {
   final item = ref.watch(selectedTimelineItemProvider);
   final session = ref.watch(kbSessionProvider);
-  if (item == null || session == null || !item.isDocumentLink) return null;
+  if (item == null || session == null || !item.hasMainDocument) return null;
   try {
-    return await session.kb.readDocument(item.documentPath!);
+    return await session.kb.readDocument(item.mainDocumentPath!);
   } on Object {
     // A link can outlive the document it points at. The pane says so; it does
     // not need an exception to do it.
     return null;
   }
 });
-
-/// Whether the reader pane is expanded over the map canvas.
-final readerExpandedProvider = StateProvider<bool>((ref) => false);
-
-/// Whether the timeline strip is expanded over the panes above it.
-final stripExpandedProvider = StateProvider<bool>((ref) => false);
 
 /// Mutating actions on the open timeline.
 final timelineActionControllerProvider = Provider<TimelineActionController>((
@@ -252,27 +240,148 @@ class TimelineActionController {
 
     final start = timeline.items.isEmpty
         ? Timeline.emptyMinYear
-        : timeline.maxYear + 10;
-    final startLabel = '${start.toInt()}';
+        : timeline.maxYear.ceil() + 10;
 
     final TimelineItem item = isPeriod
         ? TimelinePeriodItem(
             id: _uuid.v7(),
             title: 'New age',
-            startYear: start,
-            startDateLabel: startLabel,
+            year: start,
             endYear: start + 20,
-            endDateLabel: '${(start + 20).toInt()}',
           )
-        : TimelineEventItem(
-            id: _uuid.v7(),
-            title: 'New event',
-            startYear: start,
-            startDateLabel: startLabel,
-          );
+        : TimelineEventItem(id: _uuid.v7(), title: 'New event', year: start);
 
     _write(timeline.copyWith(items: [...timeline.items, item]));
     _ref.read(selectedTimelineItemIdProvider.notifier).state = item.id;
+  }
+
+  /// Defines a nation on the timeline and returns it, so the caller can put it
+  /// straight onto the item that prompted it.
+  TimelineNation? addNation(String name) {
+    final timeline = _timeline;
+    if (timeline == null) return null;
+
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+
+    // The same nation named twice is one nation. Matched case-insensitively,
+    // because "the Vale" and "The Vale" are not two powers.
+    for (final existing in timeline.nations) {
+      if (existing.name.toLowerCase() == trimmed.toLowerCase()) return existing;
+    }
+
+    final nation = TimelineNation(
+      id: _uuid.v7(),
+      name: trimmed,
+      // Cycled so a new nation is not born the same colour as the last one.
+      color: TimelineColor
+          .values[timeline.nations.length % TimelineColor.values.length],
+    );
+    _write(timeline.copyWith(nations: [...timeline.nations, nation]));
+    return nation;
+  }
+
+  void updateNation(TimelineNation updated) {
+    final timeline = _timeline;
+    if (timeline == null) return;
+    _write(
+      timeline.copyWith(
+        nations: [
+          for (final nation in timeline.nations)
+            if (nation.id == updated.id) updated else nation,
+        ],
+      ),
+    );
+  }
+
+  /// Removes a nation from the timeline, and from every item party to it — an
+  /// id no nation answers to would render as nothing at all.
+  void removeNation(String nationId) {
+    final timeline = _timeline;
+    if (timeline == null) return;
+    _write(
+      timeline.copyWith(
+        nations: [
+          for (final nation in timeline.nations)
+            if (nation.id != nationId) nation,
+        ],
+        items: [
+          for (final item in timeline.items)
+            if (item.nationIds.contains(nationId))
+              item.copyWith(
+                nationIds: [
+                  for (final id in item.nationIds)
+                    if (id != nationId) id,
+                ],
+              )
+            else
+              item,
+        ],
+      ),
+    );
+  }
+
+  /// Adds or removes a nation on one item.
+  void toggleNationOnItem(TimelineItem item, String nationId) {
+    final has = item.nationIds.contains(nationId);
+    updateItem(
+      item.copyWith(
+        nationIds: has
+            ? [
+                for (final id in item.nationIds)
+                  if (id != nationId) id,
+              ]
+            : [...item.nationIds, nationId],
+      ),
+    );
+  }
+
+  /// Connects a document to an item. The first one connected becomes the main
+  /// document, because an item with exactly one document and no main one would
+  /// otherwise show nothing on the right.
+  void linkDocument(TimelineItem item, String path) {
+    if (path.trim().isEmpty) return;
+    if (item.allDocumentPaths.contains(path)) return;
+    updateItem(
+      item.hasMainDocument
+          ? item.copyWith(documentPaths: [...item.documentPaths, path])
+          : item.copyWith(mainDocumentPath: path),
+    );
+  }
+
+  void unlinkDocument(TimelineItem item, String path) {
+    if (item.mainDocumentPath == path) {
+      // Something else steps up rather than the item losing its reader.
+      final remaining = [...item.documentPaths];
+      final promoted = remaining.isEmpty ? null : remaining.removeAt(0);
+      updateItem(
+        promoted == null
+            ? item.copyWith(clearMainDocumentPath: true, documentPaths: const [])
+            : item.copyWith(
+                mainDocumentPath: promoted,
+                documentPaths: remaining,
+              ),
+      );
+      return;
+    }
+    updateItem(
+      item.copyWith(
+        documentPaths: [
+          for (final other in item.documentPaths)
+            if (other != path) other,
+        ],
+      ),
+    );
+  }
+
+  /// Makes one of an item's documents the one the reader shows.
+  void makeMainDocument(TimelineItem item, String path) {
+    if (item.mainDocumentPath == path) return;
+    final others = [
+      for (final other in item.allDocumentPaths)
+        if (other != path) other,
+    ];
+    updateItem(item.copyWith(mainDocumentPath: path, documentPaths: others));
   }
 
   void updateItem(TimelineItem updated) {
