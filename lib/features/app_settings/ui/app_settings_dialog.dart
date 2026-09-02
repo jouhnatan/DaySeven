@@ -12,6 +12,8 @@
 /// gone rather than maintained.
 library;
 
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,10 +23,12 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
+@Deprecated('The Developer setting menu is deprecated.')
 typedef AppSettingsDeveloperOptionsBuilder =
     AppSettingsDeveloperOptions Function(WidgetRef ref);
 typedef AppSettingsPanelBuilder = Widget Function(WidgetRef ref);
 
+@Deprecated('The Developer setting menu is deprecated.')
 class AppSettingsDeveloperOptions {
   const AppSettingsDeveloperOptions({
     required this.showWorkspaceMetadata,
@@ -39,6 +43,7 @@ class AppSettingsDeveloperOptions {
 enum AppSettingsSection {
   updates('Updates'),
   knowledgeBase('Knowledge Base'),
+  @Deprecated('The Developer setting menu is deprecated.')
   developer('Developer');
 
   const AppSettingsSection(this.label);
@@ -49,6 +54,7 @@ enum AppSettingsSection {
 
 Future<void> showAppSettingsDialog(
   BuildContext context, {
+  @Deprecated('The Developer setting menu is deprecated.')
   AppSettingsDeveloperOptionsBuilder? developerOptions,
   Widget? knowledgeBasePanel,
   AppSettingsPanelBuilder? knowledgeBasePanelBuilder,
@@ -68,11 +74,13 @@ Future<void> showAppSettingsDialog(
 class AppSettingsDialog extends ConsumerStatefulWidget {
   const AppSettingsDialog({
     super.key,
+    @Deprecated('The Developer setting menu is deprecated.')
     this.developerOptions,
     this.knowledgeBasePanel,
     this.initialSection = AppSettingsSection.updates,
   });
 
+  @Deprecated('The Developer setting menu is deprecated.')
   final AppSettingsDeveloperOptions? developerOptions;
 
   /// The Knowledge Base section's body, supplied by the composition root.
@@ -214,6 +222,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     ),
   ];
 
+  @Deprecated('The Developer setting menu is deprecated.')
   List<Widget> _developerSection() {
     final developer = widget.developerOptions;
     if (developer == null) return const [];
@@ -337,6 +346,7 @@ class _SectionSwitcher extends StatelessWidget {
   );
 }
 
+@Deprecated('The Developer setting menu is deprecated.')
 class _DeveloperToggleRow extends StatelessWidget {
   const _DeveloperToggleRow({
     required this.title,

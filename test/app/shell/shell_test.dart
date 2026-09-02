@@ -281,6 +281,27 @@ void main() {
     );
   });
 
+  testWidgets(
+    'App settings opened from shell does not have Developer tab or metadata toggle',
+    (tester) async {
+      await tester.pumpWidget(harness());
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('hamburger-menu-button')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Developer'), findsNothing);
+      expect(find.text('Show workspace metadata'), findsNothing);
+      expect(
+        find.byKey(const Key('app-settings-metadata-toggle')),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('Views toggles the Knowledge Base out and back in instantly', (
     tester,
   ) async {

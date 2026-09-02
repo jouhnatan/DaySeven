@@ -6,6 +6,8 @@
 /// documents that can be opened, published, or deleted.
 library;
 
+// ignore_for_file: deprecated_member_use
+
 import 'dart:io';
 
 import 'package:dayseven/app/app_store.dart';

@@ -3,6 +3,8 @@
 /// width the side panes were left at.
 library;
 
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -105,12 +107,14 @@ class AppStore {
   /// Developer toggles. Off unless explicitly turned on, and read through
   /// `?? false` everywhere, so a missing or hand-mangled settings file behaves
   /// exactly like a fresh install rather than enabling something by accident.
+  @Deprecated('The Developer setting menu is deprecated.')
   Future<bool> developerFlag(String name) async {
     final raw = (await _read())['developerFlags'];
     if (raw is! Map<String, Object?>) return false;
     return raw[name] == true;
   }
 
+  @Deprecated('The Developer setting menu is deprecated.')
   Future<void> setDeveloperFlag(String name, bool enabled) async {
     final data = await _read();
     final raw = data['developerFlags'];
@@ -128,6 +132,9 @@ class AppStore {
   /// own bookkeeping rather than anybody's writing. Hidden by default for the
   /// same reason `.settings/` is; visible on request because a person
   /// debugging sync needs to see that those files exist.
+  @Deprecated(
+    'The Developer setting menu is deprecated and workspace metadata is hidden by default.',
+  )
   static const String showWorkspaceMetadata = 'showWorkspaceMetadata';
 
   /// Recent documents are tracked per Knowledge Base, keyed by its id, so
@@ -213,6 +220,7 @@ final appStoreProvider = FutureProvider<AppStore>((ref) async {
   return AppStore.openIn(directory);
 });
 
+@Deprecated('The Developer setting menu is deprecated.')
 class DeveloperSettings {
   const DeveloperSettings({
     this.showWorkspaceMetadata = false,
@@ -227,12 +235,14 @@ class DeveloperSettings {
   );
 }
 
+@Deprecated('The Developer setting menu is deprecated.')
 final developerSettingsProvider =
     StateNotifierProvider<
       DeveloperSettingsController,
       AsyncValue<DeveloperSettings>
     >((ref) => DeveloperSettingsController(ref));
 
+@Deprecated('The Developer setting menu is deprecated.')
 class DeveloperSettingsController
     extends StateNotifier<AsyncValue<DeveloperSettings>> {
   DeveloperSettingsController(this._ref) : super(const AsyncValue.loading()) {

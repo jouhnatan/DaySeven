@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -161,6 +163,24 @@ void main() {
 
     expect(metadata, isTrue);
   });
+
+  testWidgets(
+    'developer section is absent and metadata cannot be toggled when developer options are omitted',
+    (tester) async {
+      await openDialog(
+        tester,
+        RecordingController(),
+        knowledgeBasePanel: const SizedBox.shrink(),
+      );
+
+      expect(find.text('Developer'), findsNothing);
+      expect(find.text('Show workspace metadata'), findsNothing);
+      expect(
+        find.byKey(const Key('app-settings-metadata-toggle')),
+        findsNothing,
+      );
+    },
+  );
 
   group('describeLastChecked', () {
     final now = DateTime(2026, 8, 27, 14, 30);
