@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/features/differences/domain/change_set.dart';
-import 'package:dayseven/features/differences/ui/document_preview.dart';
+import 'package:dayseven/shared/ui/document_preview.dart';
 import 'package:dayseven/features/differences/ui/review_edits_screen.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
@@ -255,7 +255,7 @@ class ProposalPaperCard extends StatelessWidget {
                         alignment: Alignment.topLeft,
                         child: SizedBox(
                           width: 325,
-                          child: ProposedDocumentPreview(
+                          child: DsDocumentPreview(
                             document: proposal.content,
                           ),
                         ),

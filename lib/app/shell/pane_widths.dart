@@ -11,9 +11,14 @@ import 'package:dayseven/app/app_store.dart';
 /// so the pane is what the user drags. Persisted, so a window comes back the
 /// way it was left.
 class PaneWidths {
-  const PaneWidths({this.panel = 248});
+  const PaneWidths({this.panel = 248, this.reader = 320});
 
+  /// The Knowledge Base pane, beside the Editor and Differences.
   final double panel;
+
+  /// The reader pane, beside the Timelines workspace. Wider by default: it
+  /// carries a document rather than a list of file names.
+  final double reader;
 
   static const double minPanel = 180;
   static const double maxPanel = 560;
@@ -22,8 +27,8 @@ class PaneWidths {
   /// dragged.
   static const double minEditor = 320;
 
-  PaneWidths copyWith({double? panel}) =>
-      PaneWidths(panel: panel ?? this.panel);
+  PaneWidths copyWith({double? panel, double? reader}) =>
+      PaneWidths(panel: panel ?? this.panel, reader: reader ?? this.reader);
 }
 
 class PaneWidthsController extends StateNotifier<PaneWidths> {
@@ -38,28 +43,44 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
     final store = await _ref.read(appStoreProvider.future);
     final widths = await store.paneWidths();
     if (!mounted) return;
-    state = PaneWidths(panel: widths['panel'] ?? state.panel);
+    state = PaneWidths(
+      panel: widths['panel'] ?? state.panel,
+      reader: widths['reader'] ?? state.reader,
+    );
   }
 
   /// [available] is the width the workspace, the pane and the handle share, so
   /// a drag can be stopped before the workspace is squeezed out.
   void dragPanel(double delta, double available) {
-    final headroom = available - PaneWidths.minEditor;
-    final panel = (state.panel - delta)
-        .clamp(PaneWidths.minPanel, PaneWidths.maxPanel)
-        .clamp(
-          PaneWidths.minPanel,
-          headroom.clamp(PaneWidths.minPanel, PaneWidths.maxPanel),
-        );
-    _set(state.copyWith(panel: panel));
+    _set('panel', state.copyWith(panel: _clamp(state.panel - delta, available)));
   }
 
-  void _set(PaneWidths widths) {
+  /// [available] is the width the workspace, the reader and the handle share.
+  void dragReader(double delta, double available) {
+    _set(
+      'reader',
+      state.copyWith(reader: _clamp(state.reader - delta, available)),
+    );
+  }
+
+  /// Stops a drag before the workspace beside the pane is squeezed out.
+  static double _clamp(double width, double available) {
+    final headroom = available - PaneWidths.minEditor;
+    return width.clamp(PaneWidths.minPanel, PaneWidths.maxPanel).clamp(
+      PaneWidths.minPanel,
+      headroom.clamp(PaneWidths.minPanel, PaneWidths.maxPanel),
+    );
+  }
+
+  void _set(String key, PaneWidths widths) {
     state = widths;
     _saveDebounce?.cancel();
     _saveDebounce = Timer(_saveDelay, () async {
       final store = await _ref.read(appStoreProvider.future);
-      await store.setPaneWidth('panel', state.panel);
+      await store.setPaneWidth(
+        key,
+        key == 'panel' ? state.panel : state.reader,
+      );
     });
   }
 

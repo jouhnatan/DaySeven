@@ -1,47 +1,237 @@
-/// State management and actions for the Timeline feature in DaySeven.
+/// The timeline currently open: its contents, whether it has unsaved changes,
+/// and the debounced save that follows an edit.
+///
+/// This mirrors `DocumentController` deliberately. A timeline is now a file
+/// like a document is a file, and the open-edit-debounce-save shape it needs
+/// is the one the editor already uses.
 library;
+
+import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import 'package:dayseven/app/workspace/open_document.dart';
-import 'package:dayseven/features/timeline/domain/timeline_model.dart';
-import 'package:dayseven/features/timeline/domain/timeline_parser.dart';
+import 'package:dayseven/app/workspace/kb_session.dart';
+import 'package:dayseven/features/timeline/domain/timeline.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
 
 const Uuid _uuid = Uuid();
 
-const _parser = TimelineParser();
+/// The name a timeline is created under, before the user renames it.
+const String kNewTimelineName = 'New timeline';
 
-/// The timeline parser instance.
-final timelineParserProvider = Provider<TimelineParser>((ref) => _parser);
+/// The seed a brand-new timeline is written with: one age and one event, so
+/// the track has something to draw and the shape of the thing is visible
+/// before anything has been typed.
+Map<String, Object?> newTimelineSeed({String title = kNewTimelineName}) {
+  final start = Timeline.emptyMinYear;
+  return Timeline(
+    id: _uuid.v7(),
+    title: title,
+    items: [
+      TimelinePeriodItem(
+        id: _uuid.v7(),
+        title: 'New age',
+        startYear: start,
+        startDateLabel: '${start.toInt()}',
+        endYear: start + 50,
+        endDateLabel: '${(start + 50).toInt()}',
+      ),
+      TimelineEventItem(
+        id: _uuid.v7(),
+        title: 'New event',
+        startYear: start + 25,
+        startDateLabel: '${(start + 25).toInt()}',
+      ),
+    ],
+  ).toJson();
+}
 
-/// The active [TimelineSection] extracted from the currently open document.
-final activeTimelineSectionProvider = Provider<TimelineSection?>((ref) {
-  final open = ref.watch(documentControllerProvider);
-  if (open == null) return null;
-  return _parser.findFirst(open.document);
+class OpenTimeline {
+  const OpenTimeline({
+    required this.relativePath,
+    required this.timeline,
+    required this.dirty,
+  });
+
+  final String relativePath;
+  final Timeline timeline;
+
+  /// True between an edit and the debounced save that follows it.
+  final bool dirty;
+
+  OpenTimeline copyWith({
+    String? relativePath,
+    Timeline? timeline,
+    bool? dirty,
+  }) => OpenTimeline(
+    relativePath: relativePath ?? this.relativePath,
+    timeline: timeline ?? this.timeline,
+    dirty: dirty ?? this.dirty,
+  );
+}
+
+class TimelineController extends StateNotifier<OpenTimeline?> {
+  TimelineController(this._ref) : super(null);
+
+  final Ref _ref;
+  Timer? _saveDebounce;
+  int _openGeneration = 0;
+  static const _saveDelay = Duration(milliseconds: 600);
+
+  Future<void> open(String relativePath) async {
+    final generation = ++_openGeneration;
+    final session = _ref.read(kbSessionProvider);
+    if (session == null) return;
+
+    await flush();
+    if (!mounted || generation != _openGeneration) return;
+    final json = await session.kb.readObjectJson(relativePath);
+    if (!mounted || generation != _openGeneration) return;
+
+    final stored = Timeline.fromJson(json);
+    // The file name is the name: the same rule documents follow, so renaming
+    // in the tree renames the thing rather than leaving two names to reconcile.
+    final fileName = objectNameFromPath(relativePath);
+    state = OpenTimeline(
+      relativePath: relativePath,
+      timeline: stored.title == fileName
+          ? stored
+          : stored.copyWith(title: fileName),
+      dirty: false,
+    );
+  }
+
+  void close({bool save = true}) {
+    _openGeneration++;
+    if (save) {
+      unawaited(flush());
+    } else {
+      _saveDebounce?.cancel();
+    }
+    state = null;
+  }
+
+  /// Applies an edit and schedules a save, debounced so that dragging an item
+  /// along the track does not write the file on every frame.
+  void edit(Timeline timeline) {
+    final current = state;
+    if (current == null) return;
+    state = current.copyWith(timeline: timeline, dirty: true);
+
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(_saveDelay, () {
+      unawaited(flush());
+    });
+  }
+
+  /// Updates the open path without reloading, after a rename or a move.
+  void relocate(String fromPath, String toPath, {String? title}) {
+    final current = state;
+    if (current == null || current.relativePath != fromPath) return;
+    state = current.copyWith(
+      relativePath: toPath,
+      timeline: title == null
+          ? current.timeline
+          : current.timeline.copyWith(title: title),
+    );
+  }
+
+  /// Forgets the open timeline when the file behind it is gone.
+  void closeIfOpen(String relativePath) {
+    final current = state;
+    if (current == null) return;
+    if (current.relativePath != relativePath &&
+        !current.relativePath.startsWith('$relativePath/')) {
+      return;
+    }
+    _saveDebounce?.cancel();
+    _openGeneration++;
+    state = null;
+  }
+
+  /// Writes the open timeline to disk.
+  Future<void> flush() async {
+    _saveDebounce?.cancel();
+    final current = state;
+    final session = _ref.read(kbSessionProvider);
+    if (current == null || session == null || !current.dirty) return;
+
+    await session.kb.writeObjectJson(
+      current.relativePath,
+      current.timeline.toJson(),
+    );
+    // An edit may have arrived while the disk write was in flight. Only the
+    // exact snapshot that was written becomes clean.
+    if (mounted && identical(state, current)) {
+      state = current.copyWith(dirty: false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _saveDebounce?.cancel();
+    super.dispose();
+  }
+}
+
+final openTimelineProvider =
+    StateNotifierProvider<TimelineController, OpenTimeline?>(
+      TimelineController.new,
+    );
+
+/// The timeline objects in the open Knowledge Base.
+///
+/// Re-read whenever the session's tree changes, which is what `refreshTree`
+/// already bumps after a create, rename, move or delete.
+final timelineObjectsProvider = FutureProvider<List<KbFile>>((ref) async {
+  final session = ref.watch(kbSessionProvider);
+  if (session == null) return const [];
+  final objects = await session.kb.readObjects();
+  return objects;
 });
 
-/// The ID of the currently selected [TimelineItem] for the popover/inspector.
+/// The item selected on the track, by id.
 final selectedTimelineItemIdProvider = StateProvider<String?>((ref) => null);
 
-/// The currently selected [TimelineItem], if any.
+/// The selected item itself, if it is still in the open timeline.
 final selectedTimelineItemProvider = Provider<TimelineItem?>((ref) {
-  final section = ref.watch(activeTimelineSectionProvider);
+  final open = ref.watch(openTimelineProvider);
   final selectedId = ref.watch(selectedTimelineItemIdProvider);
-  if (section == null || selectedId == null) return null;
-
-  for (final item in section.items) {
-    if (item.id == selectedId) return item;
-  }
-  return null;
+  return open?.timeline.itemById(selectedId);
 });
 
-/// Whether the timeline widget is collapsed into a compact header bar.
-final isTimelineCollapsedProvider = StateProvider<bool>((ref) => false);
+/// The document the selected item points at, loaded for reading only.
+///
+/// Deliberately not routed through `documentControllerProvider`: selecting an
+/// event here must not change what the Editor view has open, or clicking
+/// around a timeline would silently move somebody's editing session.
+final timelineReaderDocumentProvider = FutureProvider<BlockDocument?>((
+  ref,
+) async {
+  final item = ref.watch(selectedTimelineItemProvider);
+  final session = ref.watch(kbSessionProvider);
+  if (item == null || session == null || !item.isDocumentLink) return null;
+  try {
+    return await session.kb.readDocument(item.documentPath!);
+  } on Object {
+    // A link can outlive the document it points at. The pane says so; it does
+    // not need an exception to do it.
+    return null;
+  }
+});
 
-/// Controller providing mutating actions on the active document's timeline.
-final timelineActionControllerProvider = Provider<TimelineActionController>((ref) {
+/// Whether the reader pane is expanded over the map canvas.
+final readerExpandedProvider = StateProvider<bool>((ref) => false);
+
+/// Whether the timeline strip is expanded over the panes above it.
+final stripExpandedProvider = StateProvider<bool>((ref) => false);
+
+/// Mutating actions on the open timeline.
+final timelineActionControllerProvider = Provider<TimelineActionController>((
+  ref,
+) {
   return TimelineActionController(ref);
 });
 
@@ -50,160 +240,78 @@ class TimelineActionController {
 
   final Ref _ref;
 
-  /// Creates a new timeline section if the document does not yet have one.
-  void createTimeline({String description = 'Historical Timeline'}) {
-    final open = _ref.read(documentControllerProvider);
-    if (open == null) return;
+  Timeline? get _timeline => _ref.read(openTimelineProvider)?.timeline;
 
-    final existing = _parser.findFirst(open.document);
-    if (existing != null) return;
+  void _write(Timeline next) =>
+      _ref.read(openTimelineProvider.notifier).edit(next);
 
-    final newSection = TimelineSection(
-      startIndex: open.document.blocks.length,
-      endIndex: open.document.blocks.length,
-      description: description,
-      items: [
-        TimelinePeriodItem(
-          id: _uuid.v7(),
-          title: 'New age',
-          startYear: 1800,
-          startDateLabel: '1800',
-          endYear: 1850,
-          endDateLabel: '1850',
-          description: 'Description of the new age...',
-        ),
-        TimelineEventItem(
-          id: _uuid.v7(),
-          title: 'New event',
-          startYear: 1825,
-          startDateLabel: '1825',
-          description: 'Description of the event...',
-        ),
-      ],
-    );
-
-    final updatedDoc = _parser.insertSection(open.document, newSection);
-    _ref.read(documentControllerProvider.notifier).edit(updatedDoc);
-    _ref.read(isTimelineCollapsedProvider.notifier).state = false;
-    _ref.read(selectedTimelineItemIdProvider.notifier).state =
-        newSection.items.first.id;
-  }
-
-  /// Adds a new event or period to the active timeline.
+  /// Adds a new event or age after everything already on the track.
   void addItem({required bool isPeriod}) {
-    final open = _ref.read(documentControllerProvider);
-    final section = _ref.read(activeTimelineSectionProvider);
-    if (open == null) return;
+    final timeline = _timeline;
+    if (timeline == null) return;
 
-    if (section == null) {
-      createTimeline();
-      return;
-    }
+    final start = timeline.items.isEmpty
+        ? Timeline.emptyMinYear
+        : timeline.maxYear + 10;
+    final startLabel = '${start.toInt()}';
 
-    final double startY = section.items.isEmpty
-        ? 1800
-        : section.maxYear + 10;
-    final String startLabel = '${startY.toInt()}';
-
-    final TimelineItem newItem = isPeriod
+    final TimelineItem item = isPeriod
         ? TimelinePeriodItem(
             id: _uuid.v7(),
             title: 'New age',
-            startYear: startY,
+            startYear: start,
             startDateLabel: startLabel,
-            endYear: startY + 20,
-            endDateLabel: '${(startY + 20).toInt()}',
-            description: '',
+            endYear: start + 20,
+            endDateLabel: '${(start + 20).toInt()}',
           )
         : TimelineEventItem(
             id: _uuid.v7(),
             title: 'New event',
-            startYear: startY,
+            startYear: start,
             startDateLabel: startLabel,
-            description: '',
           );
 
-    final updatedSection = section.copyWith(
-      items: [...section.items, newItem],
-    );
-
-    final updatedDoc = _parser.replaceSection(
-      open.document,
-      section,
-      updatedSection,
-    );
-    _ref.read(documentControllerProvider.notifier).edit(updatedDoc);
-    _ref.read(selectedTimelineItemIdProvider.notifier).state = newItem.id;
+    _write(timeline.copyWith(items: [...timeline.items, item]));
+    _ref.read(selectedTimelineItemIdProvider.notifier).state = item.id;
   }
 
-  /// Updates an existing item in the timeline.
   void updateItem(TimelineItem updated) {
-    final open = _ref.read(documentControllerProvider);
-    final section = _ref.read(activeTimelineSectionProvider);
-    if (open == null || section == null) return;
-
-    final updatedItems = section.items.map((item) {
-      return item.id == updated.id ? updated : item;
-    }).toList();
-
-    final updatedSection = section.copyWith(items: updatedItems);
-    final updatedDoc = _parser.replaceSection(
-      open.document,
-      section,
-      updatedSection,
+    final timeline = _timeline;
+    if (timeline == null) return;
+    _write(
+      timeline.copyWith(
+        items: [
+          for (final item in timeline.items)
+            if (item.id == updated.id) updated else item,
+        ],
+      ),
     );
-    _ref.read(documentControllerProvider.notifier).edit(updatedDoc);
   }
 
-  /// Removes an item from the timeline.
   void removeItem(String itemId) {
-    final open = _ref.read(documentControllerProvider);
-    final section = _ref.read(activeTimelineSectionProvider);
-    if (open == null || section == null) return;
+    final timeline = _timeline;
+    if (timeline == null) return;
+    final remaining = [
+      for (final item in timeline.items)
+        if (item.id != itemId) item,
+    ];
+    _write(timeline.copyWith(items: remaining));
 
-    final updatedItems = section.items.where((i) => i.id != itemId).toList();
-    final updatedSection = section.copyWith(items: updatedItems);
-    final updatedDoc = _parser.replaceSection(
-      open.document,
-      section,
-      updatedSection,
-    );
-    _ref.read(documentControllerProvider.notifier).edit(updatedDoc);
-
-    final selectedId = _ref.read(selectedTimelineItemIdProvider);
-    if (selectedId == itemId) {
-      _ref.read(selectedTimelineItemIdProvider.notifier).state =
-          updatedItems.isNotEmpty ? updatedItems.first.id : null;
+    if (_ref.read(selectedTimelineItemIdProvider) == itemId) {
+      _ref.read(selectedTimelineItemIdProvider.notifier).state = remaining
+          .isNotEmpty
+          ? remaining.first.id
+          : null;
     }
   }
 
-  /// Updates the top-level `<timeline_desc>`.
-  void updateDescription(String newDescription) {
-    final open = _ref.read(documentControllerProvider);
-    final section = _ref.read(activeTimelineSectionProvider);
-    if (open == null || section == null) return;
-
-    final updatedSection = section.copyWith(description: newDescription);
-    final updatedDoc = _parser.replaceSection(
-      open.document,
-      section,
-      updatedSection,
-    );
-    _ref.read(documentControllerProvider.notifier).edit(updatedDoc);
+  void updateDescription(String description) {
+    final timeline = _timeline;
+    if (timeline == null) return;
+    _write(timeline.copyWith(description: description));
   }
 
-  /// Deletes the entire timeline section from the document.
-  void removeTimeline() {
-    final open = _ref.read(documentControllerProvider);
-    final section = _ref.read(activeTimelineSectionProvider);
-    if (open == null || section == null) return;
-
-    final updatedDoc = _parser.removeSection(open.document, section);
-    _ref.read(documentControllerProvider.notifier).edit(updatedDoc);
-    _ref.read(selectedTimelineItemIdProvider.notifier).state = null;
-  }
-
-  /// Selects an item on the timeline (or deselects when null).
+  /// Selects an item on the track, or deselects when null.
   void selectItem(String? itemId) {
     _ref.read(selectedTimelineItemIdProvider.notifier).state = itemId;
   }

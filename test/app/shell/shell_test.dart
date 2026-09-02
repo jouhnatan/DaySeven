@@ -77,7 +77,7 @@ void main() {
     expect(find.byType(DsSearchBar), findsOneWidget);
   });
 
-  testWidgets('the Views menu lists Editor, Differences and Knowledge Base', (
+  testWidgets('the Views menu lists every workspace and the pane', (
     tester,
   ) async {
     await pumpWideHarness(tester);
@@ -86,6 +86,7 @@ void main() {
 
     expect(find.text('Editor'), findsOneWidget);
     expect(find.text('Differences'), findsOneWidget);
+    expect(find.text('Timelines'), findsOneWidget);
     expect(
       find.text('Knowledge Base'),
       findsNWidgets(2),
@@ -165,6 +166,52 @@ void main() {
 
     await place(tester, 'editor');
     expect(find.byType(EditorScreen), findsOneWidget);
+  });
+
+  testWidgets('placing Timelines swaps both the workspace and the pane', (
+    tester,
+  ) async {
+    await pumpWideHarness(tester);
+    await tester.pump();
+
+    expect(find.byKey(const Key('knowledge-base-pane')), findsOneWidget);
+
+    await place(tester, 'timelines');
+
+    expect(find.byType(EditorScreen), findsNothing);
+    expect(find.byKey(const Key('timeline-map-canvas')), findsOneWidget);
+    expect(
+      find.byKey(const Key('timeline-reader-pane')),
+      findsOneWidget,
+      reason: 'the reader takes the slot the Knowledge Base tree had',
+    );
+    expect(find.byKey(const Key('knowledge-base-pane')), findsNothing);
+
+    await place(tester, 'editor');
+
+    expect(find.byType(EditorScreen), findsOneWidget);
+    expect(find.byKey(const Key('knowledge-base-pane')), findsOneWidget);
+    expect(find.byKey(const Key('timeline-reader-pane')), findsNothing);
+  });
+
+  testWidgets('the timeline runs the full width of the window', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(harness());
+    await tester.pump();
+    await place(tester, 'timelines');
+
+    final strip = tester.getRect(find.byKey(const Key('timeline-strip')));
+    final shell = tester.getRect(find.byType(DsShell));
+
+    // Unlike the editing toolbar, the strip does not stop where the pane above
+    // it begins.
+    expect(strip.left, shell.left);
+    expect(strip.right, shell.right);
   });
 
   testWidgets('the Knowledge Base pane sits right of the workspace', (
@@ -268,7 +315,7 @@ void main() {
       find.byKey(const Key('centre-workspace')),
     );
     final slideHidden = tester.getSize(
-      find.byKey(const Key('knowledge-base-slide-region')),
+      find.byKey(const Key('side-pane-slide-region')),
     );
     final hiddenInput = tester.widget<IgnorePointer>(
       find
@@ -310,7 +357,7 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .getSize(find.byKey(const Key('knowledge-base-slide-region')))
+          .getSize(find.byKey(const Key('side-pane-slide-region')))
           .width,
       0,
       reason: 'closes instantly on state change without animation lag',

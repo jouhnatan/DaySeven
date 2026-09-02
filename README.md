@@ -117,6 +117,7 @@ MyWorld/
     Aldric.md
   Places/
     Aldenmoor.md
+  Third Age.unearth    an object: something the app constructs (see below)
   .settings/           the app's own files, hidden from the tree
     dayseven.kb.json   manifest: kbId, name, schemaVersion
     assets/            images referenced by documents
@@ -136,6 +137,53 @@ title: "Aldenmoor"
 ---
 
 <!-- d7 h1 -->
+## Objects: `.unearth`
+
+A document is prose somebody wrote. An **object** is something the app
+constructs, and it lives beside the documents in its own file:
+
+```json
+{
+  "kind": "timeline",
+  "version": 1,
+  "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1",
+  "title": "Third Age",
+  "description": "",
+  "items": [
+    { "id": "…", "type": "period", "title": "Rise of the North",
+      "start": 1800, "startLabel": "1800",
+      "end": 1850, "endLabel": "1850", "color": "amber" },
+    { "id": "…", "type": "event", "title": "The bridge falls",
+      "start": 1842, "startLabel": "1842", "color": "fern",
+      "document": "Places/Aldenmoor.md" }
+  ]
+}
+```
+
+One extension carries every object type; the `kind` at the root says which one
+this is. A map, when there is one, is a new `kind` rather than a second
+extension — and `shared/kb` stays generic about it, reading and writing the
+JSON without knowing what any `kind` means. The feature that owns a `kind`
+owns its parsing.
+
+The file is indented so it can be read and edited without this app, which is
+also why nothing may assume it was written by this version: an unknown `kind`
+or a higher `version` is refused rather than opened and saved back stripped of
+whatever the newer version knew.
+
+An object is **not** a document, and the two are kept apart deliberately.
+`readTree` lists documents and `documentPathsIn` walks it; everything
+downstream of that — the Supabase mirror, the FTS index, the CRDT workspace —
+reads each path as Markdown. Objects come from `readObjects` instead. The
+consequence today is that objects are local: they are not synced to the server
+and not searchable. Wiring them through `documents`/`revisions` is a separate
+piece of work.
+
+A timeline's events and ages point *outwards* at documents through
+`document`. It used to be the other way around — a timeline was a run of
+headings inside somebody's document — which meant a timeline covering ten
+places had to live inside one of them.
+
 ## The Fen
 
 <!-- d7 p1 -->
@@ -259,19 +307,22 @@ server-authored.
 
 ## Interface
 
-- **Three panes** — the Views menu, the editor and the Knowledge Base menu
-  are rounded panes on the application background, each a subtle tone apart.
-- **Left** — a Solway heading, *Views*, above a rounded island containing
-  Home, Editor and Differences. Differences carries the durable pending count.
-  Beneath it a second heading, *Notifications*, sits above an island listing
-  the latest five events — publishes, sync results, sharing, errors — newest
-  first. A new notification fades in while the rest slide down one notch; each
-  row shows its event's icon and how long ago it happened (0–60m, 1–24h,
-  1d+). Every row leads with the generic action ("Document Published") and a
-  hairline separates neighbouring rows; tapping a row lerps the more specific
-  subtext open beneath the header.
-- **Top** — a persistent search bar over the Knowledge Base's local FTS5 index,
-  matching as you type.
+- **One centre slot, one pane beside it** — the placed workspace and the pane
+  that belongs with it are seated against each other, separated by a one-pixel
+  seam that is also what you drag to resize.
+- **Top** — the Views menu and the notifications bell at one end, a persistent
+  search bar over the Knowledge Base's local FTS5 index centred on the window,
+  and the account control and Menu at the other.
+- **Views** — *Editor*, *Differences* and *Timelines* share the centre slot, so
+  placing one displaces the other and the menu marks whichever holds it;
+  Differences carries the durable pending count. *Knowledge Base* below the
+  divider is a pane toggle rather than a placement, and toggles freely.
+- **Notifications** — the bell opens a panel listing the latest five events —
+  publishes, sync results, sharing, errors — newest first. A new notification
+  fades in while the rest slide down one notch; each row shows its event's icon
+  and how long ago it happened (0–60m, 1–24h, 1d+). Every row leads with the
+  generic action ("Document Published") and a hairline separates neighbouring
+  rows; tapping a row lerps the more specific subtext open beneath the header.
 - **Right** — a Solway *Knowledge Base* heading, a rounded control naming
   the open folder, a manual Sync button that pulls before publishing or
   proposing local changes, a gear that opens Settings on the Knowledge
@@ -283,6 +334,15 @@ server-authored.
   a document or folder onto another folder to move it, or onto the panel
   background to bring it back out to the top level; the file is renamed on
   disk, not copied.
+- **Timelines** — the centre is the map surface, the pane beside it is a
+  reader, and the timeline runs the full width of the window along the bottom,
+  edge to edge rather than stopping where the pane above it begins. The
+  reader's header is a *Detail* / *Timelines* control: *Timelines* is this
+  view's directory, a flat list of the `.unearth` objects in the Knowledge
+  Base; *Detail* is the selected event or age, its date span, and the document
+  it points at, shown read-only. Both the reader and the timeline expand into
+  full view over the map and retract again. The map itself is a placeholder —
+  the surface and its bounds are settled, the image is not there yet.
   Right-click a document to rename it, or edit its title in the editor and
   press Enter or click away; the Markdown filename is the canonical title
   everywhere. Right-click any item to delete it after a permanent-deletion

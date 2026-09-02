@@ -1,4 +1,4 @@
-/// Read-only block rendering used by proposal paper previews.
+/// Read-only block rendering: a document shown rather than edited.
 library;
 
 import 'package:flutter/material.dart';
@@ -7,8 +7,8 @@ import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
-class ProposedDocumentPreview extends StatelessWidget {
-  const ProposedDocumentPreview({
+class DsDocumentPreview extends StatelessWidget {
+  const DsDocumentPreview({
     super.key,
     required this.document,
     this.compact = true,

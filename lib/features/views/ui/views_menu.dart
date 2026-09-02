@@ -1,8 +1,8 @@
 /// The Views menu: what is placed on the screen.
 ///
-/// Editor and Differences share the shell's centre slot, so placing one
-/// displaces the other and the menu marks whichever holds it. The Knowledge
-/// Base has a pane of its own beside them and toggles freely.
+/// Editor, Differences and Timelines share the shell's centre slot, so placing
+/// one displaces the other and the menu marks whichever holds it. The
+/// Knowledge Base has a pane of its own beside them and toggles freely.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,7 +13,7 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
-enum _ViewsMenuItem { editor, differences, knowledgeBase }
+enum _ViewsMenuItem { editor, differences, timelines, knowledgeBase }
 
 class ViewsMenuButton extends ConsumerWidget {
   const ViewsMenuButton({
@@ -48,6 +48,13 @@ class ViewsMenuButton extends ConsumerWidget {
           ? _PendingBadge(count: pendingDifferencesCount)
           : null,
     );
+    menu.pushItem(
+      key: const Key('views-menu-timelines'),
+      value: _ViewsMenuItem.timelines,
+      label: 'Timelines',
+      isChecked: current == DsView.timelines,
+      leadingKey: const Key('views-menu-timelines-check'),
+    );
     menu.pushDivider();
     menu.pushItem(
       key: const Key('views-menu-knowledge-base'),
@@ -67,6 +74,8 @@ class ViewsMenuButton extends ConsumerWidget {
         ref.read(viewProvider.notifier).state = DsView.editor;
       case _ViewsMenuItem.differences:
         ref.read(viewProvider.notifier).state = DsView.differences;
+      case _ViewsMenuItem.timelines:
+        ref.read(viewProvider.notifier).state = DsView.timelines;
       case _ViewsMenuItem.knowledgeBase:
         onToggleKnowledgeBase();
     }

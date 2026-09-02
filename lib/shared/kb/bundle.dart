@@ -35,10 +35,25 @@ const String kConvertedBackupSuffix = '.bak';
 
 const int kBundleSchemaVersion = 2;
 
+/// The container a Knowledge Base object is written in.
+///
+/// An object is a thing the app constructs rather than prose the user typed:
+/// a Timeline today, a Map later. One extension carries all of them, and the
+/// `kind` at the root of the JSON says which is which — so a new object type
+/// is a new `kind`, not a new file extension the tree has to learn about.
+const String kObjectExtension = '.unearth';
+
 /// True for a file this app treats as a document, in either format.
 bool isDocumentPath(String path) =>
     path.endsWith(kDocumentExtension) ||
     path.endsWith(kLegacyDocumentExtension);
+
+/// True for a file this app treats as an object rather than a document.
+bool isObjectPath(String path) => path.endsWith(kObjectExtension);
+
+/// The user-facing name of an object is its file name without the extension.
+String objectNameFromPath(String relativePath) =>
+    p.posix.basenameWithoutExtension(relativePath);
 
 /// The user-facing title of a document is its file name without the document
 /// extension. The relative path is always POSIX-style, even on Windows.
@@ -448,6 +463,132 @@ class KnowledgeBase {
 
   Future<void> createFolder(String relativePath) =>
       Directory(absolutePathFor(relativePath)).create(recursive: true);
+
+  // --------------------------------------------------------------- objects --
+
+  /// Every object file in the Knowledge Base, flat and sorted by path.
+  ///
+  /// Deliberately separate from [readTree]. That tree is what `documentPathsIn`
+  /// walks, and everything downstream of it — the Supabase mirror, the search
+  /// index, the CRDT store — reads each entry as a document. An object is not
+  /// one, so it is listed here instead of being smuggled into a list whose
+  /// consumers would try to parse it as Markdown.
+  Future<List<KbFile>> readObjects() async {
+    final root = Directory(documentsPath);
+    if (!await root.exists()) return const [];
+
+    final files = <KbFile>[];
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      if (!isObjectPath(name)) continue;
+      final relative = p.posix.joinAll(
+        p.split(p.relative(entity.path, from: documentsPath)),
+      );
+      // `.settings/` and `metadata/` are the app's own bookkeeping; an object
+      // the user can open never lives there.
+      if (p.posix.split(relative).any((part) => part.startsWith('.'))) continue;
+      if (p.posix.split(relative).first == kMetadataDirName) continue;
+      files.add(KbFile(name: name, relativePath: relative));
+    }
+
+    files.sort(
+      (a, b) =>
+          a.relativePath.toLowerCase().compareTo(b.relativePath.toLowerCase()),
+    );
+    return files;
+  }
+
+  /// Reads one object file as JSON. The caller decides what its `kind` means.
+  Future<Map<String, Object?>> readObjectJson(String relativePath) async {
+    final source = await File(absolutePathFor(relativePath)).readAsString();
+    final decoded = jsonDecode(source);
+    if (decoded is! Map<String, Object?>) {
+      throw KbException(
+        '"${objectNameFromPath(relativePath)}" is not in a format this app '
+        'can read.',
+      );
+    }
+    return decoded;
+  }
+
+  /// Writes through a temporary file and renames, for the same reason
+  /// [writeDocument] does: an interrupted save must not leave half a file.
+  Future<void> writeObjectJson(
+    String relativePath,
+    Map<String, Object?> json,
+  ) async {
+    final target = File(absolutePathFor(relativePath));
+    await target.parent.create(recursive: true);
+    // Indented, because these files are meant to be readable — and editable —
+    // in a text editor without this app.
+    final source = const JsonEncoder.withIndent('  ').convert(json);
+    final temp = File('${target.path}.tmp');
+    await temp.writeAsString(source, flush: true);
+    await temp.rename(target.path);
+  }
+
+  /// Creates an object file, stepping the name past anything already there so
+  /// that pressing "new" twice gives two objects rather than an error.
+  Future<String> createObject({
+    required String name,
+    required Map<String, Object?> seed,
+    String folderRelativePath = '',
+  }) async {
+    final base = sanitizeNodeName(name);
+    var candidate = base;
+    var attempt = 2;
+    while (true) {
+      final fileName = '$candidate$kObjectExtension';
+      final relativePath = folderRelativePath.isEmpty
+          ? fileName
+          : '$folderRelativePath/$fileName';
+      if (!await File(absolutePathFor(relativePath)).exists()) {
+        await writeObjectJson(relativePath, seed);
+        return relativePath;
+      }
+      candidate = '$base $attempt';
+      attempt++;
+    }
+  }
+
+  /// Renames one object within its current folder.
+  Future<String> renameObject(
+    String relativePath,
+    String requestedName,
+  ) async {
+    if (!isObjectPath(relativePath)) {
+      throw const KbException('Only objects can be renamed here.');
+    }
+
+    var name = requestedName.trim();
+    if (name.toLowerCase().endsWith(kObjectExtension)) {
+      name = name.substring(0, name.length - kObjectExtension.length);
+    }
+
+    final fileName = '${sanitizeNodeName(name)}$kObjectExtension';
+    final folder = p.posix.dirname(relativePath);
+    final destination = folder == '.'
+        ? fileName
+        : p.posix.join(folder, fileName);
+    final from = absolutePathFor(relativePath);
+
+    if (await FileSystemEntity.type(from) != FileSystemEntityType.file) {
+      throw const KbException('That object is no longer there.');
+    }
+    if (destination == relativePath) return relativePath;
+
+    final to = absolutePathFor(destination);
+    // A case-only rename resolves to the same file on a case-insensitive
+    // filesystem, which is a rename the user is allowed to make.
+    if (await FileSystemEntity.type(to) != FileSystemEntityType.notFound &&
+        destination.toLowerCase() != relativePath.toLowerCase()) {
+      throw KbException('Something called "$name" is already there.');
+    }
+
+    await File(from).rename(to);
+    return destination;
+  }
 
   /// Renames one document within its current folder and keeps the title stored
   /// in the document in step with the Markdown file name.

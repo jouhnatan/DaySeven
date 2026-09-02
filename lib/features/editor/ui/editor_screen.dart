@@ -38,10 +38,7 @@ import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 
 class EditorScreen extends ConsumerWidget {
-  const EditorScreen({super.key, this.timelineWidget});
-
-  /// Injected by the app composition root for the Timeline feature.
-  final Widget? timelineWidget;
+  const EditorScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -64,14 +61,7 @@ class EditorScreen extends ConsumerWidget {
             readOnly: readOnly,
           );
 
-    if (timelineWidget == null || open == null) return editor;
-
-    return Column(
-      children: [
-        timelineWidget!,
-        Expanded(child: editor),
-      ],
-    );
+    return editor;
   }
 }
 

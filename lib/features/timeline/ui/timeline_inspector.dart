@@ -6,8 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/features/timeline/application/timeline_controller.dart';
-import 'package:dayseven/features/timeline/domain/timeline_model.dart';
-import 'package:dayseven/features/timeline/domain/timeline_parser.dart';
+import 'package:dayseven/features/timeline/domain/timeline.dart';
 import 'package:dayseven/features/timeline/ui/timeline_color_picker.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
@@ -58,7 +57,7 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
   }
 
   Future<void> _showLinkDialog(BuildContext context, TimelineItem item) async {
-    final linkField = TextEditingController(text: item.kbDocumentPath ?? '');
+    final linkField = TextEditingController(text: item.documentPath ?? '');
     final result = await showDialog<String>(
       context: context,
       builder: (context) => DsDialog(
@@ -99,9 +98,9 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
     if (!mounted || result == null) return;
     final actions = ref.read(timelineActionControllerProvider);
     if (result == '__REMOVE__') {
-      actions.updateItem(item.copyWith(clearKbDocumentPath: true));
+      actions.updateItem(item.copyWith(clearDocumentPath: true));
     } else if (result.isNotEmpty) {
-      actions.updateItem(item.copyWith(kbDocumentPath: result));
+      actions.updateItem(item.copyWith(documentPath: result));
     }
   }
 
@@ -115,7 +114,7 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
   void _onStartDateChanged(TimelineItem item, String text) {
     final cleanText = text.replaceAll(RegExp(r'[^\d-]'), '');
     if (cleanText == item.startDateLabel) return;
-    final parsedYear = TimelineParser.parseDateScalar(cleanText);
+    final parsedYear = parseYearLabel(cleanText);
     final year = parsedYear ?? item.startYear;
     ref.read(timelineActionControllerProvider).updateItem(
           item.copyWith(
@@ -128,7 +127,7 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
   void _onEndDateChanged(TimelinePeriodItem item, String text) {
     final cleanText = text.replaceAll(RegExp(r'[^\d-]'), '');
     if (cleanText == item.endDateLabel) return;
-    final parsedYear = TimelineParser.parseDateScalar(cleanText);
+    final parsedYear = parseYearLabel(cleanText);
     final year = parsedYear ?? item.endYear;
     ref.read(timelineActionControllerProvider).updateItem(
           item.copyWith(
@@ -243,7 +242,7 @@ class _TimelineInspectorState extends ConsumerState<TimelineInspector> {
             // 3. Document Link Button (🔗)
             Tooltip(
               message: selectedItem.isDocumentLink
-                  ? 'Linked to: ${selectedItem.kbDocumentPath}'
+                  ? 'Linked to: ${selectedItem.documentPath}'
                   : 'Link to Knowledge Base document',
               child: DsButton(
                 variant: selectedItem.isDocumentLink

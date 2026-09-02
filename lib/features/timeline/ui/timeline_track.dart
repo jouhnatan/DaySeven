@@ -6,17 +6,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/features/timeline/application/timeline_controller.dart';
-import 'package:dayseven/features/timeline/domain/timeline_model.dart';
+import 'package:dayseven/features/timeline/domain/timeline.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class TimelineTrack extends ConsumerStatefulWidget {
   const TimelineTrack({
     super.key,
-    required this.section,
+    required this.timeline,
     this.trackHeight = 160,
   });
 
-  final TimelineSection section;
+  final Timeline timeline;
   final double trackHeight;
 
   @override
@@ -64,11 +64,11 @@ class _TimelineTrackState extends ConsumerState<TimelineTrack> {
   Widget build(BuildContext context) {
     final colors = context.ds;
     final selectedId = ref.watch(selectedTimelineItemIdProvider);
-    final items = widget.section.items;
+    final items = widget.timeline.items;
 
     // 1. Calculate min and max year domains with padding
-    final rawMin = widget.section.minYear;
-    final rawMax = widget.section.maxYear;
+    final rawMin = widget.timeline.minYear;
+    final rawMax = widget.timeline.maxYear;
     final span = math.max(20.0, rawMax - rawMin);
     final pad = math.max(10.0, span * 0.15);
     final minYear = (rawMin - pad).floorToDouble();

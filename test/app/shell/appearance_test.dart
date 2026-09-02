@@ -13,7 +13,10 @@ import 'dart:io';
 import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/shell/pane_visibility.dart';
 import 'package:dayseven/app/view.dart';
+import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/features/timeline/application/timeline_controller.dart';
+import 'package:dayseven/features/timeline/domain/timeline.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/app/shell/shell.dart';
@@ -126,6 +129,57 @@ void main() {
     await tester.pump(const Duration(milliseconds: 650));
     await tester.runAsync(
       () => container.read(documentControllerProvider.notifier).flush(),
+    );
+  });
+
+  testWidgets('the Timelines view', (tester) async {
+    final container = await renderShell(tester);
+    final kb = container.read(kbSessionProvider)!.kb;
+
+    final path = await tester.runAsync(() async {
+      final created = await kb.createObject(
+        name: 'Third Age',
+        seed: const Timeline(
+          id: 'tl-1',
+          title: 'Third Age',
+          items: [
+            TimelinePeriodItem(
+              id: 'north',
+              title: 'Rise of the North',
+              startYear: 1800,
+              startDateLabel: '1800',
+              endYear: 1850,
+              endDateLabel: '1850',
+              color: TimelineColor.amber,
+            ),
+            // Off the period's midpoint on purpose: an event centred on a
+            // period's centre draws its pill over the period's own.
+            TimelineEventItem(
+              id: 'fall',
+              title: 'The bridge falls',
+              startYear: 1842,
+              startDateLabel: '1842',
+              documentPath: 'Places/Aldenmoor.md',
+            ),
+          ],
+        ).toJson(),
+      );
+      await container.read(kbControllerProvider.notifier).refreshTree();
+      await container.read(openTimelineProvider.notifier).open(created);
+      return created;
+    });
+
+    expect(path, 'Third Age.unearth');
+    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
+    await tester.runAsync(
+      () => container.read(timelineReaderDocumentProvider.future),
+    );
+    container.read(viewProvider.notifier).state = DsView.timelines;
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(DsShell),
+      matchesGoldenFile('goldens/timelines.png'),
     );
   });
 }
