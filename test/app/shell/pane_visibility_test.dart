@@ -35,6 +35,23 @@ void main() {
     expect((await store.paneVisibility())['knowledgeBase'], isTrue);
   });
 
+  test('restores and persists World visibility', () async {
+    final store = AppStore(File('${temp.path}/dayseven.json'));
+    await store.setPaneVisibility('world', false);
+    final container = ProviderContainer(
+      overrides: [appStoreProvider.overrideWith((ref) async => store)],
+    );
+    addTearDown(container.dispose);
+
+    container.read(paneVisibilityProvider);
+    await _until(() => !container.read(paneVisibilityProvider).world);
+
+    container.read(paneVisibilityProvider.notifier).setWorldVisible(true);
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    expect((await store.paneVisibility())['world'], isTrue);
+  });
+
   test('ignores malformed visibility values', () async {
     final file = File('${temp.path}/dayseven.json');
     await file.writeAsString(

@@ -1,10 +1,10 @@
 /// The Views menu: what is placed on the screen.
 ///
-/// Editor, Differences and Timelines share the shell's centre slot, so placing
-/// one displaces the other and the menu marks whichever holds it. Below the
-/// divider are the panes seated beside the centre, which toggle freely — which
-/// panes those are depends on what is placed, so the shell supplies them
-/// rather than this menu knowing.
+/// Editor, Differences, Timelines and World share the shell's centre slot, so
+/// placing one displaces the other and the menu marks whichever holds it.
+/// Below the divider are the panes seated beside the centre, which toggle
+/// freely — which panes those are depends on what is placed, so the shell
+/// supplies them rather than this menu knowing.
 library;
 
 import 'package:flutter/material.dart';
@@ -15,7 +15,7 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
-enum _ViewsWorkspace { editor, differences, timelines }
+enum _ViewsWorkspace { editor, differences, timelines, world }
 
 /// One pane the placed workspace has beside it, and how to toggle it.
 @immutable
@@ -77,6 +77,13 @@ class ViewsMenuButton extends ConsumerWidget {
       isChecked: current == DsView.timelines,
       leadingKey: const Key('views-menu-timelines-check'),
     );
+    menu.pushItem(
+      key: const Key('views-menu-world'),
+      value: _ViewsWorkspace.world,
+      label: 'World',
+      isChecked: current == DsView.world,
+      leadingKey: const Key('views-menu-world-check'),
+    );
 
     if (panes.isNotEmpty) menu.pushDivider();
     for (final pane in panes) {
@@ -101,6 +108,8 @@ class ViewsMenuButton extends ConsumerWidget {
         ref.read(viewProvider.notifier).state = DsView.differences;
       case _ViewsWorkspace.timelines:
         ref.read(viewProvider.notifier).state = DsView.timelines;
+      case _ViewsWorkspace.world:
+        ref.read(viewProvider.notifier).state = DsView.world;
       case final ViewsPaneToggle pane:
         pane.onToggle();
     }

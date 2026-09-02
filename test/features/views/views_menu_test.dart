@@ -59,6 +59,7 @@ void main() {
     expect(find.byKey(const Key('views-menu-editor')), findsOneWidget);
     expect(find.byKey(const Key('views-menu-differences')), findsOneWidget);
     expect(find.byKey(const Key('views-menu-timelines')), findsOneWidget);
+    expect(find.byKey(const Key('views-menu-world')), findsOneWidget);
     expect(find.byKey(const Key('views-menu-knowledge-base')), findsOneWidget);
 
     expect(container.read(viewProvider), DsView.editor);
@@ -110,14 +111,24 @@ void main() {
     await openMenu(tester);
     expect(find.byKey(const Key('views-menu-timelines-check')), findsOneWidget);
     expect(find.byKey(const Key('views-menu-editor-check')), findsNothing);
-    expect(
-      find.byKey(const Key('views-menu-differences-check')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('views-menu-differences-check')), findsNothing);
 
     await tester.tap(find.byKey(const Key('views-menu-editor')));
     await tester.pumpAndSettle();
     expect(container.read(viewProvider), DsView.editor);
+  });
+
+  testWidgets('placing World displaces whatever held the slot', (tester) async {
+    final container = await pumpMenu(tester);
+
+    await openMenu(tester);
+    expect(find.byKey(const Key('views-menu-world-check')), findsNothing);
+    await tester.tap(find.byKey(const Key('views-menu-world')));
+    await tester.pumpAndSettle();
+    expect(container.read(viewProvider), DsView.world);
+
+    await openMenu(tester);
+    expect(find.byKey(const Key('views-menu-world-check')), findsOneWidget);
   });
 
   testWidgets('the panes it lists are the ones it was handed', (tester) async {
@@ -180,7 +191,10 @@ void main() {
     );
 
     await openMenu(tester);
-    expect(find.byKey(const Key('views-menu-knowledge-base-check')), findsNothing);
+    expect(
+      find.byKey(const Key('views-menu-knowledge-base-check')),
+      findsNothing,
+    );
 
     await tester.tap(find.byKey(const Key('views-menu-knowledge-base')));
     await tester.pumpAndSettle();
