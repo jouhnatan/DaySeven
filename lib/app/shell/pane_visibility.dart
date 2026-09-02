@@ -10,12 +10,21 @@ import 'package:dayseven/app/app_store.dart';
 
 @immutable
 class PaneVisibility {
-  const PaneVisibility({this.knowledgeBase = true});
+  const PaneVisibility({this.knowledgeBase = true, this.timelineReader = true});
 
+  /// The Knowledge Base tree, beside the Editor and Differences.
   final bool knowledgeBase;
 
-  PaneVisibility copyWith({bool? knowledgeBase}) =>
-      PaneVisibility(knowledgeBase: knowledgeBase ?? this.knowledgeBase);
+  /// The reader, beside the Timelines workspace. A key of its own rather than
+  /// a shared "side pane" flag: closing the tree while writing should not also
+  /// close the reader the next time somebody opens a timeline.
+  final bool timelineReader;
+
+  PaneVisibility copyWith({bool? knowledgeBase, bool? timelineReader}) =>
+      PaneVisibility(
+        knowledgeBase: knowledgeBase ?? this.knowledgeBase,
+        timelineReader: timelineReader ?? this.timelineReader,
+      );
 }
 
 class PaneVisibilityController extends StateNotifier<PaneVisibility> {
@@ -26,6 +35,7 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
   final Ref _ref;
   static const _saveDelay = Duration(milliseconds: 400);
   static const _knowledgeBaseKey = 'knowledgeBase';
+  static const _timelineReaderKey = 'timelineReader';
 
   Timer? _saveDebounce;
   bool _changedLocally = false;
@@ -36,6 +46,7 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
     if (!mounted || _changedLocally) return;
     state = state.copyWith(
       knowledgeBase: saved[_knowledgeBaseKey] ?? state.knowledgeBase,
+      timelineReader: saved[_timelineReaderKey] ?? state.timelineReader,
     );
   }
 
@@ -43,12 +54,24 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
 
   void setKnowledgeBaseVisible(bool visible) {
     if (state.knowledgeBase == visible) return;
+    _set(state.copyWith(knowledgeBase: visible));
+  }
+
+  void toggleTimelineReader() => setTimelineReaderVisible(!state.timelineReader);
+
+  void setTimelineReaderVisible(bool visible) {
+    if (state.timelineReader == visible) return;
+    _set(state.copyWith(timelineReader: visible));
+  }
+
+  void _set(PaneVisibility next) {
     _changedLocally = true;
-    state = state.copyWith(knowledgeBase: visible);
+    state = next;
     _saveDebounce?.cancel();
     _saveDebounce = Timer(_saveDelay, () async {
       final store = await _ref.read(appStoreProvider.future);
       await store.setPaneVisibility(_knowledgeBaseKey, state.knowledgeBase);
+      await store.setPaneVisibility(_timelineReaderKey, state.timelineReader);
     });
   }
 

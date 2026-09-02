@@ -49,6 +49,7 @@ void main() {
 
     expect(find.byKey(const Key('views-menu-editor')), findsOneWidget);
     expect(find.byKey(const Key('views-menu-differences')), findsOneWidget);
+    expect(find.byKey(const Key('views-menu-timelines')), findsOneWidget);
     expect(find.byKey(const Key('views-menu-knowledge-base')), findsOneWidget);
 
     expect(container.read(viewProvider), DsView.editor);
@@ -56,8 +57,9 @@ void main() {
     expect(
       find.byKey(const Key('views-menu-differences-check')),
       findsNothing,
-      reason: 'the two workspaces share one slot, so only one is placed',
+      reason: 'the workspaces share one slot, so only one is placed',
     );
+    expect(find.byKey(const Key('views-menu-timelines-check')), findsNothing);
     expect(
       find.byKey(const Key('views-menu-knowledge-base-check')),
       findsOneWidget,
@@ -79,6 +81,29 @@ void main() {
     expect(
       find.byKey(const Key('views-menu-differences-check')),
       findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('views-menu-editor')));
+    await tester.pumpAndSettle();
+    expect(container.read(viewProvider), DsView.editor);
+  });
+
+  testWidgets('placing Timelines displaces whatever held the slot', (
+    tester,
+  ) async {
+    final container = await pumpMenu(tester);
+
+    await openMenu(tester);
+    await tester.tap(find.byKey(const Key('views-menu-timelines')));
+    await tester.pumpAndSettle();
+    expect(container.read(viewProvider), DsView.timelines);
+
+    await openMenu(tester);
+    expect(find.byKey(const Key('views-menu-timelines-check')), findsOneWidget);
+    expect(find.byKey(const Key('views-menu-editor-check')), findsNothing);
+    expect(
+      find.byKey(const Key('views-menu-differences-check')),
+      findsNothing,
     );
 
     await tester.tap(find.byKey(const Key('views-menu-editor')));

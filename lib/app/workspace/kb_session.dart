@@ -169,6 +169,44 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
     return relativePath;
   }
 
+  /// Creates an object file from a caller-supplied seed.
+  ///
+  /// Generic on purpose: the Knowledge Base knows how to put a `.unearth` file
+  /// on disk and nothing about what is inside it. Whichever feature owns the
+  /// `kind` supplies the seed, so a new object type needs nothing here.
+  Future<String> createObject({
+    required String name,
+    required Map<String, Object?> seed,
+    String folder = '',
+  }) async {
+    final session = state.valueOrNull;
+    if (session == null) {
+      throw const KbException('Open a Knowledge Base first.');
+    }
+
+    final path = await session.kb.createObject(
+      name: name,
+      seed: seed,
+      folderRelativePath: folder,
+    );
+    await refreshTree();
+    return path;
+  }
+
+  /// Renames one object. Objects are not indexed for search and are not
+  /// mirrored to the server, so unlike [renameDocument] there is nothing to
+  /// put back in step but the tree.
+  Future<String> renameObject(String relativePath, String name) async {
+    final session = state.valueOrNull;
+    if (session == null) {
+      throw const KbException('Open a Knowledge Base first.');
+    }
+
+    final destination = await session.kb.renameObject(relativePath, name);
+    await refreshTree();
+    return destination;
+  }
+
   Future<bool> _documentNameExists(
     KnowledgeBase kb,
     String folder,
@@ -201,7 +239,9 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
     // rebuilt; a single document only needs its own row repointed.
     if (isDocumentPath(relativePath)) {
       session.index.rename(relativePath, destination);
-    } else {
+    } else if (!isObjectPath(relativePath)) {
+      // A moved folder takes a subtree of documents with it. An object is not
+      // in the index at all, so moving one leaves the index alone.
       await session.index.rebuild();
     }
 
@@ -280,7 +320,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
 
     if (isDocumentPath(relativePath)) {
       session.index.remove(relativePath);
-    } else {
+    } else if (!isObjectPath(relativePath)) {
       await session.index.rebuild();
     }
 

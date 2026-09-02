@@ -3,10 +3,11 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// The two workspaces that can occupy the centre. They share one slot, so
-/// placing one displaces the other; the Knowledge Base beside them is a pane
-/// of its own and toggles independently.
-enum DsView { editor, differences }
+/// The workspaces that can occupy the centre. They share one slot, so placing
+/// one displaces the other; the pane beside them is a pane of its own and
+/// toggles independently — the Knowledge Base tree for the Editor and
+/// Differences, the timeline reader for Timelines.
+enum DsView { editor, differences, timelines }
 
 /// Cross-feature navigation belongs to the composition root: several features
 /// can open the editor without depending directly on the Views feature.

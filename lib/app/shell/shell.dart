@@ -41,8 +41,9 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
-import 'package:dayseven/features/timeline/ui/timeline_toolbar_button.dart';
-import 'package:dayseven/features/timeline/ui/timeline_widget.dart';
+import 'package:dayseven/features/timeline/ui/timeline_reader_pane.dart';
+import 'package:dayseven/features/timeline/ui/timeline_strip.dart';
+import 'package:dayseven/features/timeline/ui/timelines_workspace.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
 import 'package:dayseven/shared/platform/new_instance.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
@@ -88,7 +89,17 @@ class DsShell extends ConsumerWidget {
                   final paneVisibility = ref.read(
                     paneVisibilityProvider.notifier,
                   );
-                  final panelProgress = visibility.knowledgeBase ? 1.0 : 0.0;
+                  // One slot beside the centre, holding whichever pane the
+                  // placed workspace belongs with, at its own width and its
+                  // own visibility.
+                  final showingTimelines = view == DsView.timelines;
+                  final paneVisible = showingTimelines
+                      ? visibility.timelineReader
+                      : visibility.knowledgeBase;
+                  final paneWidth = showingTimelines
+                      ? widths.reader
+                      : widths.panel;
+                  final panelProgress = paneVisible ? 1.0 : 0.0;
                   final available =
                       constraints.maxWidth - DsSpace.seam * panelProgress;
 
@@ -140,10 +151,12 @@ class DsShell extends ConsumerWidget {
                       Expanded(
                         child: _PaneRow(
                           panelSlotWidth:
-                              (widths.panel + DsSpace.seam) * panelProgress,
+                              (paneWidth + DsSpace.seam) * panelProgress,
                           onDragPanel: panelProgress == 0
                               ? null
-                              : (dx) => panes.dragPanel(dx, available),
+                              : (dx) => showingTimelines
+                                    ? panes.dragReader(dx, available)
+                                    : panes.dragPanel(dx, available),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -152,20 +165,39 @@ class DsShell extends ConsumerWidget {
                                   DsView.editor => const DsPane(
                                     key: Key('centre-workspace'),
                                     editorSurface: true,
-                                    child: EditorScreen(
-                                      timelineWidget: TimelineWidget(),
-                                    ),
+                                    child: EditorScreen(),
                                   ),
                                   DsView.differences => const KeyedSubtree(
                                     key: Key('centre-workspace'),
                                     child: DifferencesWorkspace(),
                                   ),
+                                  DsView.timelines => const KeyedSubtree(
+                                    key: Key('centre-workspace'),
+                                    child: TimelinesWorkspace(),
+                                  ),
                                 },
                               ),
-                              _SlidingKnowledgeBasePane(
+                              _SlidingSidePane(
                                 progress: panelProgress,
-                                panelWidth: widths.panel,
-                                visible: visibility.knowledgeBase,
+                                panelWidth: paneWidth,
+                                visible: paneVisible,
+                                child: showingTimelines
+                                    ? const KeyedSubtree(
+                                        key: Key('timeline-reader-pane'),
+                                        child: TimelineReaderPane(),
+                                      )
+                                    : KnowledgeBaseMenu(
+                                        key: const Key('knowledge-base-pane'),
+                                        // The gear beside the tree opens the
+                                        // same App settings everything else
+                                        // does, on the section that describes
+                                        // the Knowledge Base it sits next to.
+                                        onOpenSettings: () => _openAppSettings(
+                                          context,
+                                          section: AppSettingsSection
+                                              .knowledgeBase,
+                                        ),
+                                      ),
                               ),
                             ],
                           ),
@@ -270,23 +302,28 @@ AppSettingsDeveloperOptions _developerOptions(WidgetRef ref) {
 /// A fixed-width right pane revealed through an animated slot. As the slot
 /// narrows, its child stays anchored to the slot's left and travels out past
 /// the window's right edge instead of being squeezed.
-class _SlidingKnowledgeBasePane extends StatelessWidget {
-  const _SlidingKnowledgeBasePane({
+///
+/// One mechanism for every view's side pane: which pane is in it, and how wide
+/// it is, is the shell's decision rather than this widget's.
+class _SlidingSidePane extends StatelessWidget {
+  const _SlidingSidePane({
     required this.progress,
     required this.panelWidth,
     required this.visible,
+    required this.child,
   });
 
   final double progress;
   final double panelWidth;
   final bool visible;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final fullWidth = panelWidth + DsSpace.seam;
 
     return SizedBox(
-      key: const Key('knowledge-base-slide-region'),
+      key: const Key('side-pane-slide-region'),
       width: fullWidth * progress,
       child: ClipRect(
         child: OverflowBox(
@@ -301,19 +338,7 @@ class _SlidingKnowledgeBasePane extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const DsSeam.vertical(),
-                  SizedBox(
-                    key: const Key('knowledge-base-pane'),
-                    width: panelWidth,
-                    child: KnowledgeBaseMenu(
-                      // The gear beside the Knowledge Base selector opens the
-                      // same App settings everything else does, on the section
-                      // that describes the Knowledge Base it sits next to.
-                      onOpenSettings: () => _openAppSettings(
-                        context,
-                        section: AppSettingsSection.knowledgeBase,
-                      ),
-                    ),
-                  ),
+                  SizedBox(width: panelWidth, child: child),
                 ],
               ),
             ),
@@ -521,9 +546,9 @@ class _WindowButtonsInset extends StatelessWidget {
 
 const double _kToolbarIslandVerticalPadding = 6;
 
-/// The formatting toolbar and its overflow menu while the Editor is active.
-/// Other views keep the same taller footprint so the panes above do not change
-/// height when the workspace changes.
+/// The formatting toolbar and its overflow menu while the Editor is active,
+/// the timeline while Timelines is. Other views keep the same taller footprint
+/// so the panes above do not change height when the workspace changes.
 class _BottomBar extends ConsumerWidget {
   const _BottomBar();
 
@@ -531,6 +556,13 @@ class _BottomBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final view = ref.watch(viewProvider);
     final showingEditor = view == DsView.editor;
+
+    // The timeline runs the full width of the window rather than following the
+    // workspace above it: it is the constant the view is arranged around, and
+    // the design carries it edge to edge.
+    if (view == DsView.timelines) {
+      return const _Footer(child: TimelineStrip());
+    }
 
     // With nothing being edited there is no toolbar, and the bar has to look
     // exactly as it did before there was one.
@@ -617,11 +649,7 @@ class _EditingToolbarIsland extends StatelessWidget {
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        EditingToolbar(),
-                        SizedBox(width: DsSpace.controlGap),
-                        TimelineToolbarButton(),
-                      ],
+                      children: [EditingToolbar()],
                     ),
                   ),
                 ),
