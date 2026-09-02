@@ -11,9 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/view.dart';
-import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/workspace/editing_focus.dart';
-import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/document_publish_controls.dart';
 import 'package:dayseven/app/workspace/document_presence_indicator.dart';
@@ -290,8 +288,8 @@ void _openNewWindow(BuildContext context, {required bool fresh}) {
 }
 
 /// Opens App settings with everything only the composition root can supply:
-/// the developer options, and the Knowledge Base panel, which belongs to a
-/// feature App settings is not allowed to import.
+/// the Knowledge Base panel, which belongs to a feature App settings is not
+/// allowed to import.
 void _openAppSettings(
   BuildContext context, {
   AppSettingsSection section = AppSettingsSection.updates,
@@ -299,7 +297,6 @@ void _openAppSettings(
   unawaited(
     showAppSettingsDialog(
       context,
-      developerOptions: _developerOptions,
       knowledgeBasePanelBuilder: _knowledgeBaseSettingsPanel,
       initialSection: section,
     ),
@@ -326,23 +323,6 @@ Widget _knowledgeBaseSettingsPanel(WidgetRef ref) {
       refusalCount: collaboration.refusalCount,
       refusalDetail: collaboration.lastRefusal?.detail,
     ),
-  );
-}
-
-AppSettingsDeveloperOptions _developerOptions(WidgetRef ref) {
-  final settings =
-      ref.watch(developerSettingsProvider).valueOrNull ??
-      const DeveloperSettings();
-  return AppSettingsDeveloperOptions(
-    showWorkspaceMetadata: settings.showWorkspaceMetadata,
-    setShowWorkspaceMetadata: (enabled) async {
-      await ref
-          .read(developerSettingsProvider.notifier)
-          .setShowWorkspaceMetadata(enabled);
-      await ref
-          .read(kbControllerProvider.notifier)
-          .setWorkspaceMetadataVisible(enabled);
-    },
   );
 }
 

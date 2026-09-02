@@ -79,10 +79,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
       }
 
       final store = await _ref.read(appStoreProvider.future);
-      // Read before the index is built and before the tree is walked, so both
-      // agree about whether `metadata/` exists as far as this session is
-      // concerned.
-      _showMetadata = await store.developerFlag(AppStore.showWorkspaceMetadata);
+      _showMetadata = false;
 
       final index = await SearchIndex.openFor(kb);
       index.includeMetadata = _showMetadata;
@@ -114,6 +111,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   ///
   /// This changes only the tree and search index. The two synchronization
   /// reads that intentionally ignore this view setting remain untouched.
+  @Deprecated('Workspace metadata is hidden by default and no longer toggle-able.')
   Future<void> setWorkspaceMetadataVisible(bool visible) async {
     _showMetadata = visible;
     final session = state.valueOrNull;
