@@ -12,9 +12,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
-import 'package:dayseven/features/timeline/application/timeline_controller.dart';
-import 'package:dayseven/features/timeline/domain/timeline.dart';
-import 'package:dayseven/features/timeline/ui/timeline_color_picker.dart';
+import 'package:dayseven/features/timelines/application/timeline_controller.dart';
+import 'package:dayseven/features/timelines/domain/timeline.dart';
+import 'package:dayseven/features/timelines/ui/timeline_color_picker.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';

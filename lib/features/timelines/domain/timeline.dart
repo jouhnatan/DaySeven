@@ -65,6 +65,25 @@ class TimelineNation {
   }
 }
 
+/// The map a timeline is drawn over.
+///
+/// Only the asset id is kept. The image itself lives with the Knowledge Base's
+/// other images, under `.settings/assets/`, so a map is stored the same way a
+/// picture in a document is.
+class TimelineMap {
+  const TimelineMap({required this.assetId});
+
+  /// The file under `.settings/assets/`, named by `KnowledgeBase.importAsset`.
+  final String assetId;
+
+  Map<String, Object?> toJson() => {'assetId': assetId};
+
+  static TimelineMap? fromJson(Map<String, Object?> json) {
+    final assetId = _string(json['assetId']);
+    return assetId.isEmpty ? null : TimelineMap(assetId: assetId);
+  }
+}
+
 /// An item on the timeline: either a point event or a period/span.
 sealed class TimelineItem {
   const TimelineItem({
@@ -363,6 +382,7 @@ class Timeline {
     this.monthsPerYear = defaultMonthsPerYear,
     this.nations = const [],
     this.items = const [],
+    this.map,
   });
 
   /// The `kind` this object is written under. A map, when there is one, is a
@@ -372,9 +392,15 @@ class Timeline {
   /// The schema this app writes.
   ///
   /// Version 1 dated an item with one scalar, `start`, and knew nothing about
-  /// nations or about a document being the main one. Version 2 is read and
-  /// written here; a version 1 file is upgraded on the way in.
-  static const int version = 2;
+  /// nations or about a document being the main one. Version 2 added those.
+  /// Version 3 added the map. Version 3 is read and written here; older files
+  /// are upgraded on the way in.
+  ///
+  /// The bump for the map is deliberate rather than treating it as an additive
+  /// field: a build that did not know about `map` would drop it on the next
+  /// save, and losing somebody's map quietly is worse than refusing to open
+  /// the file at all.
+  static const int version = 3;
 
   /// Years used when a timeline has nothing in it yet, so the track still has
   /// a span to draw.
@@ -395,6 +421,11 @@ class Timeline {
 
   final List<TimelineNation> nations;
   final List<TimelineItem> items;
+
+  /// The map this timeline is drawn over, if one has been uploaded.
+  final TimelineMap? map;
+
+  bool get hasMap => map != null;
 
   /// Where [item] sits on the track.
   double plotStart(TimelineItem item) => _plot(item.year, item.month);
@@ -473,6 +504,8 @@ class Timeline {
     int? monthsPerYear,
     List<TimelineNation>? nations,
     List<TimelineItem>? items,
+    TimelineMap? map,
+    bool clearMap = false,
   }) => Timeline(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -480,6 +513,7 @@ class Timeline {
     monthsPerYear: monthsPerYear ?? this.monthsPerYear,
     nations: nations ?? this.nations,
     items: items ?? this.items,
+    map: clearMap ? null : (map ?? this.map),
   );
 
   Map<String, Object?> toJson() => {
@@ -489,6 +523,7 @@ class Timeline {
     'title': title,
     'description': description,
     'monthsPerYear': monthsPerYear,
+    if (map != null) 'map': map!.toJson(),
     'nations': [for (final nation in nations) nation.toJson()],
     'items': [for (final item in items) item.toJson()],
   };
@@ -531,6 +566,7 @@ class Timeline {
       }
     }
 
+    final rawMap = json['map'];
     final known = {for (final nation in nations) nation.id};
     final timeline = Timeline(
       id: _string(json['id'], fallback: 'timeline'),
@@ -538,6 +574,9 @@ class Timeline {
       description: _string(json['description']),
       monthsPerYear:
           _positiveInt(json['monthsPerYear']) ?? defaultMonthsPerYear,
+      map: rawMap is Map
+          ? TimelineMap.fromJson(Map<String, Object?>.from(rawMap))
+          : null,
       nations: nations,
       items: [
         // A reference to a nation the file does not define is dropped rather

@@ -12,8 +12,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/features/timeline/application/timeline_controller.dart';
-import 'package:dayseven/features/timeline/ui/timeline_track.dart';
+import 'package:dayseven/features/timelines/application/timeline_controller.dart';
+import 'package:dayseven/features/timelines/ui/timeline_track.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 /// The height of the track in the closed band.

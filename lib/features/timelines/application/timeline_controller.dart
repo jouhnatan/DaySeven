@@ -12,7 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
-import 'package:dayseven/features/timeline/domain/timeline.dart';
+import 'package:dayseven/features/timelines/domain/timeline.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -88,13 +88,22 @@ class TimelineController extends StateNotifier<OpenTimeline?> {
     // The file name is the name: the same rule documents follow, so renaming
     // in the tree renames the thing rather than leaving two names to reconcile.
     final fileName = objectNameFromPath(relativePath);
+    final timeline = stored.title == fileName
+        ? stored
+        : stored.copyWith(title: fileName);
     state = OpenTimeline(
       relativePath: relativePath,
-      timeline: stored.title == fileName
-          ? stored
-          : stored.copyWith(title: fileName),
+      timeline: timeline,
       dirty: false,
     );
+
+    // Choosing a timeline is already a choice of what to work on, so the
+    // earliest thing on it is selected here rather than making the person
+    // click again on the track before the editor has anything to show.
+    _ref.read(selectedTimelineItemIdProvider.notifier).state = timeline
+        .items
+        .firstOrNull
+        ?.id;
   }
 
   void close({bool save = true}) {

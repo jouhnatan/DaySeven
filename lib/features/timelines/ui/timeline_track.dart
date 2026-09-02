@@ -5,8 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/features/timeline/application/timeline_controller.dart';
-import 'package:dayseven/features/timeline/domain/timeline.dart';
+import 'package:dayseven/features/timelines/application/timeline_controller.dart';
+import 'package:dayseven/features/timelines/domain/timeline.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class TimelineTrack extends ConsumerStatefulWidget {

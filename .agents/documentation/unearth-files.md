@@ -25,11 +25,12 @@ and `check_layers.sh` fails the build if it does.
 ```json
 {
   "kind": "timeline",
-  "version": 2,
+  "version": 3,
   "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1",
   "title": "Third Age",
   "description": "",
   "monthsPerYear": 12,
+  "map": { "assetId": "0192f3aa-….png" },
   "nations": [
     { "id": "n1", "name": "The Vale", "color": "teal" },
     { "id": "n2", "name": "The North", "color": "amber" }
@@ -64,11 +65,12 @@ and `check_layers.sh` fails the build if it does.
 | Field | Meaning |
 | --- | --- |
 | `kind` | Which object this is. Must be `"timeline"` to read as one. |
-| `version` | The schema this file was written against. Currently `2`. |
+| `version` | The schema this file was written against. Currently `3`. |
 | `id` | Stable identity, a UUID v7. Not the name. |
 | `title` | Kept in step with the file name — see *The name is the file name*. |
 | `description` | Free text about the timeline as a whole. May be absent. |
 | `monthsPerYear` | How many months this world's year has. Defaults to 12. Only used to place a dated item between one year mark and the next. |
+| `map` | The map this timeline is drawn over, if one has been uploaded. Absent otherwise. |
 | `nations` | The powers this timeline knows about. May be absent or empty. |
 | `items` | Events and ages, in any order. May be absent or empty. |
 
@@ -119,6 +121,27 @@ so a month of 13 in a thirteen-month year lands just short of the following
 year rather than spilling past it. Months have no names, so a date is said as
 "Month 3, 1842".
 
+### The map
+
+```json
+"map": { "assetId": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1.png" }
+```
+
+Only the asset id is kept. The image itself is copied into the Knowledge Base's
+`.settings/assets/` by `KnowledgeBase.importAsset` — the same place a picture
+in a document goes — so a map travels with the folder rather than pointing at
+somewhere on one machine's disk the other machine has never heard of.
+
+A map may only be a **PNG or a JPEG**. That is narrower than the images a
+document accepts, deliberately: a map is one large picture that has to decode
+every time the view opens, and the animated and multi-page formats have no
+business being one. The file picker filters, and `setTimelineMap` enforces it
+again — a file can also arrive by being renamed.
+
+Clearing a map removes the reference and **leaves the image on disk**. Nothing
+else refers to it, but deleting somebody's picture because they cleared a
+reference to it is not a trade this app makes anywhere else either.
+
 ### The main document
 
 An item can connect to any number of documents, and exactly one of them is the
@@ -137,11 +160,18 @@ higher than this build writes, throws `TimelineFormatException`. Opening such
 a file and saving it back would quietly discard whatever the newer version
 knew about, which is worse than declining to open it.
 
-**A version 1 file is upgraded, not refused.** Version 1 dated an item with a
+**Older files are upgraded, not refused.** Version 1 dated an item with a
 single scalar `start`, and knew nothing about nations or about one document
-being the main one. It is read as the year the scalar fell in, its `document`
-becomes the main document, and it is written back as version 2. Only a *higher*
-version is refused.
+being the main one: it is read as the year the scalar fell in, and its
+`document` becomes the main document. Version 2 added those but had no map.
+Either is read and written back at the current version. Only a *higher* version
+is refused.
+
+**Why the map earned a version bump** rather than being treated as an additive
+field: a build that did not know about `map` would drop it on the next save,
+and losing somebody's map quietly is worse than refusing to open the file. That
+is the rule for any new field — if an older build silently discarding it would
+lose something, bump.
 
 **Hand-edits are expected.** The file is written indented precisely so it can
 be edited in a text editor without this app, so `fromJson` tolerates what that
@@ -180,14 +210,34 @@ server-authored (see the `kb:%` topic notes in `AGENTS.md`).
 
 ## Where the code is
 
+Everything about timelines — their model, their lifecycle, and every surface
+that shows one — lives under `lib/features/timelines/`.
+
 | Concern | File |
 | --- | --- |
 | Extension, `isObjectPath`, read/write/create/rename, `readObjects` | `lib/shared/kb/bundle.dart` |
 | Generic create/rename on the controller | `lib/app/workspace/kb_session.dart` |
-| The timeline model, its JSON, the v1 upgrade | `lib/features/timeline/domain/timeline.dart` |
-| Open/edit/debounced-save of the open object | `lib/features/timeline/application/timeline_controller.dart` |
-| Format tests | `test/features/timeline/timeline_test.dart` |
+| The timeline model, its JSON, the upgrade path | `lib/features/timelines/domain/timeline.dart` |
+| Open/edit/debounced-save, selection, nations, links | `lib/features/timelines/application/timeline_controller.dart` |
+| The map surface, its upload, its pan and zoom | `lib/features/timelines/map_renderer/` |
+| The editor, reader, strip and track | `lib/features/timelines/ui/` |
+| Format tests | `test/features/timelines/timeline_test.dart` |
+| Map tests | `test/features/timelines/map_upload_test.dart` |
 | Filesystem and listing tests | `test/shared/kb/objects_test.dart` |
+
+### `map_renderer/`
+
+- `timeline_map_canvas.dart` — the surface itself: asks for a map when there is
+  none, shows it with its controls when there is.
+- `map_viewport.dart` — the pan and zoom engine. Holds a
+  `TransformationController` rather than a scale-and-offset pair, because that
+  is what carries the whole mapping between screen and image *including its
+  inverse*. `toImagePoint` is that inverse, and exists now so the transform is
+  never reduced to something that cannot express it — placing a pin is a point
+  on the image that somebody clicked on the screen.
+- `map_upload.dart` — what may be a map, and putting it on the timeline. Takes
+  its dependencies explicitly rather than a provider container, so the rule is
+  testable without a file dialog.
 
 ## Adding a new kind
 

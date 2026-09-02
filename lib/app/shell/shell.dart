@@ -41,10 +41,10 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
-import 'package:dayseven/features/timeline/ui/timeline_editor_pane.dart';
-import 'package:dayseven/features/timeline/ui/timeline_map_canvas.dart';
-import 'package:dayseven/features/timeline/ui/timeline_reader_pane.dart';
-import 'package:dayseven/features/timeline/ui/timeline_strip.dart';
+import 'package:dayseven/features/timelines/ui/timeline_editor_pane.dart';
+import 'package:dayseven/features/timelines/map_renderer/timeline_map_canvas.dart';
+import 'package:dayseven/features/timelines/ui/timeline_reader_pane.dart';
+import 'package:dayseven/features/timelines/ui/timeline_strip.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
 import 'package:dayseven/shared/platform/new_instance.dart';
 import 'package:dayseven/shared/ui/error_box.dart';

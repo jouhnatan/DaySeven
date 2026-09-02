@@ -2,7 +2,7 @@
 /// handed.
 library;
 
-import 'package:dayseven/features/timeline/domain/timeline.dart';
+import 'package:dayseven/features/timelines/domain/timeline.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -68,7 +68,7 @@ void main() {
     test('the envelope names the kind and the version', () {
       final json = sample().toJson();
       expect(json['kind'], 'timeline');
-      expect(json['version'], 2);
+      expect(json['version'], 3);
     });
 
     test('absent values are left out rather than written as null', () {
@@ -119,23 +119,23 @@ void main() {
       expect(item.documentPaths, isEmpty);
     });
 
-    test('it is written back as version 2', () {
+    test('it is written back at the current version', () {
       final upgraded = Timeline.fromJson(v1()).toJson();
-      expect(upgraded['version'], 2);
+      expect(upgraded['version'], 3);
     });
   });
 
   group('reading a file this app did not write', () {
     test('another kind is refused rather than read as a timeline', () {
       expect(
-        () => Timeline.fromJson({'kind': 'map', 'version': 2}),
+        () => Timeline.fromJson({'kind': 'map', 'version': 3}),
         throwsA(isA<TimelineFormatException>()),
       );
     });
 
     test('a newer format is refused rather than saved back stripped', () {
       expect(
-        () => Timeline.fromJson({'kind': 'timeline', 'version': 3}),
+        () => Timeline.fromJson({'kind': 'timeline', 'version': 4}),
         throwsA(isA<TimelineFormatException>()),
       );
     });
@@ -143,7 +143,7 @@ void main() {
     test('a file with no items reads as an empty timeline', () {
       final timeline = Timeline.fromJson({
         'kind': 'timeline',
-        'version': 2,
+        'version': 3,
         'title': 'Empty',
       });
       expect(timeline.items, isEmpty);
@@ -154,7 +154,7 @@ void main() {
     test('hand-edited items come back in order', () {
       final timeline = Timeline.fromJson({
         'kind': 'timeline',
-        'version': 2,
+        'version': 3,
         'items': [
           {'id': 'late', 'type': 'event', 'year': 1900},
           {'id': 'early', 'type': 'event', 'year': 1700},
@@ -166,7 +166,7 @@ void main() {
     test('an age ending before it starts is tidied, not refused', () {
       final timeline = Timeline.fromJson({
         'kind': 'timeline',
-        'version': 2,
+        'version': 3,
         'items': [
           {'id': 'a', 'type': 'period', 'year': 1800, 'end': 1700},
         ],
@@ -179,7 +179,7 @@ void main() {
       expect(
         () => Timeline.fromJson({
           'kind': 'timeline',
-          'version': 2,
+          'version': 3,
           'items': [
             {'type': 'event', 'year': 1800},
           ],
@@ -191,7 +191,7 @@ void main() {
     test('a nation nothing defines is dropped from the items', () {
       final timeline = Timeline.fromJson({
         'kind': 'timeline',
-        'version': 2,
+        'version': 3,
         'nations': [
           {'id': 'n1', 'name': 'The Vale'},
         ],
@@ -210,12 +210,56 @@ void main() {
     test('a month of zero or below is no month at all', () {
       final timeline = Timeline.fromJson({
         'kind': 'timeline',
-        'version': 2,
+        'version': 3,
         'items': [
           {'id': 'a', 'type': 'event', 'year': 1800, 'month': 0},
         ],
       });
       expect(timeline.items.single.month, isNull);
+    });
+  });
+
+  group('the map', () {
+    test('a timeline has none until one is uploaded', () {
+      expect(sample().hasMap, isFalse);
+      expect(sample().toJson().containsKey('map'), isFalse);
+    });
+
+    test('an asset id round-trips', () {
+      final withMap = sample().copyWith(
+        map: const TimelineMap(assetId: 'abc.png'),
+      );
+      final restored = Timeline.fromJson(withMap.toJson());
+
+      expect(restored.hasMap, isTrue);
+      expect(restored.map!.assetId, 'abc.png');
+    });
+
+    test('clearing it leaves the field out rather than writing null', () {
+      final cleared = sample()
+          .copyWith(map: const TimelineMap(assetId: 'abc.png'))
+          .copyWith(clearMap: true);
+
+      expect(cleared.hasMap, isFalse);
+      expect(cleared.toJson().containsKey('map'), isFalse);
+    });
+
+    test('a map with no asset id is no map', () {
+      final timeline = Timeline.fromJson({
+        'kind': 'timeline',
+        'version': 3,
+        'map': <String, Object?>{},
+      });
+      expect(timeline.hasMap, isFalse);
+    });
+
+    test('a version 1 file simply has no map', () {
+      final timeline = Timeline.fromJson({
+        'kind': 'timeline',
+        'version': 1,
+        'items': <Object?>[],
+      });
+      expect(timeline.hasMap, isFalse);
     });
   });
 

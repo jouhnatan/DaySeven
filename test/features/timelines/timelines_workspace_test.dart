@@ -6,8 +6,8 @@ import 'dart:io';
 import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
-import 'package:dayseven/features/timeline/application/timeline_controller.dart';
-import 'package:dayseven/features/timeline/domain/timeline.dart';
+import 'package:dayseven/features/timelines/application/timeline_controller.dart';
+import 'package:dayseven/features/timelines/domain/timeline.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -179,8 +179,6 @@ void main() {
 
     await showTimelines(tester, container);
     await openThirdAge(tester, container);
-    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
-    await tester.pumpAndSettle();
 
     // Nothing selects, expands or edits its way into the centre slot: the map
     // is what the centre is for.
@@ -189,19 +187,32 @@ void main() {
     expect(find.byKey(const Key('timeline-strip')), findsOneWidget);
   });
 
+  testWidgets('choosing a timeline puts its first item in the editor', (
+    tester,
+  ) async {
+    final container = await timelinesView(tester);
+
+    // Nothing open yet, so there is nothing to edit and the pane says so.
+    expect(find.text('No timeline open.'), findsOneWidget);
+
+    await showTimelines(tester, container);
+    await openThirdAge(tester, container);
+
+    // Choosing a timeline is already a choice of what to work on: the earliest
+    // thing on it is selected, without a second click on the track.
+    expect(container.read(selectedTimelineItemIdProvider), 'fall');
+    expect(find.byKey(const Key('timeline-item-editor')), findsOneWidget);
+    expect(
+      find.widgetWithText(TextField, 'The bridge falls'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the left pane edits the selected item', (tester) async {
     final container = await timelinesView(tester);
 
     await showTimelines(tester, container);
     await openThirdAge(tester, container);
-
-    // Nothing selected yet: the pane says so rather than showing empty fields.
-    expect(find.byKey(const Key('timeline-item-editor')), findsNothing);
-    expect(find.text('Select something on the timeline to edit it.'),
-        findsOneWidget);
-
-    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
-    await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(const Key('timeline-item-year')), '1899');
     await tester.pumpAndSettle();
@@ -222,8 +233,6 @@ void main() {
 
     await showTimelines(tester, container);
     await openThirdAge(tester, container);
-    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
-    await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(const Key('timeline-item-month')), '5');
     await tester.pumpAndSettle();
@@ -241,8 +250,6 @@ void main() {
 
     await showTimelines(tester, container);
     await openThirdAge(tester, container);
-    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
-    await tester.pumpAndSettle();
 
     final actions = container.read(timelineActionControllerProvider);
     final nation = actions.addNation('The Vale')!;
@@ -280,8 +287,6 @@ void main() {
 
     await showTimelines(tester, container);
     await openThirdAge(tester, container);
-    container.read(selectedTimelineItemIdProvider.notifier).state = 'fall';
-    await tester.pumpAndSettle();
 
     final actions = container.read(timelineActionControllerProvider);
     var item = container.read(selectedTimelineItemProvider)!;

@@ -145,11 +145,12 @@ constructs, and it lives beside the documents in its own file:
 ```json
 {
   "kind": "timeline",
-  "version": 2,
+  "version": 3,
   "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1",
   "title": "Third Age",
   "description": "",
   "monthsPerYear": 12,
+  "map": { "assetId": "0192f3aa-….png" },
   "nations": [
     { "id": "n1", "name": "The Vale", "color": "teal" },
     { "id": "n2", "name": "The North", "color": "amber" }
@@ -171,6 +172,9 @@ it inside its own year rather than spilling into the next. Nations are named
 once on the timeline and referenced by the items party to them, so renaming one
 is a single edit. Of the documents an item connects to, `document` is the main
 one: what the reader shows, and what the item is really about.
+
+A map is a PNG or a JPEG, copied into `.settings/assets/` the way a picture in
+a document is, so it travels with the folder.
 
 `.agents/documentation/unearth-files.md` covers the format in full.
 
@@ -361,8 +365,10 @@ server-authored.
   read-only. Along the bottom the timeline runs the full width of the window,
   edge to edge rather than stopping where the panes above it begin; the track
   selects, and drags a thing through time, but does not otherwise edit it. Both
-  side panes retract from the Views menu. The map itself is a placeholder — the
-  surface and its bounds are settled, the image is not there yet.
+  side panes retract from the Views menu. Choosing a timeline selects its
+  earliest entry, so the editor has something in it without a second click. The
+  map is uploaded onto the timeline — a PNG or a JPEG — and can be panned and
+  zoomed; without one, the centre asks for one.
   Right-click a document to rename it, or edit its title in the editor and
   press Enter or click away; the Markdown filename is the canonical title
   everywhere. Right-click any item to delete it after a permanent-deletion
