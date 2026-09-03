@@ -8,7 +8,6 @@ import 'dart:typed_data';
 import 'package:dayseven/features/world/domain/world_metadata.dart';
 
 const _pngSignature = <int>[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const _maxChunks = 1000;
 const _maxTextChunkBytes = 1024 * 1024;
 
 /// Raised when a PNG cannot be inspected for its metadata.
@@ -40,7 +39,6 @@ class PngMetadataReader {
       }
 
       var position = _pngSignature.length;
-      var chunkCount = 0;
       int? width;
       int? height;
       bool? isGreyscale;
@@ -51,12 +49,6 @@ class PngMetadataReader {
         if (position >= fileLength) {
           throw const PngMetadataException(
             'The PNG is truncated before its IEND chunk.',
-          );
-        }
-        chunkCount++;
-        if (chunkCount > _maxChunks) {
-          throw const PngMetadataException(
-            'The PNG has too many chunks to inspect safely.',
           );
         }
         if (fileLength - position < 8) {

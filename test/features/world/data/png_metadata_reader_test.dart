@@ -93,6 +93,20 @@ void main() {
       throwsA(isA<PngMetadataException>()),
     );
   });
+
+  test('safely reads PNGs with more than 1000 chunks', () async {
+    final file = await writePng(
+      _png(
+        chunks: [
+          for (var i = 0; i < 1050; i++) _chunk('IDAT', const []),
+        ],
+      ),
+    );
+
+    final metadata = await PngMetadataReader().read(file);
+    expect(metadata.width, 4);
+    expect(metadata.height, 2);
+  });
 }
 
 const _pngSignature = <int>[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
