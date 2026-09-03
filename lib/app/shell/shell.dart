@@ -46,7 +46,7 @@ import 'package:dayseven/features/timelines/map_renderer/timeline_map_canvas.dar
 import 'package:dayseven/features/timelines/ui/timeline_reader_pane.dart';
 import 'package:dayseven/features/timelines/ui/timeline_strip.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
-import 'package:dayseven/features/world/ui/world_canvas.dart';
+import 'package:dayseven/features/world/world_renderer/world_canvas.dart';
 import 'package:dayseven/features/world/ui/world_settings_pane.dart';
 import 'package:dayseven/shared/platform/new_instance.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
