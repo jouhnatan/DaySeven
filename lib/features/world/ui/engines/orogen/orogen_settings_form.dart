@@ -18,11 +18,18 @@ import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
-class OrogenSettingsForm extends ConsumerWidget {
+class OrogenSettingsForm extends ConsumerStatefulWidget {
   const OrogenSettingsForm({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OrogenSettingsForm> createState() => _OrogenSettingsFormState();
+}
+
+class _OrogenSettingsFormState extends ConsumerState<OrogenSettingsForm> {
+  bool _importing = false;
+
+  @override
+  Widget build(BuildContext context) {
     final colors = context.ds;
     final open = ref.watch(openWorldProvider);
     if (open == null) return const SizedBox.shrink();
@@ -43,15 +50,28 @@ class OrogenSettingsForm extends ConsumerWidget {
         DsButton(
           key: const Key('world-import-layer'),
           height: DsSize.control,
-          onPressed: () => _importLayer(context, ref),
+          onPressed: _importing ? null : _importLayer,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.add, size: 16, color: colors.text),
+              if (_importing)
+                SizedBox.square(
+                  key: const Key('world-import-layer-progress'),
+                  dimension: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.faint,
+                  ),
+                )
+              else
+                Icon(Icons.add, size: 16, color: colors.text),
               const SizedBox(width: DsSpace.row),
               Text(
-                'Import PNG layer',
-                style: uiTextStyle(size: 13, color: colors.text),
+                _importing ? 'Importing…' : 'Import PNG layer',
+                style: uiTextStyle(
+                  size: 13,
+                  color: _importing ? colors.faint : colors.text,
+                ),
               ),
             ],
           ),
@@ -86,36 +106,56 @@ class OrogenSettingsForm extends ConsumerWidget {
     );
   }
 
-  Future<void> _importLayer(BuildContext context, WidgetRef ref) async {
-    if (ref.read(openWorldProvider) == null) return;
+  Future<void> _importLayer() async {
+    if (_importing || ref.read(openWorldProvider) == null) return;
 
-    final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'PNG', extensions: ['png']),
-      ],
-    );
-    if (file == null || !context.mounted) return;
-
-    final layer = await ref
-        .read(worldAssetRepositoryProvider)
-        .importLayer(
-          id: newId(),
-          kind: WorldLayerKind.heightmap,
-          source: File(file.path),
-        );
-    if (!context.mounted) return;
-
-    final controller = ref.read(openWorldProvider.notifier);
-    controller.addLayer(layer);
-
-    final planetCode = layer.metadata?.planetCode;
-    if (planetCode != null && planetCode.isNotEmpty) {
-      final updated = OrogenSettings(
-        planetCode: planetCode,
-        activeLayerId: layer.id,
+    setState(() => _importing = true);
+    try {
+      final file = await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(
+            label: 'PNG',
+            extensions: ['png'],
+            uniformTypeIdentifiers: ['public.png'],
+          ),
+        ],
       );
-      controller.updateEngineSettings('orogen', updated.toJson());
+      if (file == null || !mounted) return;
+
+      final layer = await ref
+          .read(worldAssetRepositoryProvider)
+          .importLayer(
+            id: newId(),
+            kind: WorldLayerKind.heightmap,
+            source: File(file.path),
+          );
+      if (!mounted) return;
+
+      final controller = ref.read(openWorldProvider.notifier);
+      controller.addLayer(layer);
+
+      final planetCode = layer.metadata?.planetCode;
+      if (planetCode != null && planetCode.isNotEmpty) {
+        final updated = OrogenSettings(
+          planetCode: planetCode,
+          activeLayerId: layer.id,
+        );
+        controller.updateEngineSettings('orogen', updated.toJson());
+      }
+    } on KbException catch (error) {
+      _showImportError(error.message);
+    } on Object catch (error) {
+      _showImportError('Could not import the PNG layer: $error');
+    } finally {
+      if (mounted) setState(() => _importing = false);
     }
+  }
+
+  void _showImportError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
