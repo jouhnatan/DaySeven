@@ -68,56 +68,59 @@ class WorldSettingsPane extends ConsumerWidget {
                     key: const Key('world-engine-setting'),
                     label: 'Engine',
                     trailing: Flexible(
-                      child: DsButton(
-                        key: const Key('world-engine-dropdown'),
-                        onPressed: availableEngines.isEmpty
-                            ? null
-                            : () async {
-                                final menu = DsDropdownMenuList<WorldEngine>();
-                                for (final engine in availableEngines) {
-                                  menu.pushItem(
-                                    value: engine,
-                                    label: engine.label,
-                                  );
-                                }
-                                final choice = await menu.show(context);
-                                if (choice != null && context.mounted) {
-                                  ref
-                                      .read(openWorldProvider.notifier)
-                                      .setEngine(choice.id);
-                                }
-                              },
-                        highlight: colors.selection,
-                        height: DsSize.control,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: DsSpace.sm,
-                          vertical: 10,
-                        ),
-                        borderRadius: const BorderRadius.all(DsRadius.island),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                activeEngine?.label ??
-                                    (availableEngines.isEmpty
-                                        ? 'No engines available'
-                                        : 'Choose engine…'),
-                                overflow: TextOverflow.ellipsis,
-                                style: uiTextStyle(
-                                  size: 13,
-                                  color: availableEngines.isEmpty
-                                      ? colors.faint
-                                      : colors.text,
+                      child: Builder(
+                        builder: (buttonContext) => DsButton(
+                          key: const Key('world-engine-dropdown'),
+                          onPressed: availableEngines.isEmpty
+                              ? null
+                              : () async {
+                                  final menu =
+                                      DsDropdownMenuList<WorldEngine>();
+                                  for (final engine in availableEngines) {
+                                    menu.pushItem(
+                                      value: engine,
+                                      label: engine.label,
+                                    );
+                                  }
+                                  final choice = await menu.show(buttonContext);
+                                  if (choice != null && buttonContext.mounted) {
+                                    ref
+                                        .read(openWorldProvider.notifier)
+                                        .setEngine(choice.id);
+                                  }
+                                },
+                          highlight: colors.selection,
+                          height: DsSize.control,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: DsSpace.sm,
+                            vertical: 10,
+                          ),
+                          borderRadius: const BorderRadius.all(DsRadius.island),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  activeEngine?.label ??
+                                      (availableEngines.isEmpty
+                                          ? 'No engines available'
+                                          : 'Choose engine…'),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: uiTextStyle(
+                                    size: 13,
+                                    color: availableEngines.isEmpty
+                                        ? colors.faint
+                                        : colors.text,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: DsSpace.row),
-                            Icon(
-                              Icons.expand_more,
-                              size: 16,
-                              color: colors.muted,
-                            ),
-                          ],
+                              const SizedBox(width: DsSpace.row),
+                              Icon(
+                                Icons.expand_more,
+                                size: 16,
+                                color: colors.muted,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

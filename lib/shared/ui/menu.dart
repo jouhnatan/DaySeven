@@ -207,17 +207,21 @@ Future<T?> showDsMenu<T>({
     final bottomRight = overlay.globalToLocal(
       anchor.localToGlobal(anchor.size.bottomRight(Offset.zero)),
     );
-    rect = Rect.fromPoints(topLeft, bottomRight);
-
-    // Inside a marked surface — the top bar — the menu drops from that
-    // surface's bottom edge rather than from the control, so every menu along
-    // the bar opens on the same line.
-    if (_anchorEdgeBox(context) case final edge?) {
-      final edgeBottom = overlay
-          .globalToLocal(edge.localToGlobal(edge.size.bottomLeft(Offset.zero)))
-          .dy;
-      rect = Rect.fromLTWH(rect.left, edgeBottom, rect.width, rect.height);
-    }
+    final dropTop = switch (_anchorEdgeBox(context)) {
+      final edge? =>
+        overlay
+            .globalToLocal(
+              edge.localToGlobal(edge.size.bottomLeft(Offset.zero)),
+            )
+            .dy,
+      null => bottomRight.dy,
+    };
+    rect = Rect.fromLTWH(
+      topLeft.dx,
+      dropTop,
+      bottomRight.dx - topLeft.dx,
+      bottomRight.dy - topLeft.dy,
+    );
   }
 
   final colors = context.ds;

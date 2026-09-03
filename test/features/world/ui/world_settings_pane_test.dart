@@ -63,8 +63,20 @@ void main() {
       world: const World(id: 'world-1', title: 'Aster'),
     );
 
+    final buttonRect = tester.getRect(
+      find.byKey(const Key('world-engine-dropdown')),
+    );
+
     await tester.tap(find.byKey(const Key('world-engine-dropdown')));
     await tester.pumpAndSettle();
+
+    final popupCard = tester.getRect(
+      find.byWidgetPredicate((w) => w is Material && w.elevation == 4),
+    );
+
+    // Dropdown opens directly beneath the anchor, not at the window top-left.
+    expect(popupCard.top, buttonRect.bottom);
+    expect(popupCard.right, buttonRect.right);
     expect(find.text('World Orogen'), findsOneWidget);
 
     await tester.tap(find.text('World Orogen'));
