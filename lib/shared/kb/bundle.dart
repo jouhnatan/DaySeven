@@ -755,11 +755,20 @@ class KnowledgeBase {
 
   String assetPathFor(String assetId) => p.join(assetsPath, assetId);
 
-  Future<String> importAsset(File source) async {
+  /// Copies an image into this Knowledge Base's asset store.
+  ///
+  /// The ceiling is a parameter because world map layers are legitimately far
+  /// larger than a picture in a document; the caller that knows which it is
+  /// should be the one to say what ceiling applies.
+  Future<String> importAsset(
+    File source, {
+    int maxBytes = kMaxImageBytes,
+  }) async {
     final length = await source.length();
-    if (length > kMaxImageBytes) {
-      throw const KbException(
-        'That image is too large (max 10 MB). Choose a smaller file.',
+    if (length > maxBytes) {
+      throw KbException(
+        'That image is too large (max ${maxBytes ~/ (1024 * 1024)} MB). '
+        'Choose a smaller file.',
       );
     }
     if (length == 0) {

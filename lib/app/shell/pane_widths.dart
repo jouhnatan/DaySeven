@@ -11,7 +11,12 @@ import 'package:dayseven/app/app_store.dart';
 /// so the pane is what the user drags. Persisted, so a window comes back the
 /// way it was left.
 class PaneWidths {
-  const PaneWidths({this.panel = 248, this.reader = 320, this.editor = 268});
+  const PaneWidths({
+    this.panel = 248,
+    this.reader = 320,
+    this.editor = 268,
+    this.world = 268,
+  });
 
   /// The Knowledge Base pane, beside the Editor and Differences.
   final double panel;
@@ -23,6 +28,9 @@ class PaneWidths {
   /// The event and age editor, left of the map in the Timelines view.
   final double editor;
 
+  /// The settings pane, left of the workspace in the World view.
+  final double world;
+
   static const double minPanel = 180;
   static const double maxPanel = 560;
 
@@ -30,12 +38,17 @@ class PaneWidths {
   /// dragged.
   static const double minEditor = 320;
 
-  PaneWidths copyWith({double? panel, double? reader, double? editor}) =>
-      PaneWidths(
-        panel: panel ?? this.panel,
-        reader: reader ?? this.reader,
-        editor: editor ?? this.editor,
-      );
+  PaneWidths copyWith({
+    double? panel,
+    double? reader,
+    double? editor,
+    double? world,
+  }) => PaneWidths(
+    panel: panel ?? this.panel,
+    reader: reader ?? this.reader,
+    editor: editor ?? this.editor,
+    world: world ?? this.world,
+  );
 }
 
 class PaneWidthsController extends StateNotifier<PaneWidths> {
@@ -54,13 +67,17 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
       panel: widths['panel'] ?? state.panel,
       reader: widths['reader'] ?? state.reader,
       editor: widths['editor'] ?? state.editor,
+      world: widths['world'] ?? state.world,
     );
   }
 
   /// [available] is the width the workspace, the pane and the handle share, so
   /// a drag can be stopped before the workspace is squeezed out.
   void dragPanel(double delta, double available) {
-    _set('panel', state.copyWith(panel: _clamp(state.panel - delta, available)));
+    _set(
+      'panel',
+      state.copyWith(panel: _clamp(state.panel - delta, available)),
+    );
   }
 
   /// [available] is the width the workspace, the reader and the handle share.
@@ -80,13 +97,24 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
     );
   }
 
+  /// The World settings pane is left of the workspace, so a drag to the right
+  /// widens it — the opposite sign to the panes on the other side.
+  void dragWorld(double delta, double available) {
+    _set(
+      'world',
+      state.copyWith(world: _clamp(state.world + delta, available)),
+    );
+  }
+
   /// Stops a drag before the workspace beside the pane is squeezed out.
   static double _clamp(double width, double available) {
     final headroom = available - PaneWidths.minEditor;
-    return width.clamp(PaneWidths.minPanel, PaneWidths.maxPanel).clamp(
-      PaneWidths.minPanel,
-      headroom.clamp(PaneWidths.minPanel, PaneWidths.maxPanel),
-    );
+    return width
+        .clamp(PaneWidths.minPanel, PaneWidths.maxPanel)
+        .clamp(
+          PaneWidths.minPanel,
+          headroom.clamp(PaneWidths.minPanel, PaneWidths.maxPanel),
+        );
   }
 
   void _set(String key, PaneWidths widths) {
@@ -97,6 +125,7 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
       await store.setPaneWidth(key, switch (key) {
         'panel' => state.panel,
         'editor' => state.editor,
+        'world' => state.world,
         _ => state.reader,
       });
     });

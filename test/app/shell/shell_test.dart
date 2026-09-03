@@ -194,9 +194,43 @@ void main() {
     expect(find.byKey(const Key('timeline-reader-pane')), findsNothing);
   });
 
-  testWidgets('the timeline runs the full width of the window', (
+  testWidgets('placing World uses its left settings pane and no right pane', (
     tester,
   ) async {
+    await pumpWideHarness(tester);
+    await tester.pump();
+
+    await place(tester, 'world');
+
+    expect(find.byKey(const Key('centre-workspace')), findsOneWidget);
+    expect(find.byKey(const Key('world-canvas')), findsOneWidget);
+    expect(find.byKey(const Key('world-settings-pane')), findsOneWidget);
+    expect(
+      tester
+          .getSize(find.byKey(const Key('side-pane-slide-region-left')))
+          .width,
+      greaterThan(0),
+    );
+    expect(find.byKey(const Key('knowledge-base-pane')), findsNothing);
+    expect(find.byKey(const Key('timeline-reader-pane')), findsNothing);
+
+    await openViews(tester);
+    expect(
+      find.byKey(const Key('views-menu-world-settings-check')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('views-menu-world-settings')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .getSize(find.byKey(const Key('side-pane-slide-region-left')))
+          .width,
+      0,
+    );
+  });
+
+  testWidgets('the timeline runs the full width of the window', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

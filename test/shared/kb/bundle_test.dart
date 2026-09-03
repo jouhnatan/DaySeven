@@ -477,5 +477,41 @@ void main() {
       final tree = await kb.readTree();
       expect(tree.map((n) => n.name), ['People', 'Aldenmoor.md', 'Zephyr.md']);
     });
+
+    test(
+      'importAsset accepts a larger world limit without changing the default',
+      () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        final source = File(p.join(temp.path, 'large.png'));
+        await source.writeAsBytes(List<int>.filled(kMaxImageBytes + 1, 0));
+
+        try {
+          await kb.importAsset(source);
+          fail('the default image limit should reject this file');
+        } on KbException catch (error) {
+          expect(error.message, contains('max 10 MB'));
+        }
+
+        final assetId = await kb.importAsset(
+          source,
+          maxBytes: 12 * 1024 * 1024,
+        );
+        expect(assetId, endsWith('.png'));
+
+        final tooLargeForWorld = File(p.join(temp.path, 'larger.png'));
+        await tooLargeForWorld.writeAsBytes(
+          List<int>.filled(12 * 1024 * 1024 + 1, 0),
+        );
+        try {
+          await kb.importAsset(tooLargeForWorld, maxBytes: 12 * 1024 * 1024);
+          fail('the explicit image limit should reject this file');
+        } on KbException catch (error) {
+          expect(error.message, contains('max 12 MB'));
+        }
+      },
+    );
   });
 }

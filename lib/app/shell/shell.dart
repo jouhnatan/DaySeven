@@ -39,11 +39,13 @@ import 'package:dayseven/features/knowledge_base/ui/knowledge_base_settings.dart
 import 'package:dayseven/features/search/ui/search_bar.dart';
 import 'package:dayseven/app/workspace/crdt_collaboration.dart';
 import 'package:dayseven/shared/crdt/crdt_sync_service.dart';
-import 'package:dayseven/features/timeline/ui/timeline_editor_pane.dart';
-import 'package:dayseven/features/timeline/ui/timeline_map_canvas.dart';
-import 'package:dayseven/features/timeline/ui/timeline_reader_pane.dart';
-import 'package:dayseven/features/timeline/ui/timeline_strip.dart';
+import 'package:dayseven/features/timelines/ui/timeline_editor_pane.dart';
+import 'package:dayseven/features/timelines/map_renderer/timeline_map_canvas.dart';
+import 'package:dayseven/features/timelines/ui/timeline_reader_pane.dart';
+import 'package:dayseven/features/timelines/ui/timeline_strip.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
+import 'package:dayseven/features/world/world_renderer/world_canvas.dart';
+import 'package:dayseven/features/world/ui/world_settings_pane.dart';
 import 'package:dayseven/shared/platform/new_instance.dart';
 import 'package:dayseven/shared/ui/error_box.dart';
 
@@ -90,17 +92,25 @@ class DsShell extends ConsumerWidget {
                   );
                   // A slot each side of the centre, holding whichever panes
                   // the placed workspace belongs with, each at its own width
-                  // and its own visibility. Only Timelines fills the left one:
-                  // the Editor and Differences have nothing to put there.
+                  // and its own visibility. World fills the left slot too, and
+                  // is the only view with no right-hand pane.
                   final showingTimelines = view == DsView.timelines;
-                  final rightVisible = showingTimelines
-                      ? visibility.timelineReader
-                      : visibility.knowledgeBase;
+                  final showingWorld = view == DsView.world;
+                  final rightVisible = switch (view) {
+                    DsView.timelines => visibility.timelineReader,
+                    DsView.world => false,
+                    DsView.editor ||
+                    DsView.differences => visibility.knowledgeBase,
+                  };
                   final rightWidth = showingTimelines
                       ? widths.reader
                       : widths.panel;
-                  final leftVisible =
-                      showingTimelines && visibility.timelineEditor;
+                  final leftVisible = switch (view) {
+                    DsView.timelines => visibility.timelineEditor,
+                    DsView.world => visibility.world,
+                    DsView.editor || DsView.differences => false,
+                  };
+                  final leftWidth = showingWorld ? widths.world : widths.editor;
                   final rightProgress = rightVisible ? 1.0 : 0.0;
                   final leftProgress = leftVisible ? 1.0 : 0.0;
                   final available =
@@ -114,32 +124,38 @@ class DsShell extends ConsumerWidget {
                           ViewsMenuButton(
                             // Which panes exist depends on what is placed, so
                             // the composition root says; the menu only draws.
-                            panes: showingTimelines
-                                ? [
-                                    ViewsPaneToggle(
-                                      id: 'views-menu-timeline-editor',
-                                      label: 'Events & ages',
-                                      visible: visibility.timelineEditor,
-                                      onToggle:
-                                          paneVisibility.toggleTimelineEditor,
-                                    ),
-                                    ViewsPaneToggle(
-                                      id: 'views-menu-timeline-reader',
-                                      label: 'Reader',
-                                      visible: visibility.timelineReader,
-                                      onToggle:
-                                          paneVisibility.toggleTimelineReader,
-                                    ),
-                                  ]
-                                : [
-                                    ViewsPaneToggle(
-                                      id: 'views-menu-knowledge-base',
-                                      label: 'Knowledge Base',
-                                      visible: visibility.knowledgeBase,
-                                      onToggle:
-                                          paneVisibility.toggleKnowledgeBase,
-                                    ),
-                                  ],
+                            panes: switch (view) {
+                              DsView.timelines => [
+                                ViewsPaneToggle(
+                                  id: 'views-menu-timeline-editor',
+                                  label: 'Events & ages',
+                                  visible: visibility.timelineEditor,
+                                  onToggle: paneVisibility.toggleTimelineEditor,
+                                ),
+                                ViewsPaneToggle(
+                                  id: 'views-menu-timeline-reader',
+                                  label: 'Reader',
+                                  visible: visibility.timelineReader,
+                                  onToggle: paneVisibility.toggleTimelineReader,
+                                ),
+                              ],
+                              DsView.world => [
+                                ViewsPaneToggle(
+                                  id: 'views-menu-world-settings',
+                                  label: 'World settings',
+                                  visible: visibility.world,
+                                  onToggle: paneVisibility.toggleWorld,
+                                ),
+                              ],
+                              DsView.editor || DsView.differences => [
+                                ViewsPaneToggle(
+                                  id: 'views-menu-knowledge-base',
+                                  label: 'Knowledge Base',
+                                  visible: visibility.knowledgeBase,
+                                  onToggle: paneVisibility.toggleKnowledgeBase,
+                                ),
+                              ],
+                            },
                             pendingDifferencesCount: pendingDifferencesCount,
                           ),
                           const SizedBox(width: DsSpace.controlGap),
@@ -182,7 +198,7 @@ class DsShell extends ConsumerWidget {
                           rightSlotWidth:
                               (rightWidth + DsSpace.seam) * rightProgress,
                           leftSlotWidth:
-                              (widths.editor + DsSpace.seam) * leftProgress,
+                              (leftWidth + DsSpace.seam) * leftProgress,
                           onDragRight: rightProgress == 0
                               ? null
                               : (dx) => showingTimelines
@@ -190,19 +206,29 @@ class DsShell extends ConsumerWidget {
                                     : panes.dragPanel(dx, available),
                           onDragLeft: leftProgress == 0
                               ? null
-                              : (dx) => panes.dragEditor(dx, available),
+                              : (dx) => showingWorld
+                                    ? panes.dragWorld(dx, available)
+                                    : panes.dragEditor(dx, available),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               _SlidingSidePane(
                                 progress: leftProgress,
-                                panelWidth: widths.editor,
+                                panelWidth: leftWidth,
                                 visible: leftVisible,
                                 side: DsPaneSide.left,
-                                child: const KeyedSubtree(
-                                  key: Key('timeline-editor-pane'),
-                                  child: TimelineEditorPane(),
-                                ),
+                                child: switch (view) {
+                                  DsView.world => const KeyedSubtree(
+                                    key: Key('world-settings-pane'),
+                                    child: WorldSettingsPane(),
+                                  ),
+                                  DsView.timelines => const KeyedSubtree(
+                                    key: Key('timeline-editor-pane'),
+                                    child: TimelineEditorPane(),
+                                  ),
+                                  DsView.editor ||
+                                  DsView.differences => const SizedBox.shrink(),
+                                },
                               ),
                               Expanded(
                                 child: switch (view) {
@@ -220,29 +246,36 @@ class DsShell extends ConsumerWidget {
                                     key: Key('centre-workspace'),
                                     child: TimelineMapCanvas(),
                                   ),
+                                  // The centre is the world, and only the world.
+                                  DsView.world => const KeyedSubtree(
+                                    key: Key('centre-workspace'),
+                                    child: WorldCanvas(),
+                                  ),
                                 },
                               ),
                               _SlidingSidePane(
                                 progress: rightProgress,
                                 panelWidth: rightWidth,
                                 visible: rightVisible,
-                                child: showingTimelines
-                                    ? const KeyedSubtree(
-                                        key: Key('timeline-reader-pane'),
-                                        child: TimelineReaderPane(),
-                                      )
-                                    : KnowledgeBaseMenu(
-                                        key: const Key('knowledge-base-pane'),
-                                        // The gear beside the tree opens the
-                                        // same App settings everything else
-                                        // does, on the section that describes
-                                        // the Knowledge Base it sits next to.
-                                        onOpenSettings: () => _openAppSettings(
-                                          context,
-                                          section: AppSettingsSection
-                                              .knowledgeBase,
-                                        ),
-                                      ),
+                                child: switch (view) {
+                                  DsView.timelines => const KeyedSubtree(
+                                    key: Key('timeline-reader-pane'),
+                                    child: TimelineReaderPane(),
+                                  ),
+                                  DsView.world => const SizedBox.shrink(),
+                                  DsView.editor ||
+                                  DsView.differences => KnowledgeBaseMenu(
+                                    key: const Key('knowledge-base-pane'),
+                                    // The gear beside the tree opens the
+                                    // same App settings everything else
+                                    // does, on the section that describes
+                                    // the Knowledge Base it sits next to.
+                                    onOpenSettings: () => _openAppSettings(
+                                      context,
+                                      section: AppSettingsSection.knowledgeBase,
+                                    ),
+                                  ),
+                                },
                               ),
                             ],
                           ),

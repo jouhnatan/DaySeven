@@ -15,8 +15,11 @@ import 'package:dayseven/app/shell/pane_visibility.dart';
 import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
-import 'package:dayseven/features/timeline/application/timeline_controller.dart';
-import 'package:dayseven/features/timeline/domain/timeline.dart';
+import 'package:dayseven/features/timelines/application/timeline_controller.dart';
+import 'package:dayseven/features/timelines/domain/timeline.dart';
+import 'package:dayseven/features/world/application/world_providers.dart';
+import 'package:dayseven/features/world/domain/world.dart';
+import 'package:dayseven/features/world/domain/world_dimension.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:dayseven/app/shell/shell.dart';
@@ -192,6 +195,33 @@ void main() {
     await expectLater(
       find.byType(DsShell),
       matchesGoldenFile('goldens/timelines.png'),
+    );
+  });
+
+  testWidgets('the World view', (tester) async {
+    final container = await renderShell(tester);
+    final kb = container.read(kbSessionProvider)!.kb;
+
+    final created = await tester.runAsync(
+      () => kb.createObject(
+        name: 'Aster',
+        seed: const World(
+          id: 'world-1',
+          title: 'Aster',
+          dimension: WorldDimension.threeD,
+          engineId: 'orogen',
+        ).toJson(),
+      ),
+    );
+    await tester.runAsync(
+      () => container.read(openWorldProvider.notifier).open(created!),
+    );
+    container.read(viewProvider.notifier).state = DsView.world;
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(DsShell),
+      matchesGoldenFile('goldens/world.png'),
     );
   });
 }
