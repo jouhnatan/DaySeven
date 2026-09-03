@@ -13,7 +13,8 @@ class WorldEngineRegistry {
 
   /// Returns the engines that can produce [dimension].
   List<WorldEngine> enginesFor(WorldDimension dimension) => switch (dimension) {
-    WorldDimension.threeD => const [WorldEngine.orogen],
+    // ignore: deprecated_member_use_from_same_package
+    WorldDimension.threeD => const [WorldEngine.dayseven3D, WorldEngine.orogen],
     WorldDimension.twoD => const [],
   };
 

@@ -80,6 +80,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  assets:
+    - assets/schemas/v1/world-model-3d.json
+
   fonts:
     # Instrument Sans carries every word the interface actually reads: control
     # labels, values, menu items, table cells, helper text. Application chrome

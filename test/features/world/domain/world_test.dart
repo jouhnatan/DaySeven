@@ -48,19 +48,19 @@ void main() {
     final json = sample().toJson();
 
     expect(json['kind'], 'world');
-    expect(json['version'], 1);
+    expect(json['version'], 2);
   });
 
   test('wrong kind is refused', () {
     expect(
-      () => World.fromJson({'kind': 'timeline', 'version': 1}),
+      () => World.fromJson({'kind': 'timeline', 'version': 2}),
       throwsA(isA<WorldFormatException>()),
     );
   });
 
   test('a newer version is refused', () {
     expect(
-      () => World.fromJson({'kind': 'world', 'version': 2}),
+      () => World.fromJson({'kind': 'world', 'version': 3}),
       throwsA(isA<WorldFormatException>()),
     );
   });

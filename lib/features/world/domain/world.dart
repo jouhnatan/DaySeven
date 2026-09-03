@@ -2,6 +2,7 @@
 /// Knowledge Base.
 library;
 
+import 'dayseven_3d_model.dart';
 import 'world_dimension.dart';
 import 'world_layer.dart';
 
@@ -24,13 +25,14 @@ class World {
     this.engineId,
     this.layers = const [],
     this.engineSettings = const {},
+    this.model3d,
   });
 
   /// The `kind` this object is written under.
   static const String kind = 'world';
 
   /// The schema this app writes.
-  static const int version = 1;
+  static const int version = 2;
 
   final String id;
   final String title;
@@ -42,6 +44,9 @@ class World {
   /// still travel through a save untouched.
   final Map<String, Map<String, Object?>> engineSettings;
 
+  /// The native DaySeven 3D model metadata, stored directly in this `.unearth` file.
+  final DaySeven3DModel? model3d;
+
   World copyWith({
     String? id,
     String? title,
@@ -50,6 +55,8 @@ class World {
     bool clearEngineId = false,
     List<WorldLayer>? layers,
     Map<String, Map<String, Object?>>? engineSettings,
+    DaySeven3DModel? model3d,
+    bool clearModel3d = false,
   }) => World(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -57,6 +64,7 @@ class World {
     engineId: clearEngineId ? null : (engineId ?? this.engineId),
     layers: layers ?? this.layers,
     engineSettings: engineSettings ?? this.engineSettings,
+    model3d: clearModel3d ? null : (model3d ?? this.model3d),
   );
 
   Map<String, Object?> toJson() => {
@@ -72,6 +80,7 @@ class World {
       'engineSettings': {
         for (final entry in engineSettings.entries) entry.key: entry.value,
       },
+    if (model3d case final model3d?) 'model3d': model3d.toJson(),
   };
 
   static World fromJson(Map<String, Object?> json) {
@@ -103,6 +112,12 @@ class World {
       }
     }
 
+    DaySeven3DModel? model3d;
+    final rawModel3d = json['model3d'];
+    if (rawModel3d is Map) {
+      model3d = DaySeven3DModel.fromJson(Map<String, Object?>.from(rawModel3d));
+    }
+
     return World(
       id: _string(json['id'], fallback: 'world'),
       title: _string(json['title']),
@@ -111,6 +126,7 @@ class World {
       engineId: _nonEmpty(json['engineId']),
       layers: layers,
       engineSettings: _engineSettings(json['engineSettings']),
+      model3d: model3d,
     );
   }
 }

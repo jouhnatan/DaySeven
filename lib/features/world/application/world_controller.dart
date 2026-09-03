@@ -14,8 +14,10 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/features/world/application/world_engine_registry.dart';
 import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/data/world_repository.dart';
+import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
 import 'package:dayseven/features/world/domain/world.dart';
 import 'package:dayseven/features/world/domain/world_dimension.dart';
+import 'package:dayseven/features/world/domain/world_engine.dart';
 import 'package:dayseven/features/world/domain/world_layer.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 
@@ -172,6 +174,141 @@ class WorldController extends StateNotifier<OpenWorld?> {
     edit(current.world.copyWith(layers: layers));
   }
 
+  /// Updates the 3D model metadata on the open World.
+  void updateModel3D(DaySeven3DModel next) {
+    final current = state;
+    if (current == null) return;
+    edit(current.world.copyWith(model3d: next));
+  }
+
+  /// Migrates an existing World Orogen world to DaySeven 3D.
+  void migrateOrogenToDaySeven3D() {
+    final current = state;
+    if (current == null) return;
+
+    final existingModel = current.world.model3d;
+    final existingLayers = existingModel?.layers ?? const <Model3DLayer>[];
+    final existingIds = {for (final l in existingLayers) l.id};
+
+    final convertedLayers = <Model3DLayer>[
+      ...existingLayers,
+      for (final layer in current.world.layers)
+        if (!existingIds.contains(layer.id))
+          Model3DLayer(
+            id: layer.id,
+            name: switch (layer.kind) {
+              WorldLayerKind.heightmap => 'Elevation (Heightmap)',
+              WorldLayerKind.landHeightmap => 'Land Elevation',
+              WorldLayerKind.satellite => 'Surface Color (Satellite)',
+              WorldLayerKind.climate => 'Climate Map',
+              WorldLayerKind.landMask => 'Land Mask',
+            },
+            type: switch (layer.kind) {
+              WorldLayerKind.heightmap ||
+              WorldLayerKind.landHeightmap => Model3DLayerType.heightmap,
+              WorldLayerKind.satellite => Model3DLayerType.albedo,
+              WorldLayerKind.climate => Model3DLayerType.biomes,
+              WorldLayerKind.landMask => Model3DLayerType.specular,
+            },
+            assetId: layer.assetId,
+            visible: layer.visible,
+          ),
+    ];
+
+    final updatedModel = (existingModel ?? DaySeven3DModel()).copyWith(
+      layers: convertedLayers,
+    );
+
+    edit(
+      current.world.copyWith(
+        engineId: WorldEngine.dayseven3D.id,
+        model3d: updatedModel,
+      ),
+    );
+  }
+
+  /// Adds [layer] to the 3D model stack.
+  void addModel3DLayer(Model3DLayer layer) {
+    final current = state;
+    if (current == null) return;
+    final model = current.world.model3d ?? DaySeven3DModel();
+    final updated = model.copyWith(layers: [...model.layers, layer]);
+    edit(current.world.copyWith(model3d: updated));
+  }
+
+  /// Removes [layerId] from the 3D model stack.
+  void removeModel3DLayer(String layerId) {
+    final current = state;
+    if (current == null) return;
+    final model = current.world.model3d;
+    if (model == null) return;
+    final layers = model.layers.where((l) => l.id != layerId).toList();
+    if (layers.length == model.layers.length) return;
+    edit(current.world.copyWith(model3d: model.copyWith(layers: layers)));
+  }
+
+  /// Changes the visibility of a 3D model texture layer.
+  void setModel3DLayerVisible(String layerId, bool visible) {
+    final current = state;
+    if (current == null) return;
+    final model = current.world.model3d;
+    if (model == null) return;
+    final layers = [...model.layers];
+    final index = layers.indexWhere((l) => l.id == layerId);
+    if (index < 0 || layers[index].visible == visible) return;
+
+    layers[index] = layers[index].copyWith(visible: visible);
+    edit(current.world.copyWith(model3d: model.copyWith(layers: layers)));
+  }
+
+  /// Changes the opacity of a 3D model texture layer.
+  void setModel3DLayerOpacity(String layerId, double opacity) {
+    final current = state;
+    if (current == null) return;
+    final model = current.world.model3d;
+    if (model == null) return;
+    final layers = [...model.layers];
+    final index = layers.indexWhere((l) => l.id == layerId);
+    if (index < 0 || layers[index].opacity == opacity) return;
+
+    layers[index] = layers[index].copyWith(opacity: opacity.clamp(0.0, 1.0));
+    edit(current.world.copyWith(model3d: model.copyWith(layers: layers)));
+  }
+
+  /// Adds a landmark pin to the 3D model.
+  void addLandmark(Model3DLandmark landmark) {
+    final current = state;
+    if (current == null) return;
+    final model = current.world.model3d ?? DaySeven3DModel();
+    final updated = model.copyWith(landmarks: [...model.landmarks, landmark]);
+    edit(current.world.copyWith(model3d: updated));
+  }
+
+  /// Removes a landmark pin from the 3D model.
+  void removeLandmark(String landmarkId) {
+    final current = state;
+    if (current == null) return;
+    final model = current.world.model3d;
+    if (model == null) return;
+    final landmarks =
+        model.landmarks.where((lm) => lm.id != landmarkId).toList();
+    if (landmarks.length == model.landmarks.length) return;
+    edit(current.world.copyWith(model3d: model.copyWith(landmarks: landmarks)));
+  }
+
+  /// Updates an existing landmark pin in the 3D model.
+  void updateLandmark(Model3DLandmark landmark) {
+    final current = state;
+    if (current == null) return;
+    final model = current.world.model3d;
+    if (model == null) return;
+    final landmarks = [...model.landmarks];
+    final index = landmarks.indexWhere((lm) => lm.id == landmark.id);
+    if (index < 0) return;
+    landmarks[index] = landmark;
+    edit(current.world.copyWith(model3d: model.copyWith(landmarks: landmarks)));
+  }
+
   /// Opens the first World in the Knowledge Base if one exists and none is open.
   Future<void> loadExisting() async {
     if (state != null) return;
@@ -205,10 +342,17 @@ class WorldController extends StateNotifier<OpenWorld?> {
   Future<void> setDimension(WorldDimension dimension) async {
     final current = state;
     if (current != null) {
-      final hasEngines = _engineRegistry.enginesFor(dimension).isNotEmpty;
+      final availableEngines = _engineRegistry.enginesFor(dimension);
+      final hasEngines = availableEngines.isNotEmpty;
+      final currentEngineValid =
+          availableEngines.any((e) => e.id == current.world.engineId);
+      final nextEngineId = currentEngineValid
+          ? current.world.engineId
+          : (hasEngines ? _engineRegistry.defaultFor(dimension)?.id : null);
       edit(
         current.world.copyWith(
           dimension: dimension,
+          engineId: nextEngineId,
           clearEngineId: !hasEngines,
         ),
       );
@@ -226,13 +370,15 @@ class WorldController extends StateNotifier<OpenWorld?> {
     final session = _ref.read(kbSessionProvider);
     final WorldDimension targetDimension =
         dimension ?? _ref.read(selectedWorldDimensionProvider);
+    final effectiveEngineId =
+        engineId ?? _engineRegistry.defaultFor(targetDimension)?.id;
 
     if (session == null) {
       final world = World(
         id: newId(),
         title: 'World',
         dimension: targetDimension,
-        engineId: engineId,
+        engineId: effectiveEngineId,
       );
       state = OpenWorld(
         relativePath: 'World$kObjectExtension',
@@ -277,7 +423,7 @@ class WorldController extends StateNotifier<OpenWorld?> {
           id: newId(),
           title: name,
           dimension: targetDimension,
-          engineId: engineId,
+          engineId: effectiveEngineId,
         ).toJson(),
       );
       if (!mounted) return;

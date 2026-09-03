@@ -57,7 +57,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
   });
 
-  testWidgets('chooses the available World Orogen engine', (tester) async {
+  testWidgets('chooses the available DaySeven 3D engine', (tester) async {
     final container = await pumpPane(
       tester,
       world: const World(id: 'world-1', title: 'Aster'),
@@ -77,20 +77,55 @@ void main() {
     // Dropdown opens directly beneath the anchor, not at the window top-left.
     expect(popupCard.top, buttonRect.bottom);
     expect(popupCard.right, buttonRect.right);
-    expect(find.text('World Orogen'), findsOneWidget);
+    expect(find.text('DaySeven 3D'), findsOneWidget);
+    expect(find.text('World Orogen (Legacy)'), findsOneWidget);
 
-    await tester.tap(find.text('World Orogen'));
+    await tester.tap(find.text('DaySeven 3D'));
     await tester.pumpAndSettle();
 
-    expect(container.read(openWorldProvider)!.world.engineId, 'orogen');
-    expect(find.text('World Orogen'), findsOneWidget);
+    expect(container.read(openWorldProvider)!.world.engineId, 'dayseven_3d');
+    expect(find.text('DaySeven 3D'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 700));
   });
 
-  testWidgets('shows the Orogen form only for the active 3D engine', (
+  testWidgets(
+    'shows deprecation banner for Orogen and migrates to DaySeven 3D on click',
+    (tester) async {
+      final container = await pumpPane(
+        tester,
+        world: const World(id: 'world-1', title: 'Aster', engineId: 'orogen'),
+      );
+
+      expect(
+        find.byKey(const Key('world-orogen-deprecated-banner')),
+        findsOneWidget,
+      );
+      expect(find.text('World Orogen is deprecated'), findsOneWidget);
+      expect(
+        find.byKey(const Key('migrate-to-dayseven-3d-button')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('migrate-to-dayseven-3d-button')));
+      await tester.pumpAndSettle();
+
+      expect(container.read(openWorldProvider)!.world.engineId, 'dayseven_3d');
+      expect(
+        find.byKey(const Key('world-orogen-deprecated-banner')),
+        findsNothing,
+      );
+      expect(find.text('3D Model & Environment'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 700));
+    },
+  );
+
+  testWidgets('shows the Orogen form only for the active legacy 3D engine', (
     tester,
   ) async {
-    await pumpPane(tester);
+    await pumpPane(
+      tester,
+      world: const World(id: 'world-1', title: 'Aster', engineId: 'orogen'),
+    );
 
     expect(find.text('Layers'), findsOneWidget);
     expect(find.text('Planet code'), findsOneWidget);
@@ -101,7 +136,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
   });
 
-  testWidgets('chooses World Orogen when no world is initially open', (
+  testWidgets('chooses DaySeven 3D when no world is initially open', (
     tester,
   ) async {
     final container = ProviderContainer();
@@ -122,13 +157,14 @@ void main() {
     await tester.tap(find.byKey(const Key('world-engine-dropdown')));
     await tester.pumpAndSettle();
 
-    expect(find.text('World Orogen'), findsOneWidget);
+    expect(find.text('DaySeven 3D'), findsOneWidget);
 
-    await tester.tap(find.text('World Orogen'));
+    await tester.tap(find.text('DaySeven 3D'));
     await tester.pumpAndSettle();
 
-    expect(container.read(openWorldProvider)!.world.engineId, 'orogen');
-    expect(find.text('World Orogen'), findsOneWidget);
-    expect(find.text('Layers'), findsOneWidget);
+    expect(container.read(openWorldProvider)!.world.engineId, 'dayseven_3d');
+    expect(find.text('DaySeven 3D'), findsOneWidget);
+    expect(find.text('3D Model & Environment'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 700));
   });
 }

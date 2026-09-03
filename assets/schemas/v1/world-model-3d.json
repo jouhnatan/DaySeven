@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dayseven.app/schemas/v1/world-model-3d.json",
+  "title": "DaySeven 3D World Model Metadata",
+  "description": "Standard schema for DaySeven 3D planetary model definitions stored within .unearth files.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "geometry": {
+      "type": "object",
+      "properties": {
+        "shape": { "type": "string", "default": "sphere" },
+        "radiusKm": { "type": "number", "default": 6371.0 },
+        "flattening": { "type": "number", "default": 0.00335 },
+        "subdivisions": { "type": "integer", "default": 64 }
+      }
+    },
+    "astronomy": {
+      "type": "object",
+      "properties": {
+        "axialTiltDeg": { "type": "number", "default": 23.44 },
+        "rotationPeriodHours": { "type": "number", "default": 24.0 },
+        "orbitPeriodDays": { "type": "number", "default": 365.25 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "atmosphere": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "colorHex": { "type": "string", "default": "#88B8F8" },
+            "density": { "type": "number", "default": 1.0 },
+            "altitudeKm": { "type": "number", "default": 100.0 }
+          }
+        },
+        "ocean": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "seaLevel": { "type": "number", "default": 0.0 },
+            "colorHex": { "type": "string", "default": "#1A4B8C" },
+            "specularIntensity": { "type": "number", "default": 0.8 }
+          }
+        },
+        "lighting": {
+          "type": "object",
+          "properties": {
+            "ambientIntensity": { "type": "number", "default": 0.25 },
+            "sunColorHex": { "type": "string", "default": "#FFF9E8" },
+            "sunAzimuthDeg": { "type": "number", "default": 45.0 },
+            "sunElevationDeg": { "type": "number", "default": 25.0 }
+          }
+        }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "assetId"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "heightmap",
+              "albedo",
+              "normal",
+              "specular",
+              "roughness",
+              "clouds",
+              "biomes",
+              "night_lights"
+            ]
+          },
+          "assetId": { "type": "string" },
+          "projection": { "type": "string", "default": "equirectangular" },
+          "visible": { "type": "boolean", "default": true },
+          "opacity": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 1.0 },
+          "minElevationMeters": { "type": "number" },
+          "maxElevationMeters": { "type": "number" }
+        }
+      }
+    },
+    "landmarks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "latitude", "longitude"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "latitude": { "type": "number", "minimum": -90.0, "maximum": 90.0 },
+          "longitude": { "type": "number", "minimum": -180.0, "maximum": 180.0 },
+          "elevationMeters": { "type": "number", "default": 0.0 },
+          "category": { "type": "string", "default": "city" },
+          "color": { "type": "string", "default": "amber" },
+          "document": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "color": { "type": "string", "default": "teal" },
+          "document": { "type": "string" },
+          "coordinates": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        }
+      }
+    }
+  }
+}

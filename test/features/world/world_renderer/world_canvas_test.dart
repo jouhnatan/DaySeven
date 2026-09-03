@@ -51,4 +51,30 @@ void main() {
     expect(find.byType(OrogenCanvas), findsOneWidget);
     expect(find.byKey(const Key('orogen-globe')), findsOneWidget);
   });
+
+  testWidgets('dispatches an active DaySeven 3D world to its canvas', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(openWorldProvider.notifier).state = OpenWorld(
+      relativePath: 'Aster.unearth',
+      world: const World(
+        id: 'world-1',
+        title: 'Aster',
+        engineId: 'dayseven_3d',
+      ),
+      dirty: false,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(theme: dsTheme(), home: const WorldCanvas()),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('dayseven-3d-globe')), findsOneWidget);
+  });
 }

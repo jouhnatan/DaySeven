@@ -279,3 +279,10 @@ GlobeVector3 _rotate(
     -point.x * sinYaw + pitchedZ * cosYaw,
   );
 }
+
+/// Rotates [point] by camera [pitch] and [yaw] angles.
+GlobeVector3 rotateGlobeVector(
+  GlobeVector3 point, {
+  required double pitch,
+  required double yaw,
+}) => _rotate(point, pitch: pitch, yaw: yaw);

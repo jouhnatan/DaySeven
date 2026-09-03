@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/data/world_repository.dart';
+import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
 import 'package:dayseven/features/world/domain/world.dart';
 import 'package:dayseven/features/world/domain/world_dimension.dart';
 import 'package:dayseven/features/world/domain/world_layer.dart';
@@ -181,5 +182,162 @@ void main() {
     expect(open, isNotNull);
     expect(open!.world.title, 'Awayside');
     expect(open.world.engineId, 'orogen');
+  });
+
+  testWidgets('migrateOrogenToDaySeven3D converts layers and sets engineId', (
+    tester,
+  ) async {
+    final (container, kb) = await openWorld(
+      tester,
+      world: const World(
+        id: 'world-1',
+        title: 'Aster',
+        engineId: 'orogen',
+        layers: [
+          WorldLayer(
+            id: 'l-1',
+            kind: WorldLayerKind.heightmap,
+            assetId: 'heightmap.png',
+            visible: true,
+          ),
+        ],
+      ),
+    );
+    final controller = container.read(openWorldProvider.notifier);
+
+    controller.migrateOrogenToDaySeven3D();
+
+    final open = container.read(openWorldProvider)!;
+    expect(open.world.engineId, 'dayseven_3d');
+    expect(open.world.model3d, isNotNull);
+    expect(open.world.model3d!.layers.length, 1);
+    expect(open.world.model3d!.layers.first.id, 'l-1');
+    expect(
+      open.world.model3d!.layers.first.type,
+      Model3DLayerType.heightmap,
+    );
+    expect(open.world.model3d!.layers.first.assetId, 'heightmap.png');
+    await settleSaves(tester, container);
+  });
+
+  testWidgets('manages landmarks and 3D layers on open world', (tester) async {
+    final (container, kb) = await openWorld(tester);
+    final controller = container.read(openWorldProvider.notifier);
+
+    controller.addLandmark(
+      Model3DLandmark(
+        id: 'lm-1',
+        name: 'The Spire',
+        latitude: 25.0,
+        longitude: 50.0,
+      ),
+    );
+
+    expect(
+      container.read(openWorldProvider)!.world.model3d!.landmarks.length,
+      1,
+    );
+
+    controller.updateLandmark(
+      Model3DLandmark(
+        id: 'lm-1',
+        name: 'The Grand Spire',
+        latitude: 25.0,
+        longitude: 50.0,
+      ),
+    );
+    expect(
+      container
+          .read(openWorldProvider)!
+          .world
+          .model3d!
+          .landmarks
+          .first
+          .name,
+      'The Grand Spire',
+    );
+
+    controller.addModel3DLayer(
+      const Model3DLayer(
+        id: 'layer-albedo',
+        name: 'Colors',
+        type: Model3DLayerType.albedo,
+        assetId: 'colors.png',
+      ),
+    );
+    expect(
+      container.read(openWorldProvider)!.world.model3d!.layers.length,
+      1,
+    );
+
+    controller.setModel3DLayerOpacity('layer-albedo', 0.7);
+    expect(
+      container
+          .read(openWorldProvider)!
+          .world
+          .model3d!
+          .layers
+          .first
+          .opacity,
+      0.7,
+    );
+
+    controller.removeLandmark('lm-1');
+    expect(
+      container.read(openWorldProvider)!.world.model3d!.landmarks,
+      isEmpty,
+    );
+
+    controller.removeModel3DLayer('layer-albedo');
+    expect(container.read(openWorldProvider)!.world.model3d!.layers, isEmpty);
+    await settleSaves(tester, container);
+  });
+
+  testWidgets('migration is idempotent on repeated calls', (tester) async {
+    final (container, kb) = await openWorld(
+      tester,
+      world: const World(
+        id: 'world-1',
+        title: 'Aster',
+        engineId: 'orogen',
+        layers: [
+          WorldLayer(
+            id: 'l-1',
+            kind: WorldLayerKind.heightmap,
+            assetId: 'heightmap.png',
+            visible: true,
+          ),
+        ],
+      ),
+    );
+    final controller = container.read(openWorldProvider.notifier);
+
+    controller.migrateOrogenToDaySeven3D();
+    controller.migrateOrogenToDaySeven3D();
+
+    final open = container.read(openWorldProvider)!;
+    expect(open.world.model3d!.layers.length, 1);
+    await settleSaves(tester, container);
+  });
+
+  testWidgets('switching from 2D to 3D automatically selects DaySeven 3D', (
+    tester,
+  ) async {
+    final (container, kb) = await openWorld(
+      tester,
+      world: const World(
+        id: 'world-2d',
+        title: 'Flatland',
+        dimension: WorldDimension.twoD,
+      ),
+    );
+    final controller = container.read(openWorldProvider.notifier);
+
+    await controller.setDimension(WorldDimension.threeD);
+
+    final open = container.read(openWorldProvider)!;
+    expect(open.world.dimension, WorldDimension.threeD);
+    expect(open.world.engineId, 'dayseven_3d');
+    await settleSaves(tester, container);
   });
 }

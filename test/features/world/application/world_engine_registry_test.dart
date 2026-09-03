@@ -6,8 +6,15 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const registry = WorldEngineRegistry();
 
-  test('three-dimensional Worlds offer Orogen', () {
-    expect(registry.enginesFor(WorldDimension.threeD), [WorldEngine.orogen]);
+  test('three-dimensional Worlds offer DaySeven 3D and Orogen', () {
+    // ignore: deprecated_member_use_from_same_package
+    expect(registry.enginesFor(WorldDimension.threeD), [
+      WorldEngine.dayseven3D,
+      // ignore: deprecated_member_use_from_same_package
+      WorldEngine.orogen,
+    ]);
+    expect(registry.byId('dayseven_3d'), WorldEngine.dayseven3D);
+    // ignore: deprecated_member_use_from_same_package
     expect(registry.byId('orogen'), WorldEngine.orogen);
   });
 
@@ -21,6 +28,6 @@ void main() {
   });
 
   test('the default is the first available engine', () {
-    expect(registry.defaultFor(WorldDimension.threeD), WorldEngine.orogen);
+    expect(registry.defaultFor(WorldDimension.threeD), WorldEngine.dayseven3D);
   });
 }

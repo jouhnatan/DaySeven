@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/domain/world_dimension.dart';
 import 'package:dayseven/features/world/domain/world_engine.dart';
+import 'package:dayseven/features/world/ui/engines/dayseven_3d/dayseven_3d_settings_form.dart';
 import 'package:dayseven/features/world/ui/engines/orogen/orogen_settings_form.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dropdown_menu.dart';
@@ -98,10 +99,10 @@ class _WorldSettingsPaneState extends ConsumerState<WorldSettingsPane> {
                                   final menu =
                                       DsDropdownMenuList<WorldEngine>();
                                   for (final engine in availableEngines) {
-                                    menu.pushItem(
-                                      value: engine,
-                                      label: engine.label,
-                                    );
+                                    final label = engine.isDeprecated
+                                        ? '${engine.label} (Legacy)'
+                                        : engine.label;
+                                    menu.pushItem(value: engine, label: label);
                                   }
                                   final choice = await menu.show(buttonContext);
                                   if (choice != null && buttonContext.mounted) {
@@ -121,10 +122,13 @@ class _WorldSettingsPaneState extends ConsumerState<WorldSettingsPane> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  activeEngine?.label ??
-                                      (availableEngines.isEmpty
-                                          ? 'No engines available'
-                                          : 'Choose engine…'),
+                                  activeEngine == null
+                                      ? (availableEngines.isEmpty
+                                            ? 'No engines available'
+                                            : 'Choose engine…')
+                                      : (activeEngine.isDeprecated
+                                            ? '${activeEngine.label} (Legacy)'
+                                            : activeEngine.label),
                                   overflow: TextOverflow.ellipsis,
                                   style: uiTextStyle(
                                     size: 13,
@@ -156,9 +160,31 @@ class _WorldSettingsPaneState extends ConsumerState<WorldSettingsPane> {
                     ),
                   ],
                   if (dimension == WorldDimension.threeD &&
+                      // ignore: deprecated_member_use_from_same_package
                       activeEngine == WorldEngine.orogen) ...[
+                    const SizedBox(height: DsSpace.m),
+                    DsStatusBlock(
+                      key: const Key('world-orogen-deprecated-banner'),
+                      icon: Icons.warning_amber_rounded,
+                      headline: 'World Orogen is deprecated',
+                      detail: 'DaySeven now uses native 3D metadata with multi-layer textures and landmarks.',
+                      tone: DsTone.warning,
+                      trailing: DsButton(
+                        key: const Key('migrate-to-dayseven-3d-button'),
+                        variant: DsButtonVariant.primary,
+                        onPressed: () => ref
+                            .read(openWorldProvider.notifier)
+                            .migrateOrogenToDaySeven3D(),
+                        child: const Text('Migrate'),
+                      ),
+                    ),
                     const SizedBox(height: DsSpace.xl),
                     const OrogenSettingsForm(),
+                  ],
+                  if (dimension == WorldDimension.threeD &&
+                      activeEngine == WorldEngine.dayseven3D) ...[
+                    const SizedBox(height: DsSpace.xl),
+                    const DaySeven3DSettingsForm(),
                   ],
                 ],
               ),
