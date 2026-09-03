@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/features/world/application/world_engine_registry.dart';
+import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/data/world_repository.dart';
 import 'package:dayseven/features/world/domain/world.dart';
 import 'package:dayseven/features/world/domain/world_dimension.dart';
@@ -69,6 +70,7 @@ class WorldController extends StateNotifier<OpenWorld?> {
         ? stored
         : stored.copyWith(title: fileName);
     state = OpenWorld(relativePath: relativePath, world: world, dirty: false);
+    _ref.read(selectedWorldDimensionProvider.notifier).state = world.dimension;
   }
 
   void close({bool save = true}) {
@@ -170,21 +172,117 @@ class WorldController extends StateNotifier<OpenWorld?> {
     edit(current.world.copyWith(layers: layers));
   }
 
+  /// Opens the first World in the Knowledge Base if one exists and none is open.
+  Future<void> loadExisting() async {
+    if (state != null) return;
+    final session = _ref.read(kbSessionProvider);
+    if (session == null) return;
+
+    final repo = WorldRepository(session.kb);
+    final worlds = await repo.list();
+    if (worlds.isNotEmpty && mounted && state == null) {
+      await open(worlds.first.relativePath);
+    }
+  }
+
   /// Chooses the engine id stored on the open World.
-  void setEngine(String engineId) {
+  ///
+  /// If no World is currently open, loads an existing World from the Knowledge
+  /// Base or creates a new one so that engine selection immediately takes effect.
+  Future<void> setEngine(String engineId) async {
     final current = state;
-    if (current == null) return;
-    edit(current.world.copyWith(engineId: engineId));
+    if (current != null) {
+      edit(current.world.copyWith(engineId: engineId));
+      return;
+    }
+    await _ensureOpen(engineId: engineId);
   }
 
   /// Changes dimension, clearing an engine that cannot exist in the new one.
-  void setDimension(WorldDimension dimension) {
+  ///
+  /// If no World is currently open, loads an existing World from the Knowledge
+  /// Base or creates a new one so that dimension selection immediately takes effect.
+  Future<void> setDimension(WorldDimension dimension) async {
     final current = state;
-    if (current == null) return;
-    final hasEngines = _engineRegistry.enginesFor(dimension).isNotEmpty;
-    edit(
-      current.world.copyWith(dimension: dimension, clearEngineId: !hasEngines),
-    );
+    if (current != null) {
+      final hasEngines = _engineRegistry.enginesFor(dimension).isNotEmpty;
+      edit(
+        current.world.copyWith(
+          dimension: dimension,
+          clearEngineId: !hasEngines,
+        ),
+      );
+      return;
+    }
+    await _ensureOpen(dimension: dimension);
+  }
+
+  /// Ensures a World is open by loading an existing one from the Knowledge Base
+  /// or creating a new one if none exists yet.
+  Future<void> _ensureOpen({
+    String? engineId,
+    WorldDimension? dimension,
+  }) async {
+    final session = _ref.read(kbSessionProvider);
+    final WorldDimension targetDimension =
+        dimension ?? _ref.read(selectedWorldDimensionProvider);
+
+    if (session == null) {
+      final world = World(
+        id: newId(),
+        title: 'World',
+        dimension: targetDimension,
+        engineId: engineId,
+      );
+      state = OpenWorld(
+        relativePath: 'World$kObjectExtension',
+        world: world,
+        dirty: false,
+      );
+      _ref.read(selectedWorldDimensionProvider.notifier).state =
+          targetDimension;
+      return;
+    }
+
+    final repo = WorldRepository(session.kb);
+    final worlds = await repo.list();
+    if (!mounted) return;
+
+    if (worlds.isNotEmpty) {
+      await open(worlds.first.relativePath);
+      if (mounted && state != null) {
+        var world = state!.world;
+        if (dimension != null) {
+          final hasEngines =
+              _engineRegistry.enginesFor(dimension).isNotEmpty;
+          world = world.copyWith(
+            dimension: dimension,
+            clearEngineId: !hasEngines,
+          );
+        }
+        if (engineId != null) {
+          world = world.copyWith(engineId: engineId);
+        }
+        if (world != state!.world) {
+          edit(world);
+        }
+      }
+    } else {
+      final name = session.kb.manifest.name.isNotEmpty
+          ? session.kb.manifest.name
+          : 'World';
+      final relativePath = await session.kb.createObject(
+        name: name,
+        seed: World(
+          id: newId(),
+          title: name,
+          dimension: targetDimension,
+          engineId: engineId,
+        ).toJson(),
+      );
+      if (!mounted) return;
+      await open(relativePath);
+    }
   }
 
   /// Replaces one engine's raw settings without discarding unknown fields.

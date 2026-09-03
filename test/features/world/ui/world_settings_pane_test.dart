@@ -100,4 +100,35 @@ void main() {
     expect(find.text('Layers'), findsNothing);
     await tester.pump(const Duration(milliseconds: 700));
   });
+
+  testWidgets('chooses World Orogen when no world is initially open', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: const Scaffold(body: WorldSettingsPane()),
+        ),
+      ),
+    );
+
+    expect(find.text('Choose engine…'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('world-engine-dropdown')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('World Orogen'), findsOneWidget);
+
+    await tester.tap(find.text('World Orogen'));
+    await tester.pumpAndSettle();
+
+    expect(container.read(openWorldProvider)!.world.engineId, 'orogen');
+    expect(find.text('World Orogen'), findsOneWidget);
+    expect(find.text('Layers'), findsOneWidget);
+  });
 }

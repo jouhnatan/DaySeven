@@ -5,6 +5,8 @@
 /// in the engine's own small form.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,11 +18,26 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
-class WorldSettingsPane extends ConsumerWidget {
+class WorldSettingsPane extends ConsumerStatefulWidget {
   const WorldSettingsPane({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WorldSettingsPane> createState() => _WorldSettingsPaneState();
+}
+
+class _WorldSettingsPaneState extends ConsumerState<WorldSettingsPane> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(openWorldProvider.notifier).loadExisting();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final colors = context.ds;
     final dimension = ref.watch(selectedWorldDimensionProvider);
     final availableEngines = ref.watch(availableEnginesProvider);
@@ -60,7 +77,11 @@ class WorldSettingsPane extends ConsumerWidget {
                                 .read(selectedWorldDimensionProvider.notifier)
                                 .state =
                             next;
-                        ref.read(openWorldProvider.notifier).setDimension(next);
+                        unawaited(
+                          ref
+                              .read(openWorldProvider.notifier)
+                              .setDimension(next),
+                        );
                       },
                     ),
                   ),
@@ -84,7 +105,7 @@ class WorldSettingsPane extends ConsumerWidget {
                                   }
                                   final choice = await menu.show(buttonContext);
                                   if (choice != null && buttonContext.mounted) {
-                                    ref
+                                    await ref
                                         .read(openWorldProvider.notifier)
                                         .setEngine(choice.id);
                                   }

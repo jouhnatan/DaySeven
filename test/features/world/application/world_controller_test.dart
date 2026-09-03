@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dayseven/features/world/application/world_providers.dart';
+import 'package:dayseven/features/world/data/world_repository.dart';
 import 'package:dayseven/features/world/domain/world.dart';
 import 'package:dayseven/features/world/domain/world_dimension.dart';
 import 'package:dayseven/features/world/domain/world_layer.dart';
@@ -132,5 +133,53 @@ void main() {
 
     expect(restored.title, 'After debounce');
     expect(container.read(openWorldProvider)!.dirty, isFalse);
+  });
+
+  testWidgets(
+    'setEngine creates and opens a new World on disk when none exists',
+    (tester) async {
+      final (container, kb) = await openTestKb(tester, temp, name: 'Awayside');
+      final controller = container.read(openWorldProvider.notifier);
+
+      expect(container.read(openWorldProvider), isNull);
+
+      await tester.runAsync(() => controller.setEngine('orogen'));
+
+      final open = container.read(openWorldProvider);
+      expect(open, isNotNull);
+      expect(open!.world.title, 'Awayside');
+      expect(open.world.engineId, 'orogen');
+      expect(open.relativePath, 'Awayside.unearth');
+
+      final repo = WorldRepository(kb);
+      final worlds = await tester.runAsync(() => repo.list());
+      expect(worlds!.map((f) => f.relativePath), ['Awayside.unearth']);
+    },
+  );
+
+  testWidgets('loadExisting opens an existing world in the Knowledge Base', (
+    tester,
+  ) async {
+    final (container, kb) = await openTestKb(tester, temp, name: 'Awayside');
+    await tester.runAsync(() async {
+      await kb.createObject(
+        name: 'Awayside',
+        seed: const World(
+          id: 'world-1',
+          title: 'Awayside',
+          engineId: 'orogen',
+        ).toJson(),
+      );
+    });
+
+    final controller = container.read(openWorldProvider.notifier);
+    expect(container.read(openWorldProvider), isNull);
+
+    await tester.runAsync(() => controller.loadExisting());
+
+    final open = container.read(openWorldProvider);
+    expect(open, isNotNull);
+    expect(open!.world.title, 'Awayside');
+    expect(open.world.engineId, 'orogen');
   });
 }

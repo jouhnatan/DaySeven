@@ -31,7 +31,9 @@ class WorldCanvas extends ConsumerWidget {
           ? const OrogenCanvas()
           : Center(
               child: Text(
-                'No 2D engine available yet.',
+                selectedDimension == WorldDimension.twoD
+                    ? 'No 2D engine available yet.'
+                    : 'Choose an engine in settings to render the world.',
                 style: uiTextStyle(size: 13, color: context.ds.faint),
               ),
             ),
