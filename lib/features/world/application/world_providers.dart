@@ -60,3 +60,6 @@ final activeWorldEngineProvider = Provider<WorldEngine?>((ref) {
   final open = ref.watch(openWorldProvider);
   return _worldEngineRegistry.byId(open?.world.engineId);
 });
+
+/// Whether the 3D globe is in "drop pin" mode for placing landmark pins.
+final dropPinModeProvider = StateProvider<bool>((ref) => false);

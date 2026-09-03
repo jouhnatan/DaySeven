@@ -17,12 +17,14 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
+import 'package:dayseven/features/world/ui/engines/dayseven_3d/landmark_dialog.dart';
 import 'package:dayseven/features/world/world_renderer/globe_mesh.dart';
 import 'package:dayseven/features/world/world_renderer/globe_painter.dart';
 import 'package:dayseven/features/world/world_renderer/globe_texture_loader.dart';
 import 'package:dayseven/features/world/world_renderer/globe_viewport.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
+import 'package:flutter/services.dart';
 
 class DaySeven3DCanvas extends ConsumerStatefulWidget {
   const DaySeven3DCanvas({super.key});
@@ -38,6 +40,8 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
   String? _pendingAssetId;
   String? _pendingAssetPath;
   double _lastGestureScale = 1;
+  GlobeSphereCoordinates? _hoverCoordinates;
+  Offset? _hoverPosition;
 
   @override
   void initState() {
@@ -92,102 +96,294 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
           radius: radius,
         );
 
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            // Interactive 3D Globe gesture detector and canvas
-            Positioned.fill(
-              child: Listener(
-                onPointerSignal: _onPointerSignal,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onScaleStart: (_) => _lastGestureScale = 1,
-                  onScaleUpdate: (details) {
-                    const sensitivity = 0.005;
-                    _viewport.rotateBy(
-                      deltaYaw: details.focalPointDelta.dx * sensitivity,
-                      deltaPitch: -details.focalPointDelta.dy * sensitivity,
-                    );
-                    final scaleChanged =
-                        details.scale > 0 && details.scale != _lastGestureScale;
-                    if (details.pointerCount > 1 || scaleChanged) {
-                      if (scaleChanged) {
-                        _viewport.zoomBy(details.scale / _lastGestureScale);
-                      }
+        final isDroppingPin = ref.watch(dropPinModeProvider);
+
+        return Focus(
+          autofocus: true,
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.escape &&
+                isDroppingPin) {
+              ref.read(dropPinModeProvider.notifier).state = false;
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Interactive 3D Globe gesture detector and canvas
+              Positioned.fill(
+                child: MouseRegion(
+                  cursor: isDroppingPin
+                      ? SystemMouseCursors.precise
+                      : MouseCursor.defer,
+                  onHover: (event) {
+                    if (isDroppingPin) {
+                      final coords = _viewport.toSphereCoordinates(
+                        event.localPosition,
+                        Size(constraints.maxWidth, constraints.maxHeight),
+                      );
+                      setState(() {
+                        _hoverCoordinates = coords;
+                        _hoverPosition = event.localPosition;
+                      });
+                    } else if (_hoverCoordinates != null) {
+                      setState(() {
+                        _hoverCoordinates = null;
+                        _hoverPosition = null;
+                      });
                     }
-                    _lastGestureScale = details.scale;
                   },
-                  onScaleEnd: (_) => _lastGestureScale = 1,
-                  child: CustomPaint(
-                    key: const Key('dayseven-3d-globe'),
-                    painter: _DaySeven3DGlobePainter(
-                      texture: _textureLoader.texture,
-                      viewport: _viewport,
-                      mesh: _mesh,
-                      model: model,
-                      pitch: _viewport.pitch,
-                      yaw: _viewport.yaw,
-                      scale: _viewport.scale,
-                      sphereBaseColor: colors.cardSurface,
-                      atmosphereGlowColor: colors.fern,
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
-              ),
-            ),
-
-            // Landmark billboard pins projected onto globe front-facing hemisphere
-            for (final item in projectedLandmarks)
-              Positioned(
-                key: ValueKey('pin-${item.landmark.id}'),
-                left: item.screenPosition.dx - 12,
-                top: item.screenPosition.dy - 24,
-                child: _LandmarkPinWidget(
-                  landmark: item.landmark,
-                  depth: item.depth,
-                  onTap: () => _handleLandmarkTap(item.landmark),
-                ),
-              ),
-
-            // Empty state notice when no textures are attached
-            if (visibleLayer == null)
-              Positioned(
-                top: DsSpace.m,
-                left: DsSpace.m,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: DsSpace.m,
-                    vertical: DsSpace.s,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.island.withValues(alpha: 0.85),
-                    borderRadius: const BorderRadius.all(DsRadius.menu),
-                    border: Border.all(color: colors.border),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.info_outline, size: 14, color: colors.muted),
-                      const SizedBox(width: DsSpace.xs),
-                      Text(
-                        'Base mesh • Import a PNG layer in World Settings',
-                        style: uiTextStyle(size: 12, color: colors.muted),
+                  onExit: (_) {
+                    if (_hoverCoordinates != null) {
+                      setState(() {
+                        _hoverCoordinates = null;
+                        _hoverPosition = null;
+                      });
+                    }
+                  },
+                  child: Listener(
+                    onPointerSignal: _onPointerSignal,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp: (details) => _onCanvasTap(
+                        details.localPosition,
+                        Size(constraints.maxWidth, constraints.maxHeight),
                       ),
-                    ],
+                      onSecondaryTapUp: (details) => _attemptDropPinAt(
+                        details.localPosition,
+                        Size(constraints.maxWidth, constraints.maxHeight),
+                      ),
+                      onLongPressStart: (details) => _attemptDropPinAt(
+                        details.localPosition,
+                        Size(constraints.maxWidth, constraints.maxHeight),
+                      ),
+                      onScaleStart: (_) => _lastGestureScale = 1,
+                      onScaleUpdate: (details) {
+                        const sensitivity = 0.005;
+                        _viewport.rotateBy(
+                          deltaYaw: details.focalPointDelta.dx * sensitivity,
+                          deltaPitch: -details.focalPointDelta.dy * sensitivity,
+                        );
+                        final scaleChanged =
+                            details.scale > 0 && details.scale != _lastGestureScale;
+                        if (details.pointerCount > 1 || scaleChanged) {
+                          if (scaleChanged) {
+                            _viewport.zoomBy(details.scale / _lastGestureScale);
+                          }
+                        }
+                        _lastGestureScale = details.scale;
+                      },
+                      onScaleEnd: (_) => _lastGestureScale = 1,
+                      child: CustomPaint(
+                        key: const Key('dayseven-3d-globe'),
+                        painter: _DaySeven3DGlobePainter(
+                          texture: _textureLoader.texture,
+                          viewport: _viewport,
+                          mesh: _mesh,
+                          model: model,
+                          pitch: _viewport.pitch,
+                          yaw: _viewport.yaw,
+                          scale: _viewport.scale,
+                          sphereBaseColor: colors.cardSurface,
+                          atmosphereGlowColor: colors.fern,
+                        ),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
                   ),
                 ),
               ),
 
-            // Bottom-right Viewport navigation controls
-            Positioned(
-              right: DsSpace.gap,
-              bottom: DsSpace.gap,
-              child: _DaySeven3DControls(viewport: _viewport),
-            ),
-          ],
+              // Landmark billboard pins projected onto globe front-facing hemisphere
+              for (final item in projectedLandmarks)
+                Positioned(
+                  key: ValueKey('pin-${item.landmark.id}'),
+                  left: item.screenPosition.dx - 12,
+                  top: item.screenPosition.dy - 24,
+                  child: _LandmarkPinWidget(
+                    landmark: item.landmark,
+                    depth: item.depth,
+                    onTap: () {
+                      if (item.landmark.document != null &&
+                          item.landmark.document!.isNotEmpty) {
+                        _handleLandmarkTap(item.landmark);
+                      } else {
+                        _handleLandmarkEdit(item.landmark);
+                      }
+                    },
+                    onEdit: () => _handleLandmarkEdit(item.landmark),
+                  ),
+                ),
+
+              // Drop Pin hover marker preview
+              if (isDroppingPin &&
+                  _hoverCoordinates != null &&
+                  _hoverPosition != null)
+                Positioned(
+                  left: _hoverPosition!.dx - 24,
+                  top: _hoverPosition!.dy - 36,
+                  child: IgnorePointer(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: DsSpace.xs,
+                            vertical: DsSpace.xxs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.island.withValues(alpha: 0.9),
+                            borderRadius:
+                                const BorderRadius.all(DsRadius.control),
+                            border: Border.all(color: colors.fern),
+                          ),
+                          child: Text(
+                            '${(_hoverCoordinates!.latitude * 180.0 / math.pi).toStringAsFixed(1)}°, ${(_hoverCoordinates!.longitude * 180.0 / math.pi).toStringAsFixed(1)}°',
+                            style: uiTextStyle(
+                              size: 9,
+                              weight: 600,
+                              color: colors.fern,
+                            ),
+                          ),
+                        ),
+                        Icon(Icons.place, size: 20, color: colors.fern),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Drop Pin Mode banner notice
+              if (isDroppingPin)
+                Positioned(
+                  top: DsSpace.m,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      key: const Key('dayseven-3d-drop-pin-banner'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DsSpace.m,
+                        vertical: DsSpace.s,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.island.withValues(alpha: 0.95),
+                        borderRadius: const BorderRadius.all(DsRadius.menu),
+                        border: Border.all(color: colors.fern),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.place, size: 16, color: colors.fern),
+                          const SizedBox(width: DsSpace.xs),
+                          Text(
+                            'Click anywhere on the globe to drop a landmark pin',
+                            style: uiTextStyle(
+                              size: 12,
+                              weight: 500,
+                              color: colors.text,
+                            ),
+                          ),
+                          const SizedBox(width: DsSpace.s),
+                          DsButton(
+                            key: const Key('dayseven-3d-cancel-drop-pin'),
+                            variant: DsButtonVariant.quiet,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: DsSpace.xs,
+                              vertical: DsSpace.xxs,
+                            ),
+                            onPressed: () => ref
+                                .read(dropPinModeProvider.notifier)
+                                .state = false,
+                            child: Text(
+                              'Cancel',
+                              style: uiTextStyle(
+                                size: 11,
+                                color: colors.muted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Empty state notice when no textures are attached
+              if (visibleLayer == null && !isDroppingPin)
+                Positioned(
+                  top: DsSpace.m,
+                  left: DsSpace.m,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DsSpace.m,
+                      vertical: DsSpace.s,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.island.withValues(alpha: 0.85),
+                      borderRadius: const BorderRadius.all(DsRadius.menu),
+                      border: Border.all(color: colors.border),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.info_outline, size: 14, color: colors.muted),
+                        const SizedBox(width: DsSpace.xs),
+                        Text(
+                          'Base mesh • Import a PNG layer in World Settings',
+                          style: uiTextStyle(size: 12, color: colors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Bottom-right Viewport navigation controls
+              Positioned(
+                right: DsSpace.gap,
+                bottom: DsSpace.gap,
+                child: _DaySeven3DControls(viewport: _viewport),
+              ),
+            ],
+          ),
         );
       },
+    );
+  }
+
+  void _onCanvasTap(Offset localPosition, Size size) {
+    final isDroppingPin = ref.read(dropPinModeProvider);
+    if (!isDroppingPin) return;
+    _attemptDropPinAt(localPosition, size);
+  }
+
+  void _attemptDropPinAt(Offset localPosition, Size size) {
+    final coords = _viewport.toSphereCoordinates(localPosition, size);
+    if (coords == null) return;
+
+    final latDeg = (coords.latitude * 180.0 / math.pi).clamp(-90.0, 90.0);
+    final lonDeg = (coords.longitude * 180.0 / math.pi).clamp(-180.0, 180.0);
+
+    ref.read(dropPinModeProvider.notifier).state = false;
+    setState(() {
+      _hoverCoordinates = null;
+      _hoverPosition = null;
+    });
+
+    showLandmarkDialog(
+      context: context,
+      controller: ref.read(openWorldProvider.notifier),
+      initialLatitude: latDeg,
+      initialLongitude: lonDeg,
+    );
+  }
+
+  Future<void> _handleLandmarkEdit(Model3DLandmark landmark) async {
+    await showLandmarkDialog(
+      context: context,
+      controller: ref.read(openWorldProvider.notifier),
+      existing: landmark,
     );
   }
 
@@ -299,11 +495,13 @@ class _LandmarkPinWidget extends StatelessWidget {
     required this.landmark,
     required this.depth,
     required this.onTap,
+    this.onEdit,
   });
 
   final Model3DLandmark landmark;
   final double depth;
   final VoidCallback onTap;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -313,19 +511,20 @@ class _LandmarkPinWidget extends StatelessWidget {
 
     final tooltip =
         '${landmark.name} (${landmark.latitude.toStringAsFixed(1)}°, ${landmark.longitude.toStringAsFixed(1)}°)'
-        '${hasDoc ? "\nLinked to ${landmark.document} (Click to open)" : ""}';
+        '${hasDoc ? "\nLinked to ${landmark.document} (Click to open)" : "\n(Click to edit)"}';
 
     return Opacity(
       opacity: opacity,
       child: Tooltip(
         message: tooltip,
         child: Semantics(
-          button: hasDoc,
+          button: true,
           label: hasDoc
               ? '${landmark.name}, open document ${landmark.document}'
-              : landmark.name,
+              : '${landmark.name}, edit landmark',
           child: GestureDetector(
-            onTap: hasDoc ? onTap : null,
+            onTap: onTap,
+            onSecondaryTap: onEdit,
             behavior: HitTestBehavior.opaque,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -350,7 +549,7 @@ class _LandmarkPinWidget extends StatelessWidget {
                   ),
                 ),
                 Icon(
-                  Icons.location_on,
+                  _iconForCategory(landmark.category),
                   size: 20,
                   color: hasDoc ? colors.fern : colors.text,
                 ),
@@ -360,6 +559,22 @@ class _LandmarkPinWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+IconData _iconForCategory(String category) {
+  switch (category.toLowerCase()) {
+    case 'mountain':
+      return Icons.terrain;
+    case 'ruin':
+      return Icons.fort;
+    case 'port':
+      return Icons.anchor;
+    case 'city':
+      return Icons.location_city;
+    case 'landmark':
+    default:
+      return Icons.location_on;
   }
 }
 
@@ -437,14 +652,15 @@ Model3DLayer? _firstVisibleLayer(DaySeven3DModel model) {
   return null;
 }
 
-class _DaySeven3DControls extends StatelessWidget {
+class _DaySeven3DControls extends ConsumerWidget {
   const _DaySeven3DControls({required this.viewport});
 
   final GlobeViewportController viewport;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
+    final isDroppingPin = ref.watch(dropPinModeProvider);
 
     return AnimatedBuilder(
       animation: viewport,
@@ -455,6 +671,7 @@ class _DaySeven3DControls extends StatelessWidget {
           required String tooltip,
           required String semanticLabel,
           required VoidCallback? onPressed,
+          Color? iconColor,
         }) => Tooltip(
           message: tooltip,
           child: DsButton(
@@ -467,7 +684,8 @@ class _DaySeven3DControls extends StatelessWidget {
             child: Icon(
               icon,
               size: 16,
-              color: onPressed == null ? colors.faint : colors.text,
+              color: iconColor ??
+                  (onPressed == null ? colors.faint : colors.text),
             ),
           ),
         );
@@ -481,6 +699,21 @@ class _DaySeven3DControls extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              button(
+                key: const Key('dayseven-3d-drop-pin-toggle'),
+                icon: isDroppingPin
+                    ? Icons.place
+                    : Icons.add_location_alt_outlined,
+                tooltip: isDroppingPin
+                    ? 'Cancel pin placement'
+                    : 'Drop landmark pin on globe',
+                semanticLabel: 'Drop landmark pin on globe',
+                iconColor: isDroppingPin ? colors.fern : null,
+                onPressed: () {
+                  ref.read(dropPinModeProvider.notifier).state = !isDroppingPin;
+                },
+              ),
+              DsSeam.vertical(),
               button(
                 key: const Key('dayseven-3d-reset-view'),
                 icon: Icons.center_focus_strong,

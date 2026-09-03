@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -153,5 +154,213 @@ void main() {
       container.read(documentControllerProvider)?.relativePath,
       'Lore/Highpass.md',
     );
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  testWidgets(
+    'drop-pin toggle enables mode, displays banner, and can be cancelled',
+    (tester) async {
+      final container = await pumpCanvas(tester);
+
+      expect(container.read(dropPinModeProvider), isFalse);
+      expect(find.byKey(const Key('dayseven-3d-drop-pin-banner')), findsNothing);
+
+      // Tap toggle button
+      final toggleBtn = find.byKey(const Key('dayseven-3d-drop-pin-toggle'));
+      expect(toggleBtn, findsOneWidget);
+      await tester.tap(toggleBtn);
+      await tester.pumpAndSettle();
+
+      expect(container.read(dropPinModeProvider), isTrue);
+      expect(
+        find.byKey(const Key('dayseven-3d-drop-pin-banner')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Click anywhere on the globe to drop a landmark pin'),
+        findsOneWidget,
+      );
+
+      // Cancel drop pin mode
+      await tester.tap(find.byKey(const Key('dayseven-3d-cancel-drop-pin')));
+      await tester.pumpAndSettle();
+
+      expect(container.read(dropPinModeProvider), isFalse);
+      expect(find.byKey(const Key('dayseven-3d-drop-pin-banner')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'dropping pin on the globe via tap in drop-pin mode opens dialog prefilled with coordinates and adds landmark',
+    (tester) async {
+      final container = await pumpCanvas(tester);
+
+      // Enable drop pin mode
+      await tester.tap(find.byKey(const Key('dayseven-3d-drop-pin-toggle')));
+      await tester.pumpAndSettle();
+
+      // Tap the center of the globe (viewport center is 400, 300 for 800x600 size)
+      await tester.tapAt(const Offset(400, 300));
+      await tester.pumpAndSettle();
+
+      // Dialog should be open
+      expect(find.text('Add Landmark Pin'), findsOneWidget);
+
+      // Coordinates at center should be pre-filled to approximately 0.00, 0.00
+      final latInput = tester.widget<TextField>(
+        find.byKey(const Key('landmark-lat-input')),
+      );
+      final lonInput = tester.widget<TextField>(
+        find.byKey(const Key('landmark-lon-input')),
+      );
+      expect(double.parse(latInput.controller!.text), closeTo(0.0, 0.1));
+      expect(double.parse(lonInput.controller!.text), closeTo(0.0, 0.1));
+
+      // Enter name and save
+      await tester.enterText(
+        find.byKey(const Key('landmark-name-input')),
+        'Equatorial Outpost',
+      );
+      await tester.tap(find.byKey(const Key('landmark-dialog-save-button')));
+      await tester.pumpAndSettle();
+
+      // Verify landmark was added to the model and renders on globe
+      final landmarks =
+          container.read(openWorldProvider)!.world.model3d!.landmarks;
+      expect(
+        landmarks.any((lm) => lm.name == 'Equatorial Outpost'),
+        isTrue,
+      );
+      expect(find.text('Equatorial Outpost'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 500));
+    },
+  );
+
+  testWidgets(
+    'dropping pin on the globe via secondary tap opens dialog directly',
+    (tester) async {
+      await pumpCanvas(tester);
+
+      // Secondary tap (right-click) at center without activating toggle
+      final globeFinder = find.byKey(const Key('dayseven-3d-globe'));
+      final globeCenter = tester.getCenter(globeFinder);
+
+      final gesture = await tester.startGesture(
+        globeCenter,
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // Dialog opens directly
+      expect(find.text('Add Landmark Pin'), findsOneWidget);
+
+      // Cancel dialog
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add Landmark Pin'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'tap outside globe sphere disc does not trigger drop-pin dialog',
+    (tester) async {
+      await pumpCanvas(tester);
+
+      // Enable drop pin mode
+      await tester.tap(find.byKey(const Key('dayseven-3d-drop-pin-toggle')));
+      await tester.pumpAndSettle();
+
+      // Tap corner (0, 0), which is outside the sphere disc
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      // Dialog should NOT open
+      expect(find.text('Add Landmark Pin'), findsNothing);
+      expect(
+        find.byKey(const Key('dayseven-3d-drop-pin-banner')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'tapping landmark without document opens edit dialog and allows updating',
+    (tester) async {
+      final container = await pumpCanvas(tester);
+
+      // Add a landmark with no linked document
+      final controller = container.read(openWorldProvider.notifier);
+      controller.addLandmark(
+        Model3DLandmark(
+          id: 'lm-no-doc',
+          name: 'Silent Monolith',
+          latitude: 5.0,
+          longitude: 5.0,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Silent Monolith'), findsOneWidget);
+
+      // Tap the landmark pin
+      await tester.tap(find.text('Silent Monolith'));
+      await tester.pumpAndSettle();
+
+      // Edit dialog should open
+      expect(find.text('Edit Landmark Pin'), findsOneWidget);
+
+      // Update name
+      await tester.enterText(
+        find.byKey(const Key('landmark-name-input')),
+        'Awakened Monolith',
+      );
+      await tester.tap(find.byKey(const Key('landmark-dialog-save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Awakened Monolith'), findsOneWidget);
+      final updated = container
+          .read(openWorldProvider)!
+          .world
+          .model3d!
+          .landmarks
+          .firstWhere((lm) => lm.id == 'lm-no-doc');
+      expect(updated.name, 'Awakened Monolith');
+      await tester.pump(const Duration(milliseconds: 500));
+    },
+  );
+
+  testWidgets('edit dialog allows deleting landmark pin', (tester) async {
+    final container = await pumpCanvas(tester);
+
+    final controller = container.read(openWorldProvider.notifier);
+    controller.addLandmark(
+      Model3DLandmark(
+        id: 'lm-to-delete',
+        name: 'Vanishing Tower',
+        latitude: -10.0,
+        longitude: -10.0,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vanishing Tower'), findsOneWidget);
+
+    // Tap to open edit dialog
+    await tester.tap(find.text('Vanishing Tower'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit Landmark Pin'), findsOneWidget);
+
+    // Tap Delete button
+    await tester.tap(find.byKey(const Key('landmark-dialog-delete-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vanishing Tower'), findsNothing);
+    final landmarks =
+        container.read(openWorldProvider)!.world.model3d!.landmarks;
+    expect(landmarks.any((lm) => lm.id == 'lm-to-delete'), isFalse);
+    await tester.pump(const Duration(milliseconds: 500));
   });
 }

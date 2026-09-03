@@ -17,6 +17,7 @@ import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
 import 'package:dayseven/features/world/domain/world_layer.dart';
 import 'package:dayseven/features/world/export/world_3d_exporter.dart';
+import 'package:dayseven/features/world/ui/engines/dayseven_3d/landmark_dialog.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
@@ -476,116 +477,9 @@ class _DaySeven3DSettingsFormState
     BuildContext context,
     WorldController controller,
   ) async {
-    final colors = context.ds;
-    final nameController = TextEditingController();
-    final latController = TextEditingController(text: '0.0');
-    final lonController = TextEditingController(text: '0.0');
-    final docController = TextEditingController();
-
-    String? nameError;
-    String? latError;
-    String? lonError;
-
-    await showDialog<void>(
+    await showLandmarkDialog(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => DsDialog(
-          title: Text(
-            'Add Landmark Pin',
-            style: uiTextStyle(size: 16, weight: 600, color: colors.text),
-          ),
-          actions: [
-            DsDialogAction(
-              label: 'Cancel',
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              tone: DsDialogActionTone.muted,
-            ),
-            DsDialogAction(
-              key: const Key('landmark-dialog-save-button'),
-              label: 'Save',
-              tone: DsDialogActionTone.normal,
-              onPressed: () {
-                final name = nameController.text.trim();
-                final latText = latController.text.trim();
-                final lonText = lonController.text.trim();
-                final lat = double.tryParse(latText);
-                final lon = double.tryParse(lonText);
-
-                setDialogState(() {
-                  nameError = name.isEmpty ? 'Name is required' : null;
-                  latError = (lat == null || lat < -90.0 || lat > 90.0)
-                      ? 'Latitude must be between -90 and 90'
-                      : null;
-                  lonError = (lon == null || lon < -180.0 || lon > 180.0)
-                      ? 'Longitude must be between -180 and 180'
-                      : null;
-                });
-
-                if (nameError == null && latError == null && lonError == null) {
-                  final doc = docController.text.trim();
-                  controller.addLandmark(
-                    Model3DLandmark(
-                      id: newId(),
-                      name: name,
-                      latitude: lat!,
-                      longitude: lon!,
-                      category: 'landmark',
-                      document: doc.isEmpty ? null : doc,
-                    ),
-                  );
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-            ),
-          ],
-          children: [
-            TextField(
-              key: const Key('landmark-name-input'),
-              controller: nameController,
-              decoration: InputDecoration(
-                labelText: 'Name',
-                errorText: nameError,
-              ),
-            ),
-            const SizedBox(height: DsSpace.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const Key('landmark-lat-input'),
-                    controller: latController,
-                    decoration: InputDecoration(
-                      labelText: 'Latitude (-90 to 90)',
-                      errorText: latError,
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: DsSpace.sm),
-                Expanded(
-                  child: TextField(
-                    key: const Key('landmark-lon-input'),
-                    controller: lonController,
-                    decoration: InputDecoration(
-                      labelText: 'Longitude (-180 to 180)',
-                      errorText: lonError,
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: DsSpace.sm),
-            TextField(
-              key: const Key('landmark-doc-input'),
-              controller: docController,
-              decoration: const InputDecoration(
-                labelText: 'Linked Document (e.g. Places/Oakhaven.md)',
-              ),
-            ),
-          ],
-        ),
-      ),
+      controller: controller,
     );
   }
 }
@@ -730,6 +624,16 @@ class _LandmarkRow extends ConsumerWidget {
                   style: uiTextStyle(size: 11, color: colors.muted),
                 ),
               ],
+            ),
+          ),
+          IconButton(
+            key: Key('edit-landmark-${landmark.id}'),
+            icon: Icon(Icons.edit_outlined, size: 16, color: colors.muted),
+            tooltip: 'Edit landmark',
+            onPressed: () => showLandmarkDialog(
+              context: context,
+              controller: controller,
+              existing: landmark,
             ),
           ),
           IconButton(
