@@ -221,8 +221,29 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   /// Moves a document or folder into another folder, then puts search and the
   /// open document back in step with where things now are.
   Future<void> moveNode(String relativePath, String targetFolder) async {
+    await _relocateNode(
+      relativePath,
+      (session) => session.kb.move(relativePath, targetFolder),
+    );
+  }
+
+  /// Renames a folder and repoints every local path below it.
+  Future<String> renameFolder(String relativePath, String name) =>
+      _relocateNode(
+        relativePath,
+        (session) => session.kb.renameFolder(relativePath, name),
+      );
+
+  /// Applies a filesystem relocation, then keeps every path-based local view
+  /// in step. Moving and renaming a folder have identical downstream effects.
+  Future<String> _relocateNode(
+    String relativePath,
+    Future<String> Function(KbSession session) relocate,
+  ) async {
     final session = state.valueOrNull;
-    if (session == null) return;
+    if (session == null) {
+      throw const KbException('Open a Knowledge Base first.');
+    }
 
     final documentController = _ref.read(documentControllerProvider.notifier);
     final open = _ref.read(documentControllerProvider);
@@ -230,8 +251,8 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
         open != null && isPathAtOrBelow(open.relativePath, relativePath);
     if (movesOpenDocument) await documentController.flush();
 
-    final destination = await session.kb.move(relativePath, targetFolder);
-    if (destination == relativePath) return;
+    final destination = await relocate(session);
+    if (destination == relativePath) return destination;
 
     // A moved folder takes a whole subtree of paths with it, so the index is
     // rebuilt; a single document only needs its own row repointed.
@@ -257,6 +278,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
       destination,
     );
     await refreshTree();
+    return destination;
   }
 
   /// Renames one document and updates every local view of its path.

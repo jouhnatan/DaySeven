@@ -101,7 +101,7 @@ enum _KbAction { openFolder, importDocument, invite, accept }
 
 enum _HierarchyAction { newFile, newFolder }
 
-enum _FolderAction { newFile, newFolder, delete }
+enum _FolderAction { newFile, newFolder, rename, delete }
 
 enum _DocumentAction { rename, delete }
 
@@ -433,6 +433,10 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
       value: _FolderAction.newFolder,
       label: 'New folder here…',
     );
+    menu.pushItem(
+      value: _FolderAction.rename,
+      label: 'Rename…',
+    );
     menu.pushDivider();
     menu.pushItem(
       value: _FolderAction.delete,
@@ -450,6 +454,9 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
       case _FolderAction.newFolder:
         if (!_expanded) setState(() => _expanded = true);
         await _createFolderIn(context, ref, folder.relativePath);
+
+      case _FolderAction.rename:
+        await _renameFolder(folder);
 
       case _FolderAction.delete:
         await _confirmDelete(folder);
@@ -495,6 +502,26 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
       await ref
           .read(kbControllerProvider.notifier)
           .renameDocument(file.relativePath, name);
+    } catch (error) {
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(DsNotificationKind.error, describeError(error));
+    }
+  }
+
+  Future<void> _renameFolder(KbFolder folder) async {
+    final name = await askForName(
+      context,
+      title: 'Folder name',
+      initial: folder.name,
+      actionLabel: 'Rename',
+    );
+    if (name == null || name.trim().isEmpty || !mounted) return;
+
+    try {
+      await ref
+          .read(kbControllerProvider.notifier)
+          .renameFolder(folder.relativePath, name);
     } catch (error) {
       ref
           .read(notificationStoreProvider.notifier)

@@ -1142,6 +1142,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('New file here'), findsOneWidget);
       expect(find.text('New folder here…'), findsOneWidget);
+      expect(find.text('Rename…'), findsOneWidget);
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
 
@@ -1223,6 +1224,57 @@ void main() {
       container.read(documentControllerProvider)?.relativePath,
       'Characters/Untitled.md',
     );
+  });
+
+  testWidgets('right-click exposes rename and the workspace renames a folder', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => container
+          .read(kbControllerProvider.notifier)
+          .createFolder(name: 'Characters'),
+    );
+    tester.view.physicalSize = const Size(500, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: const Scaffold(body: KnowledgeBaseMenu()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.text('Characters'),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Rename…'), findsOneWidget);
+
+    await tester.tap(find.text('Rename…'));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller?.text, 'Characters');
+    expect(find.widgetWithText(TextButton, 'Rename'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => container
+          .read(kbControllerProvider.notifier)
+          .renameFolder('Characters', 'People'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Characters'), findsNothing);
+    expect(find.text('People'), findsOneWidget);
+    expect(Directory(kb.absolutePathFor('People')).existsSync(), isTrue);
   });
 
   testWidgets('right-click exposes rename and the workspace renames the file', (
@@ -1484,7 +1536,9 @@ void main() {
       'dayseven_download_unit',
     );
     addTearDown(() async {
-      if (await downloadDir.exists()) await downloadDir.delete(recursive: true);
+      if (await downloadDir.exists()) {
+        await downloadDir.delete(recursive: true);
+      }
     });
 
     const invite = KbInvitation(

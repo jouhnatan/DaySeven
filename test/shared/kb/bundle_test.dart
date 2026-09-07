@@ -302,6 +302,64 @@ void main() {
       });
     });
 
+    group('renaming folders', () {
+      test('renames the folder with everything inside it', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        await kb.createFolder('Characters/Houses');
+        final path = await kb.createDocument(
+          title: 'Vane',
+          folderRelativePath: 'Characters/Houses',
+        );
+        final before = await kb.readDocument(path);
+
+        final renamed = await kb.renameFolder('Characters', 'People');
+
+        expect(renamed, 'People');
+        expect(
+          Directory(kb.absolutePathFor('Characters')).existsSync(),
+          isFalse,
+        );
+        final renamedPath = 'People/Houses/Vane$kDocumentExtension';
+        expect(File(kb.absolutePathFor(renamedPath)).existsSync(), isTrue);
+        expect((await kb.readDocument(renamedPath)).id, before.id);
+      });
+
+      test('sanitizes the new folder name', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        await kb.createFolder('Characters');
+
+        final renamed = await kb.renameFolder('Characters', 'CON');
+
+        expect(renamed, '_CON');
+        expect(Directory(kb.absolutePathFor(renamed)).existsSync(), isTrue);
+      });
+
+      test('refuses to overwrite another item', () async {
+        final kb = await KnowledgeBase.create(
+          folder: temp.path,
+          name: 'MyWorld',
+        );
+        await kb.createFolder('Characters');
+        await kb.createFolder('People');
+
+        expect(
+          () => kb.renameFolder('Characters', 'People'),
+          throwsA(isA<KbException>()),
+        );
+        expect(
+          Directory(kb.absolutePathFor('Characters')).existsSync(),
+          isTrue,
+        );
+        expect(Directory(kb.absolutePathFor('People')).existsSync(), isTrue);
+      });
+    });
+
     group('moving things about', () {
       test('a document moves into a folder', () async {
         final kb = await KnowledgeBase.create(
