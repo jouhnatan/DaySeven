@@ -6,6 +6,8 @@
 ///  * **Inline** formatting Markdown lacks — underline, colour, highlight, font
 ///    — becomes inline HTML (`<u>`, `<span style="…">`). Inline HTML is parsed
 ///    inside a paragraph, so these render correctly in other editors.
+///  * **Document-level** block spacing goes in frontmatter, so one readable
+///    value controls the distance between every pair of blocks in the file.
 ///  * **Block-level** attributes — alignment, space-before — go in the block's
 ///    `d7` comment, *not* an HTML wrapper. A block starting with `<p` is a raw
 ///    HTML block under CommonMark, and Markdown inside one is not parsed, so
@@ -50,6 +52,11 @@ String encodeMarkdown(BlockDocument document) {
     ..writeln('schema: ${document.schemaVersion}')
     ..writeln('id: ${jsonEncode(document.id)}')
     ..writeln('title: ${jsonEncode(document.title)}')
+    ..write(
+      document.blockSpacing == kDefaultBlockSpacing
+          ? ''
+          : 'block-spacing: ${_number(document.blockSpacing)}\n',
+    )
     ..writeln('---');
 
   for (final block in document.blocks) {
@@ -350,9 +357,17 @@ BlockDocument decodeMarkdown(String source) {
   return BlockDocument(
     id: front['id'] as String? ?? _uuid.v7(),
     title: front['title'] as String? ?? '',
+    blockSpacing: _blockSpacingFromFront(front['block-spacing']),
     blocks: blocks,
     schemaVersion: (front['schema'] as num?)?.toInt() ?? kDocumentSchemaVersion,
   );
+}
+
+double _blockSpacingFromFront(Object? value) {
+  final spacing = (value as num?)?.toDouble();
+  return kBlockSpacingPresets.contains(spacing)
+      ? spacing!
+      : kDefaultBlockSpacing;
 }
 
 Object? _frontValue(String raw) {

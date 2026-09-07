@@ -20,6 +20,16 @@ import 'package:crypto/crypto.dart';
 /// format — the Markdown encoding has its own [kMarkdownFormatVersion].
 const int kDocumentSchemaVersion = 1;
 
+const double kDefaultBlockSpacing = 1;
+const List<double> kBlockSpacingPresets = [1, 1.15, 1.5, 2];
+
+double _blockSpacingFrom(Object? value) {
+  final spacing = (value as num?)?.toDouble();
+  return kBlockSpacingPresets.contains(spacing)
+      ? spacing!
+      : kDefaultBlockSpacing;
+}
+
 enum BlockAlign { left, center, right }
 
 BlockAlign _alignFrom(Object? v) => switch (v) {
@@ -831,18 +841,25 @@ class BlockDocument {
     required this.id,
     required this.title,
     required this.blocks,
+    this.blockSpacing = kDefaultBlockSpacing,
     this.schemaVersion = kDocumentSchemaVersion,
   });
 
   final String id;
   final String title;
   final List<Block> blocks;
+  final double blockSpacing;
   final int schemaVersion;
 
-  BlockDocument copyWith({String? title, List<Block>? blocks}) => BlockDocument(
+  BlockDocument copyWith({
+    String? title,
+    List<Block>? blocks,
+    double? blockSpacing,
+  }) => BlockDocument(
     id: id,
     title: title ?? this.title,
     blocks: blocks ?? this.blocks,
+    blockSpacing: blockSpacing ?? this.blockSpacing,
     schemaVersion: schemaVersion,
   );
 
@@ -873,12 +890,14 @@ class BlockDocument {
     'schemaVersion': schemaVersion,
     'id': id,
     'title': title,
+    if (blockSpacing != kDefaultBlockSpacing) 'blockSpacing': blockSpacing,
     'blocks': blocks.map((b) => b.toJson()).toList(),
   };
 
   static BlockDocument fromJson(Map<String, Object?> json) => BlockDocument(
     id: json['id'] as String,
     title: json['title'] as String? ?? '',
+    blockSpacing: _blockSpacingFrom(json['blockSpacing']),
     blocks: (json['blocks'] as List<Object?>? ?? const [])
         .map((b) => Block.fromJson(b as Map<String, Object?>))
         .toList(),

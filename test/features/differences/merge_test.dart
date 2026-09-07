@@ -11,8 +11,16 @@ ParagraphBlock p(String id, String text, {bool bold = false, String? color}) =>
 ParagraphBlock spans(String id, List<TextSpanNode> s) =>
     ParagraphBlock(id: id, spans: s);
 
-BlockDocument doc(List<Block> blocks, {String title = 'Aldenmoor'}) =>
-    BlockDocument(id: 'doc-1', title: title, blocks: blocks);
+BlockDocument doc(
+  List<Block> blocks, {
+  String title = 'Aldenmoor',
+  double blockSpacing = kDefaultBlockSpacing,
+}) => BlockDocument(
+  id: 'doc-1',
+  title: title,
+  blocks: blocks,
+  blockSpacing: blockSpacing,
+);
 
 String textOf(BlockDocument d, String blockId) =>
     d.blocks.firstWhere((b) => b.id == blockId).plainText;
@@ -21,6 +29,17 @@ ParagraphBlock paraOf(BlockDocument d, String blockId) =>
     d.blocks.firstWhere((b) => b.id == blockId) as ParagraphBlock;
 
 void main() {
+  test('proposal-only file spacing changes merge into the document', () {
+    final base = doc(const []);
+    final result = threeWayMerge(
+      base: base,
+      local: base,
+      proposed: doc(const [], blockSpacing: 1.5),
+    );
+
+    expect(result.document.blockSpacing, 1.5);
+  });
+
   group('three-way merge — title', () {
     test('different title edits are surfaced as a conflict', () {
       final base = doc(const [], title: 'Original');

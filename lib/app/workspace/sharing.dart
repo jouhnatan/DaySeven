@@ -640,6 +640,7 @@ class SharingController {
       id: newId(),
       title: open.document.title,
       blocks: open.document.blocks,
+      blockSpacing: open.document.blockSpacing,
       schemaVersion: open.document.schemaVersion,
     );
     await session.kb.writeDocument(open.relativePath, forked);

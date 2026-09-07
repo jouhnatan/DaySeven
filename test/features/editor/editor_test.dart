@@ -158,6 +158,38 @@ void main() {
     );
   });
 
+  testWidgets('file spacing is displayed between every document block', (
+    tester,
+  ) async {
+    await openEditor(
+      tester,
+      temp,
+      seed: BlockDocument(
+        id: 'doc-1',
+        title: 'Aldenmoor',
+        blockSpacing: 1.5,
+        blocks: [
+          for (var i = 1; i <= 3; i++)
+            ParagraphBlock(
+              id: 'b$i',
+              spans: [TextSpanNode(text: 'Paragraph $i')],
+            ),
+        ],
+      ),
+    );
+
+    double topPadding(String blockId) =>
+        (tester
+                    .widget<Padding>(find.byKey(Key('document-block-$blockId')))
+                    .padding
+                as EdgeInsets)
+            .top;
+
+    expect(topPadding('b1'), 0);
+    expect(topPadding('b2'), DsSpace.sm);
+    expect(topPadding('b3'), DsSpace.sm);
+  });
+
   testWidgets('Windows text modifier keybinds format the selection', (
     tester,
   ) async {
