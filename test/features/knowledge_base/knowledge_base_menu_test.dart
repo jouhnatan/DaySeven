@@ -1037,6 +1037,51 @@ void main() {
   );
 
   testWidgets(
+    'folders start collapsed and expand one level at a time',
+    (tester) async {
+      await tester.runAsync(() async {
+        await kb.createFolder('Characters');
+        await kb.createFolder('Characters/Houses');
+        await kb.createDocument(
+          title: 'Vane',
+          folderRelativePath: 'Characters/Houses',
+        );
+        await container.read(kbControllerProvider.notifier).refreshTree();
+      });
+
+      tester.view.physicalSize = const Size(500, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: dsTheme(),
+            home: const Scaffold(body: KnowledgeBaseMenu()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Characters'), findsOneWidget);
+      expect(find.text('Houses'), findsNothing);
+      expect(find.text('Vane'), findsNothing);
+
+      await tester.tap(find.text('Characters'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Houses'), findsOneWidget);
+      expect(find.text('Vane'), findsNothing);
+
+      await tester.tap(find.text('Houses'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Vane'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'right-click creates at the root or inside folders, never inside files',
     (tester) async {
       await tester.runAsync(

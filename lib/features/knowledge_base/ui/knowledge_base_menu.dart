@@ -406,7 +406,7 @@ class _TreeNode extends ConsumerStatefulWidget {
 }
 
 class _TreeNodeState extends ConsumerState<_TreeNode> {
-  bool _expanded = true;
+  bool _expanded = false;
   bool _hovered = false;
 
   Future<void> _openDocument(String relativePath) async {
