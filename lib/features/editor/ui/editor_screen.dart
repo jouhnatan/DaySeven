@@ -206,13 +206,13 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
           blockId: blockId,
           hasSelection: has,
           caretOffset: selection.isValid ? selection.extentOffset : null,
-          selectionAnchorOffset:
-              has ? selection.baseOffset : null,
+          selectionAnchorOffset: has ? selection.baseOffset : null,
           activeFormats: {
             for (final format in EditingFormat.values)
               if (controller.isFormatActive(format, selection)) format,
           },
           align: block.align,
+          spaceBefore: block.spaceBefore,
           headingLevel: block is HeadingBlock ? block.level : null,
         ),
       );
@@ -249,6 +249,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     if (focus == null) return;
     _updateBlock(focus.blockId, (b) => b.copyWithCommon(align: align));
     _publishFocus(focus.blockId);
+  }
+
+  @override
+  void toggleSpaceBefore() {
+    final focus = ref.read(editingFocusProvider);
+    if (focus == null) return;
+    _setSpaceBefore(focus.blockId, add: focus.spaceBefore <= 0);
+    _focusFor(focus.blockId).requestFocus();
   }
 
   @override
@@ -666,6 +674,15 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     _commit(_document.copyWith(blocks: blocks));
   }
 
+  void _setSpaceBefore(String blockId, {required bool add}) {
+    _updateBlock(
+      blockId,
+      (block) =>
+          block.copyWithCommon(spaceBefore: add ? DsSpace.blockBefore : 0),
+    );
+    _publishFocus(blockId);
+  }
+
   /// Removes one block and everything in it. Asset files stay on disk; only
   /// the document's reference to them goes.
   void _deleteBlock(String blockId) {
@@ -1019,12 +1036,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     menu.pushDivider();
     menu.pushItem(
       label: block.spaceBefore > 0 ? 'No space before' : 'Space before',
-      value: () => _updateBlock(
-        block.id,
-        (b) => b.copyWithCommon(
-          spaceBefore: b.spaceBefore > 0 ? 0 : DsSpace.blockBefore,
-        ),
-      ),
+      value: () => _setSpaceBefore(block.id, add: block.spaceBefore <= 0),
       height: kDsCompactMenuItemHeight,
     );
 

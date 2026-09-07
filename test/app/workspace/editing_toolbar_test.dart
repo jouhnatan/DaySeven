@@ -368,6 +368,44 @@ void main() {
     await settle(tester, container);
   });
 
+  testWidgets('paragraph spacing toggles the displayed gap before a block', (
+    tester,
+  ) async {
+    final container = await openEditor(tester);
+    await selectInParagraph(tester, 3);
+
+    final control = find.byIcon(Icons.format_line_spacing);
+    expect(find.byTooltip('Add space before paragraph'), findsOneWidget);
+
+    await tester.tap(control);
+    await tester.pumpAndSettle();
+
+    expect(
+      container
+          .read(documentControllerProvider)!
+          .document
+          .blocks
+          .single
+          .spaceBefore,
+      DsSpace.blockBefore,
+    );
+    expect(find.byTooltip('Remove space before paragraph'), findsOneWidget);
+
+    await tester.tap(control);
+    await tester.pumpAndSettle();
+
+    expect(
+      container
+          .read(documentControllerProvider)!
+          .document
+          .blocks
+          .single
+          .spaceBefore,
+      0,
+    );
+    await settle(tester, container);
+  });
+
   testWidgets('its island follows the editor width while buttons stay intact', (
     tester,
   ) async {
@@ -397,10 +435,7 @@ void main() {
     final editorBefore = editorRect();
     final toolbarBefore = toolbarRect();
     await tester.dragFrom(
-      Offset(
-        editorBefore.right + DsSpace.seam / 2,
-        editorBefore.center.dy,
-      ),
+      Offset(editorBefore.right + DsSpace.seam / 2, editorBefore.center.dy),
       const Offset(-80, 0),
     );
     await tester.pumpAndSettle();

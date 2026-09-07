@@ -3,6 +3,7 @@ import 'package:dayseven/features/editing_toolbar/ui/controls/bold_control.dart'
 import 'package:dayseven/features/editing_toolbar/ui/controls/divider_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/heading_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/italic_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/controls/paragraph_spacing_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/strikethrough_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/underline_control.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
@@ -96,18 +97,19 @@ void main() {
     expect(find.byType(DsSegmented<BlockAlign>), findsOneWidget);
 
     final ds = DsColors.cream;
-    Color cellFill(IconData icon) => (tester
-                .widget<AnimatedContainer>(
-                  find
-                      .ancestor(
-                        of: find.byIcon(icon),
-                        matching: find.byType(AnimatedContainer),
-                      )
-                      .first,
-                )
-                .decoration!
-            as BoxDecoration)
-        .color!;
+    Color cellFill(IconData icon) =>
+        (tester
+                    .widget<AnimatedContainer>(
+                      find
+                          .ancestor(
+                            of: find.byIcon(icon),
+                            matching: find.byType(AnimatedContainer),
+                          )
+                          .first,
+                    )
+                    .decoration!
+                as BoxDecoration)
+            .color!;
 
     expect(cellFill(Icons.format_align_center), ds.island);
     expect(cellFill(Icons.format_align_left), isNot(ds.island));
@@ -161,6 +163,39 @@ void main() {
       'Insert divider',
     );
     await tester.tap(find.byIcon(Icons.horizontal_rule));
+    expect(pressed, isTrue);
+  });
+
+  testWidgets('paragraph spacing module reports state and toggles spacing', (
+    tester,
+  ) async {
+    var pressed = false;
+    await tester.pumpWidget(
+      app(
+        ParagraphSpacingControl(
+          hasSpaceBefore: true,
+          onPressed: () => pressed = true,
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.format_line_spacing), findsOneWidget);
+    final tooltip = tester.widget<Tooltip>(
+      find.ancestor(
+        of: find.byIcon(Icons.format_line_spacing),
+        matching: find.byType(Tooltip),
+      ),
+    );
+    expect(tooltip.message, 'Remove space before paragraph');
+    final button = tester.widget<DsButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.format_line_spacing),
+        matching: find.byType(DsButton),
+      ),
+    );
+    expect(button.active, isTrue);
+
+    await tester.tap(find.byIcon(Icons.format_line_spacing));
     expect(pressed, isTrue);
   });
 }
