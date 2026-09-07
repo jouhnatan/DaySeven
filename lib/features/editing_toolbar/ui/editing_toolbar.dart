@@ -11,6 +11,7 @@ import 'package:dayseven/features/editing_toolbar/ui/controls/divider_control.da
 import 'package:dayseven/features/editing_toolbar/ui/controls/heading_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/image_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/italic_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/controls/paragraph_spacing_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/strikethrough_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/underline_control.dart';
 import 'package:dayseven/shared/ui/theme.dart';
@@ -58,6 +59,11 @@ class EditingToolbar extends ConsumerWidget {
           ),
           const SizedBox(width: DsSpace.controlGap),
           AlignmentControls(align: focus.align, onPick: notifier.setAlign),
+          const SizedBox(width: DsSpace.controlGap),
+          ParagraphSpacingControl(
+            hasSpaceBefore: focus.spaceBefore > 0,
+            onPressed: notifier.toggleSpaceBefore,
+          ),
           const SizedBox(width: DsSpace.controlGap),
           DividerControl(onPressed: notifier.insertDivider),
           const SizedBox(width: DsSpace.controlGap),
