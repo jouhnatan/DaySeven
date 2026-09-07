@@ -1,9 +1,9 @@
 import 'package:dayseven/features/editing_toolbar/ui/controls/alignment_controls.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/bold_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/divider_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/controls/document_spacing_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/heading_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/italic_control.dart';
-import 'package:dayseven/features/editing_toolbar/ui/controls/paragraph_spacing_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/strikethrough_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/underline_control.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
@@ -166,15 +166,15 @@ void main() {
     expect(pressed, isTrue);
   });
 
-  testWidgets('paragraph spacing module reports state and toggles spacing', (
+  testWidgets('document spacing module offers file-wide spacing presets', (
     tester,
   ) async {
-    var pressed = false;
+    double? picked;
     await tester.pumpWidget(
       app(
-        ParagraphSpacingControl(
-          hasSpaceBefore: true,
-          onPressed: () => pressed = true,
+        DocumentSpacingControl(
+          spacing: kDefaultBlockSpacing,
+          onPick: (value) => picked = value,
         ),
       ),
     );
@@ -186,16 +186,24 @@ void main() {
         matching: find.byType(Tooltip),
       ),
     );
-    expect(tooltip.message, 'Remove space before paragraph');
+    expect(tooltip.message, 'Block spacing (1)');
     final button = tester.widget<DsButton>(
       find.ancestor(
         of: find.byIcon(Icons.format_line_spacing),
         matching: find.byType(DsButton),
       ),
     );
-    expect(button.active, isTrue);
+    expect(button.active, isFalse);
 
     await tester.tap(find.byIcon(Icons.format_line_spacing));
-    expect(pressed, isTrue);
+    await tester.pumpAndSettle();
+    expect(find.text('Single'), findsOneWidget);
+    expect(find.text('1.15'), findsOneWidget);
+    expect(find.text('1.5'), findsOneWidget);
+    expect(find.text('Double'), findsOneWidget);
+
+    await tester.tap(find.text('1.5'));
+    await tester.pumpAndSettle();
+    expect(picked, 1.5);
   });
 }

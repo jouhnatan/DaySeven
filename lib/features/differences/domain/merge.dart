@@ -80,12 +80,16 @@ MergeResult threeWayMerge({
   }
 
   final title = local.title == base.title ? proposed.title : local.title;
+  final blockSpacing = local.blockSpacing == base.blockSpacing
+      ? proposed.blockSpacing
+      : local.blockSpacing;
 
   return MergeResult(
     document: BlockDocument(
       id: local.id,
       title: title,
       blocks: blocks,
+      blockSpacing: blockSpacing,
       schemaVersion: local.schemaVersion,
     ),
     conflictedBlockIds: conflicts,

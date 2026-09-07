@@ -415,9 +415,8 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
   }
 
   Future<void> _createFileInFolder(KbFolder folder) async {
-    if (await _createFileIn(context, ref, folder.relativePath) && mounted) {
-      setState(() => _expanded = true);
-    }
+    if (!_expanded) setState(() => _expanded = true);
+    await _createFileIn(context, ref, folder.relativePath);
   }
 
   /// Right-clicking a folder creates inside it, so a Knowledge Base can be
@@ -449,10 +448,8 @@ class _TreeNodeState extends ConsumerState<_TreeNode> {
         await _createFileInFolder(folder);
 
       case _FolderAction.newFolder:
-        if (await _createFolderIn(context, ref, folder.relativePath) &&
-            mounted) {
-          setState(() => _expanded = true);
-        }
+        if (!_expanded) setState(() => _expanded = true);
+        await _createFolderIn(context, ref, folder.relativePath);
 
       case _FolderAction.delete:
         await _confirmDelete(folder);

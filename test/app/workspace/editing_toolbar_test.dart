@@ -368,41 +368,24 @@ void main() {
     await settle(tester, container);
   });
 
-  testWidgets('paragraph spacing toggles the displayed gap before a block', (
+  testWidgets('block spacing changes the document instead of one block', (
     tester,
   ) async {
     final container = await openEditor(tester);
     await selectInParagraph(tester, 3);
 
     final control = find.byIcon(Icons.format_line_spacing);
-    expect(find.byTooltip('Add space before paragraph'), findsOneWidget);
+    expect(find.byTooltip('Block spacing (1)'), findsOneWidget);
 
     await tester.tap(control);
     await tester.pumpAndSettle();
-
-    expect(
-      container
-          .read(documentControllerProvider)!
-          .document
-          .blocks
-          .single
-          .spaceBefore,
-      DsSpace.blockBefore,
-    );
-    expect(find.byTooltip('Remove space before paragraph'), findsOneWidget);
-
-    await tester.tap(control);
+    await tester.tap(find.text('1.5'));
     await tester.pumpAndSettle();
 
-    expect(
-      container
-          .read(documentControllerProvider)!
-          .document
-          .blocks
-          .single
-          .spaceBefore,
-      0,
-    );
+    final document = container.read(documentControllerProvider)!.document;
+    expect(document.blockSpacing, 1.5);
+    expect(document.blocks.single.spaceBefore, 0);
+    expect(find.byTooltip('Block spacing (1.5)'), findsOneWidget);
     await settle(tester, container);
   });
 

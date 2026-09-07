@@ -24,7 +24,7 @@ class EditingFocus {
     required this.hasSelection,
     required Set<EditingFormat> activeFormats,
     required this.align,
-    required this.spaceBefore,
+    required this.blockSpacing,
     required this.headingLevel,
     this.caretOffset,
     this.selectionAnchorOffset,
@@ -43,8 +43,8 @@ class EditingFocus {
   /// Block-level, so these stay available with no selection.
   final BlockAlign align;
 
-  /// Extra displayed distance before the focused block.
-  final double spaceBefore;
+  /// File-wide multiplier used for the displayed distance between blocks.
+  final double blockSpacing;
 
   /// null when the focused block is body text.
   final int? headingLevel;
@@ -68,7 +68,7 @@ class EditingFocus {
       other.hasSelection == hasSelection &&
       setEquals(other.activeFormats, activeFormats) &&
       other.align == align &&
-      other.spaceBefore == spaceBefore &&
+      other.blockSpacing == blockSpacing &&
       other.headingLevel == headingLevel;
 
   @override
@@ -77,7 +77,7 @@ class EditingFocus {
     hasSelection,
     Object.hashAllUnordered(activeFormats),
     align,
-    spaceBefore,
+    blockSpacing,
     headingLevel,
   );
 }
@@ -86,7 +86,7 @@ class EditingFocus {
 abstract class EditingSurface {
   void toggleFormat(EditingFormat format);
   void setAlign(BlockAlign align);
-  void toggleSpaceBefore();
+  void setBlockSpacing(double spacing);
 
   /// null turns the focused block back into body text.
   void setHeadingLevel(int? level);
@@ -124,7 +124,7 @@ class EditingFocusController extends StateNotifier<EditingFocus?> {
 
   void toggleFormat(EditingFormat format) => _surface?.toggleFormat(format);
   void setAlign(BlockAlign align) => _surface?.setAlign(align);
-  void toggleSpaceBefore() => _surface?.toggleSpaceBefore();
+  void setBlockSpacing(double spacing) => _surface?.setBlockSpacing(spacing);
   void setHeadingLevel(int? level) => _surface?.setHeadingLevel(level);
   void insertImage() => _surface?.insertImage();
   void insertDivider() => _surface?.insertDivider();

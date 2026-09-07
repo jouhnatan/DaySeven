@@ -6,8 +6,16 @@ import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/blocks/markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-BlockDocument docOf(List<Block> blocks, {String title = 'Aldenmoor'}) =>
-    BlockDocument(id: 'doc-1', title: title, blocks: blocks);
+BlockDocument docOf(
+  List<Block> blocks, {
+  String title = 'Aldenmoor',
+  double blockSpacing = kDefaultBlockSpacing,
+}) => BlockDocument(
+  id: 'doc-1',
+  title: title,
+  blocks: blocks,
+  blockSpacing: blockSpacing,
+);
 
 ParagraphBlock para(List<TextSpanNode> spans, {String id = 'b1'}) =>
     ParagraphBlock(id: id, spans: spans);
@@ -23,6 +31,17 @@ void expectSurvives(BlockDocument document, {String? reason}) {
 }
 
 void main() {
+  test('file-wide block spacing survives Markdown and JSON round trips', () {
+    final document = docOf([
+      para(const [TextSpanNode(text: 'one')], id: 'first'),
+      para(const [TextSpanNode(text: 'two')], id: 'second'),
+    ], blockSpacing: 1.5);
+
+    expect(encodeMarkdown(document), contains('block-spacing: 1.5'));
+    expectSurvives(document);
+    expect(BlockDocument.decode(document.encode()).blockSpacing, 1.5);
+  });
+
   group('every span attribute survives', () {
     final cases = <String, TextSpanNode>{
       'plain': TextSpanNode(text: 'plain'),

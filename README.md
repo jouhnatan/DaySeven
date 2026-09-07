@@ -134,6 +134,7 @@ d7: 1
 schema: 1
 id: "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1"
 title: "Aldenmoor"
+block-spacing: 1.5
 ---
 
 <!-- d7 h1 -->
@@ -224,13 +225,14 @@ The moor is **wide** and <u>cold</u>.
 [^1]: Or so the ledger says.
 ```
 
-Two things Markdown has no syntax for are handled differently, and the split is
-deliberate. **Inline** formatting — underline, colour, highlight, font — becomes
-inline HTML, which renders correctly in other editors. **Block-level**
-attributes — alignment, space before — go in the `d7` comment rather than a
-`<p align>` wrapper, because CommonMark does not parse Markdown inside an HTML
-block: wrapping a paragraph would render its bold and italics as literal
-asterisks everywhere else.
+Three things Markdown has no syntax for are handled differently, and the split
+is deliberate. **Inline** formatting — underline, colour, highlight, font —
+becomes inline HTML, which renders correctly in other editors. The file-wide
+distance between blocks is the `block-spacing` frontmatter value. Exceptional
+**block-level** attributes — alignment and extra space before one block — go in
+the `d7` comment rather than a `<p align>` wrapper, because CommonMark does not
+parse Markdown inside an HTML block: wrapping a paragraph would render its bold
+and italics as literal asterisks everywhere else.
 
 The `d7` comment also carries the block id, which is what lets the three-way
 merge tell a paragraph that *moved* from one deleted and another inserted.

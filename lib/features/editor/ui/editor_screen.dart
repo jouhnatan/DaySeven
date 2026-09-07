@@ -37,6 +37,13 @@ import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 
+double _blockSpacingGap(double spacing) => switch (spacing) {
+  1.15 => DsSpace.xs,
+  1.5 => DsSpace.sm,
+  2 => DsSpace.l,
+  _ => 0,
+};
+
 class EditorScreen extends ConsumerWidget {
   const EditorScreen({super.key});
 
@@ -212,7 +219,7 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
               if (controller.isFormatActive(format, selection)) format,
           },
           align: block.align,
-          spaceBefore: block.spaceBefore,
+          blockSpacing: _document.blockSpacing,
           headingLevel: block is HeadingBlock ? block.level : null,
         ),
       );
@@ -252,10 +259,11 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   }
 
   @override
-  void toggleSpaceBefore() {
+  void setBlockSpacing(double spacing) {
     final focus = ref.read(editingFocusProvider);
     if (focus == null) return;
-    _setSpaceBefore(focus.blockId, add: focus.spaceBefore <= 0);
+    _commit(_document.copyWith(blockSpacing: spacing));
+    _publishFocus(focus.blockId);
     _focusFor(focus.blockId).requestFocus();
   }
 
@@ -674,15 +682,6 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     _commit(_document.copyWith(blocks: blocks));
   }
 
-  void _setSpaceBefore(String blockId, {required bool add}) {
-    _updateBlock(
-      blockId,
-      (block) =>
-          block.copyWithCommon(spaceBefore: add ? DsSpace.blockBefore : 0),
-    );
-    _publishFocus(blockId);
-  }
-
   /// Removes one block and everything in it. Asset files stay on disk; only
   /// the document's reference to them goes.
   void _deleteBlock(String blockId) {
@@ -834,11 +833,18 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
             ),
           ),
           const SizedBox(height: 20),
-          for (final block in _document.blocks)
+          for (final (index, block) in _document.blocks.indexed)
             AbsorbPointer(
               absorbing: widget.readOnly,
               child: Padding(
-                padding: EdgeInsets.only(top: block.spaceBefore),
+                key: Key('document-block-${block.id}'),
+                padding: EdgeInsets.only(
+                  top:
+                      block.spaceBefore +
+                      (index == 0
+                          ? 0
+                          : _blockSpacingGap(_document.blockSpacing)),
+                ),
                 child: _BlockHoverGrip(
                   enabled: !widget.readOnly,
                   peers: peersByBlockId[block.id] ?? const [],
@@ -1036,7 +1042,12 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     menu.pushDivider();
     menu.pushItem(
       label: block.spaceBefore > 0 ? 'No space before' : 'Space before',
-      value: () => _setSpaceBefore(block.id, add: block.spaceBefore <= 0),
+      value: () => _updateBlock(
+        block.id,
+        (b) => b.copyWithCommon(
+          spaceBefore: b.spaceBefore > 0 ? 0 : DsSpace.blockBefore,
+        ),
+      ),
       height: kDsCompactMenuItemHeight,
     );
 
