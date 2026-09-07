@@ -208,6 +208,69 @@ He keeps the causeway.
   });
 
   test(
+    'renaming a folder relocates its open document, search, and recent paths',
+    () async {
+      final container = await openKb();
+      final session = container.read(kbSessionProvider)!;
+
+      await session.kb.createFolder('Characters/Houses');
+      final path = await session.kb.createDocument(
+        title: 'Vane',
+        folderRelativePath: 'Characters/Houses',
+      );
+      final document = await session.kb.readDocument(path);
+      await session.kb.writeDocument(
+        path,
+        document.copyWith(
+          blocks: [
+            ParagraphBlock(
+              id: newId(),
+              spans: const [TextSpanNode(text: 'He keeps the causeway.')],
+            ),
+          ],
+        ),
+      );
+      await session.index.rebuild();
+      await container.read(kbControllerProvider.notifier).refreshTree();
+      final documents = container.read(documentControllerProvider.notifier);
+      await documents.open(path);
+      final open = container.read(documentControllerProvider)!;
+      documents.edit(
+        open.document.copyWith(
+          blocks: [
+            ...open.document.blocks,
+            ParagraphBlock(
+              id: newId(),
+              spans: const [TextSpanNode(text: 'A recent edit.')],
+            ),
+          ],
+        ),
+      );
+      await documents.flush();
+
+      final destination = await container
+          .read(kbControllerProvider.notifier)
+          .renameFolder('Characters', 'People');
+
+      const renamedPath = 'People/Houses/Vane.md';
+      expect(destination, 'People');
+      expect(
+        container.read(documentControllerProvider)!.relativePath,
+        renamedPath,
+      );
+      expect(session.index.search('causeway').single.relativePath, renamedPath);
+      final store = await container.read(appStoreProvider.future);
+      expect(await store.recentDocuments(session.kb.manifest.kbId), [
+        renamedPath,
+      ]);
+      expect(await store.recentEditedDocuments(session.kb.manifest.kbId), [
+        renamedPath,
+      ]);
+      expect(treeNames(container), ['People']);
+    },
+  );
+
+  test(
     'deleting a folder clears its open document, search, and recent paths',
     () async {
       final container = await openKb();

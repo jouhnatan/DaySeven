@@ -664,6 +664,40 @@ class KnowledgeBase {
     return destination;
   }
 
+  /// Renames one folder without moving it out of its current parent.
+  Future<String> renameFolder(
+    String relativePath,
+    String requestedName,
+  ) async {
+    final from = absolutePathFor(relativePath);
+    if (await FileSystemEntity.type(from) != FileSystemEntityType.directory) {
+      throw const KbException('That folder is no longer there.');
+    }
+
+    final name = sanitizeNodeName(requestedName);
+    final parent = p.posix.dirname(relativePath);
+    final destination = parent == '.'
+        ? name
+        : p.posix.join(parent, name);
+    if (destination == relativePath) return relativePath;
+
+    final to = absolutePathFor(destination);
+    if (await FileSystemEntity.type(to) != FileSystemEntityType.notFound) {
+      var isSource = false;
+      try {
+        isSource = await FileSystemEntity.identical(from, to);
+      } on FileSystemException {
+        isSource = false;
+      }
+      if (!isSource) {
+        throw KbException('Something called "$name" is already there.');
+      }
+    }
+
+    await Directory(from).rename(to);
+    return destination;
+  }
+
   /// Moves a document or folder into [targetFolderRelativePath] (empty for the
   /// top level) and returns its new path.
   ///
