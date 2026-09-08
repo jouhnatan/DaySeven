@@ -12,11 +12,13 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/features/world/application/world_controller.dart';
 import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
 import 'package:dayseven/features/world/domain/world_layer.dart';
 import 'package:dayseven/features/world/export/world_3d_exporter.dart';
+import 'package:dayseven/features/world/export/world_map_exporter.dart';
 import 'package:dayseven/features/world/ui/engines/dayseven_3d/landmark_dialog.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';
@@ -34,7 +36,7 @@ class DaySeven3DSettingsForm extends ConsumerStatefulWidget {
 class _DaySeven3DSettingsFormState
     extends ConsumerState<DaySeven3DSettingsForm> {
   bool _importing = false;
-  Model3DLayerType _selectedImportType = Model3DLayerType.heightmap;
+  Model3DLayerType _selectedImportType = Model3DLayerType.albedo;
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +50,7 @@ class _DaySeven3DSettingsFormState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const DsMenuHeader('3D Model & Environment'),
+        const DsMenuHeader('Map & landmarks'),
         const SizedBox(height: DsSpace.m),
 
         // --- Layers Stack ---
@@ -58,7 +60,7 @@ class _DaySeven3DSettingsFormState
           Padding(
             padding: const EdgeInsets.symmetric(vertical: DsSpace.s),
             child: Text(
-              'No texture layers attached. Import an equirectangular PNG below.',
+              'No map layers attached. Import an equirectangular PNG or JPEG below.',
               style: uiTextStyle(size: 13, color: colors.muted),
             ),
           )
@@ -76,27 +78,7 @@ class _DaySeven3DSettingsFormState
                 key: const Key('dayseven-3d-import-layer-button'),
                 variant: DsButtonVariant.primary,
                 onPressed: _importing ? null : _importLayer,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_importing) ...[
-                      SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colors.faint,
-                        ),
-                      ),
-                      const SizedBox(width: DsSpace.row),
-                    ],
-                    Text(
-                      _importing
-                          ? 'Importing…'
-                          : 'Import ${_selectedImportType.label}',
-                    ),
-                  ],
-                ),
+                child: Text(_importing ? 'Importing…' : 'Import map'),
               ),
             ),
             const SizedBox(width: DsSpace.sm),
@@ -292,6 +274,45 @@ class _DaySeven3DSettingsFormState
 
         const SizedBox(height: DsSpace.xl),
 
+        // The pixels remain separate from `.unearth` geographic metadata.
+        _buildSectionTitle('Export source map', colors),
+        const SizedBox(height: DsSpace.sm),
+        Row(
+          children: [
+            Expanded(
+              child: DsButton(
+                key: const Key('export-map-png-button'),
+                variant: DsButtonVariant.secondary,
+                onPressed: model.layers.isEmpty
+                    ? null
+                    : () => _exportMap(
+                        open.world.title,
+                        model,
+                        WorldMapImageFormat.png,
+                      ),
+                child: const Text('Export PNG'),
+              ),
+            ),
+            const SizedBox(width: DsSpace.sm),
+            Expanded(
+              child: DsButton(
+                key: const Key('export-map-jpeg-button'),
+                variant: DsButtonVariant.secondary,
+                onPressed: model.layers.isEmpty
+                    ? null
+                    : () => _exportMap(
+                        open.world.title,
+                        model,
+                        WorldMapImageFormat.jpeg,
+                      ),
+                child: const Text('Export JPEG'),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: DsSpace.xl),
+
         // --- Export 3D World ---
         _buildSectionTitle('Export 3D World', colors),
         const SizedBox(height: DsSpace.sm),
@@ -404,6 +425,44 @@ class _DaySeven3DSettingsFormState
     }
   }
 
+  Future<void> _exportMap(
+    String title,
+    DaySeven3DModel model,
+    WorldMapImageFormat format,
+  ) async {
+    try {
+      final layer = _sourceMapLayer(model);
+      final session = ref.read(kbSessionProvider);
+      if (layer == null || session == null) {
+        throw const FormatException('Import a source map before exporting.');
+      }
+      final base = title.trim().isEmpty ? 'World' : sanitizeNodeName(title);
+      final location = await getSaveLocation(
+        suggestedName: '$base.${format.extension}',
+        acceptedTypeGroups: [
+          XTypeGroup(
+            label: format == WorldMapImageFormat.png ? 'PNG' : 'JPEG',
+            extensions: [format.extension],
+            uniformTypeIdentifiers: [
+              format == WorldMapImageFormat.png ? 'public.png' : 'public.jpeg',
+            ],
+          ),
+        ],
+      );
+      if (location == null || !mounted) return;
+      final source = await File(session.kb.assetPathFor(layer.assetId))
+          .readAsBytes();
+      final output = const WorldMapExporter().transcode(source, format: format);
+      await File(location.path).writeAsBytes(output, flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Exported to ${location.path}')));
+    } on Object catch (error) {
+      _showError('Export failed: $error');
+    }
+  }
+
   Widget _buildSectionTitle(String title, DsColors colors) => Text(
     title,
     style: uiTextStyle(size: 11, weight: 600, color: colors.muted),
@@ -428,9 +487,9 @@ class _DaySeven3DSettingsFormState
       final file = await openFile(
         acceptedTypeGroups: const [
           XTypeGroup(
-            label: 'PNG',
-            extensions: ['png'],
-            uniformTypeIdentifiers: ['public.png'],
+            label: 'PNG or JPEG',
+            extensions: ['png', 'jpg', 'jpeg'],
+            uniformTypeIdentifiers: ['public.png', 'public.jpeg'],
           ),
         ],
       );
@@ -477,11 +536,21 @@ class _DaySeven3DSettingsFormState
     BuildContext context,
     WorldController controller,
   ) async {
-    await showLandmarkDialog(
-      context: context,
-      controller: controller,
-    );
+    await showLandmarkDialog(context: context, controller: controller);
   }
+}
+
+Model3DLayer? _sourceMapLayer(DaySeven3DModel model) {
+  final sourceId = model.sourceMapLayerId;
+  if (sourceId != null) {
+    for (final layer in model.layers) {
+      if (layer.id == sourceId) return layer;
+    }
+  }
+  for (final layer in model.layers) {
+    if (layer.visible) return layer;
+  }
+  return null;
 }
 
 class _ModelLayerRow extends ConsumerWidget {

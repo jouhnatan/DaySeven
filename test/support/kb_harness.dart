@@ -57,11 +57,26 @@ Future<({Directory temp, Directory support})> createTempDirs(
 
   addTearDown(() async {
     await clearTempMocks();
-    if (await temp.exists()) await temp.delete(recursive: true);
-    if (await support.exists()) await support.delete(recursive: true);
+    await _deleteDirectoryEventually(temp);
+    await _deleteDirectoryEventually(support);
   });
 
   return (temp: temp, support: support);
+}
+
+Future<void> _deleteDirectoryEventually(Directory directory) async {
+  for (var attempt = 0; attempt < 10; attempt++) {
+    if (!await directory.exists()) return;
+    try {
+      await directory.delete(recursive: true);
+      return;
+    } on FileSystemException {
+      if (attempt == 9) rethrow;
+      // File watchers and SQLite can release their final handle just after the
+      // provider container is disposed, especially on Windows.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
 }
 
 /// Removes the `path_provider` mock handler.

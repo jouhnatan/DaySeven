@@ -12,6 +12,7 @@ on:
       - "scripts/pubspec_version.ps1"
       - "rust/**"
       - "rust_builder/**"
+      - "test/**"
       - "windows/**"
       - "pubspec.lock"
       - "pubspec.yaml"
@@ -69,6 +70,12 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: flutter pub get
+
+      - name: Analyze and test World
+        shell: pwsh
+        run: |
+          flutter analyze
+          flutter test test/features/world
 
       - name: Build archive
         shell: pwsh

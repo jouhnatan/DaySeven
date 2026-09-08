@@ -3,13 +3,14 @@ library;
 
 import 'package:flutter/foundation.dart';
 
-/// The dimensions and text carried by an imported PNG.
+/// The dimensions and metadata carried by an imported World map image.
 @immutable
 class WorldMetadata {
   const WorldMetadata({
     required this.width,
     required this.height,
     required this.isGreyscale,
+    this.mediaType = 'image/png',
     this.planetCode,
     this.textChunks = const {},
   });
@@ -17,6 +18,7 @@ class WorldMetadata {
   final int width;
   final int height;
   final bool isGreyscale;
+  final String mediaType;
   final String? planetCode;
   final Map<String, String> textChunks;
 
@@ -28,6 +30,7 @@ class WorldMetadata {
     'width': width,
     'height': height,
     'isGreyscale': isGreyscale,
+    'mediaType': mediaType,
     if (planetCode != null && planetCode!.isNotEmpty) 'planetCode': planetCode,
     if (textChunks.isNotEmpty) 'textChunks': textChunks,
   };
@@ -36,6 +39,7 @@ class WorldMetadata {
     width: _int(json['width']) ?? 0,
     height: _int(json['height']) ?? 0,
     isGreyscale: json['isGreyscale'] == true,
+    mediaType: _nonEmpty(json['mediaType']) ?? 'image/png',
     planetCode: _nonEmpty(json['planetCode']),
     textChunks: _stringMap(json['textChunks']),
   );

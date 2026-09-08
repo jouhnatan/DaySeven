@@ -96,11 +96,7 @@ void main() {
 
   test('safely reads PNGs with more than 1000 chunks', () async {
     final file = await writePng(
-      _png(
-        chunks: [
-          for (var i = 0; i < 1050; i++) _chunk('IDAT', const []),
-        ],
-      ),
+      _png(chunks: [for (var i = 0; i < 1050; i++) _chunk('IDAT', const [])]),
     );
 
     final metadata = await PngMetadataReader().read(file);

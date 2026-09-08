@@ -25,14 +25,16 @@ class World {
     this.engineId,
     this.layers = const [],
     this.engineSettings = const {},
-    this.model3d,
-  });
+    this.requiresMigration = false,
+    DaySeven3DModel? model,
+    @Deprecated('Use model') DaySeven3DModel? model3d,
+  }) : model = model ?? model3d;
 
   /// The `kind` this object is written under.
   static const String kind = 'world';
 
   /// The schema this app writes.
-  static const int version = 2;
+  static const int version = 3;
 
   final String id;
   final String title;
@@ -43,9 +45,13 @@ class World {
   /// Raw settings by engine id, so an engine this build does not know can
   /// still travel through a save untouched.
   final Map<String, Map<String, Object?>> engineSettings;
+  final bool requiresMigration;
 
-  /// The native DaySeven 3D model metadata, stored directly in this `.unearth` file.
-  final DaySeven3DModel? model3d;
+  /// Geographic data shared by the flat map and globe renderers.
+  final DaySeven3DModel? model;
+
+  @Deprecated('Use model')
+  DaySeven3DModel? get model3d => model;
 
   World copyWith({
     String? id,
@@ -55,6 +61,8 @@ class World {
     bool clearEngineId = false,
     List<WorldLayer>? layers,
     Map<String, Map<String, Object?>>? engineSettings,
+    bool? requiresMigration,
+    DaySeven3DModel? model,
     DaySeven3DModel? model3d,
     bool clearModel3d = false,
   }) => World(
@@ -64,7 +72,8 @@ class World {
     engineId: clearEngineId ? null : (engineId ?? this.engineId),
     layers: layers ?? this.layers,
     engineSettings: engineSettings ?? this.engineSettings,
-    model3d: clearModel3d ? null : (model3d ?? this.model3d),
+    requiresMigration: requiresMigration ?? this.requiresMigration,
+    model: clearModel3d ? null : (model ?? model3d ?? this.model),
   );
 
   Map<String, Object?> toJson() => {
@@ -72,15 +81,8 @@ class World {
     'version': version,
     'id': id,
     'title': title,
-    'dimension': dimension.id,
-    if (engineId != null && engineId!.isNotEmpty) 'engineId': engineId,
-    if (layers.isNotEmpty)
-      'layers': [for (final layer in layers) layer.toJson()],
-    if (engineSettings.isNotEmpty)
-      'engineSettings': {
-        for (final entry in engineSettings.entries) entry.key: entry.value,
-      },
-    if (model3d case final model3d?) 'model3d': model3d.toJson(),
+    'renderMode': dimension.id,
+    if (model case final model?) 'model': model.toJson(),
   };
 
   static World fromJson(Map<String, Object?> json) {
@@ -112,23 +114,77 @@ class World {
       }
     }
 
-    DaySeven3DModel? model3d;
-    final rawModel3d = json['model3d'];
-    if (rawModel3d is Map) {
-      model3d = DaySeven3DModel.fromJson(Map<String, Object?>.from(rawModel3d));
+    DaySeven3DModel? model;
+    final rawModel = json['model'] ?? json['model3d'];
+    if (rawModel is Map) {
+      model = DaySeven3DModel.fromJson(Map<String, Object?>.from(rawModel));
+    }
+    if (model != null &&
+        model.sourceMapLayerId == null &&
+        model.layers.isNotEmpty) {
+      model = model.copyWith(
+        sourceMapLayerId: _preferredSourceMapLayerId(model.layers),
+      );
+    }
+
+    // v2 Orogen layers become ordinary shared map layers. Their asset files
+    // are referenced in place; migration never rewrites or deletes an image.
+    if (layers.isNotEmpty) {
+      final current = model ?? DaySeven3DModel();
+      final existingIds = {for (final layer in current.layers) layer.id};
+      final migrated = <Model3DLayer>[
+        ...current.layers,
+        for (final layer in layers)
+          if (!existingIds.contains(layer.id))
+            Model3DLayer(
+              id: layer.id,
+              name: layer.kind.label,
+              type: switch (layer.kind) {
+                WorldLayerKind.heightmap ||
+                WorldLayerKind.landHeightmap => Model3DLayerType.heightmap,
+                WorldLayerKind.satellite => Model3DLayerType.albedo,
+                WorldLayerKind.climate => Model3DLayerType.biomes,
+                WorldLayerKind.landMask => Model3DLayerType.specular,
+              },
+              assetId: layer.assetId,
+              visible: layer.visible,
+            ),
+      ];
+      model = current.copyWith(
+        layers: migrated,
+        sourceMapLayerId:
+            current.sourceMapLayerId ?? _preferredSourceMapLayerId(migrated),
+      );
     }
 
     return World(
       id: _string(json['id'], fallback: 'world'),
       title: _string(json['title']),
       dimension:
-          WorldDimension.parse(json['dimension']) ?? WorldDimension.threeD,
+          WorldDimension.parse(json['renderMode'] ?? json['dimension']) ??
+          WorldDimension.threeD,
       engineId: _nonEmpty(json['engineId']),
       layers: layers,
       engineSettings: _engineSettings(json['engineSettings']),
-      model3d: model3d,
+      requiresMigration:
+          declaredVersion < version ||
+          json.containsKey('engineId') ||
+          json.containsKey('layers') ||
+          json.containsKey('engineSettings') ||
+          json.containsKey('model3d'),
+      model: model,
     );
   }
+}
+
+String? _preferredSourceMapLayerId(List<Model3DLayer> layers) {
+  for (final layer in layers.reversed) {
+    if (layer.visible && layer.type == Model3DLayerType.albedo) return layer.id;
+  }
+  for (final layer in layers.reversed) {
+    if (layer.visible) return layer.id;
+  }
+  return null;
 }
 
 String _string(Object? value, {String fallback = ''}) =>

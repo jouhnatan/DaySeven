@@ -1,4 +1,4 @@
-/// The native DaySeven 3D model metadata stored in a `.unearth` file.
+/// The geographic World model shared by the 2D map and 3D globe.
 ///
 /// Designed to be human-readable and standard JSON so it can be exported and
 /// manipulated in third-party 3D tools and libraries (Blender, Godot, Three.js,
@@ -19,17 +19,19 @@ class DaySeven3DModel {
     this.geometry = const PlanetGeometry(),
     this.astronomy = const PlanetAstronomy(),
     this.environment = const PlanetEnvironment(),
+    this.sourceMapLayerId,
     List<Model3DLayer> layers = const [],
     List<Model3DLandmark> landmarks = const [],
     List<Model3DRegion> regions = const [],
-  })  : layers = List.unmodifiable(layers),
-        landmarks = List.unmodifiable(landmarks),
-        regions = List.unmodifiable(regions);
+  }) : layers = List.unmodifiable(layers),
+       landmarks = List.unmodifiable(landmarks),
+       regions = List.unmodifiable(regions);
 
   final String schema;
   final PlanetGeometry geometry;
   final PlanetAstronomy astronomy;
   final PlanetEnvironment environment;
+  final String? sourceMapLayerId;
   final List<Model3DLayer> layers;
   final List<Model3DLandmark> landmarks;
   final List<Model3DRegion> regions;
@@ -39,6 +41,8 @@ class DaySeven3DModel {
     PlanetGeometry? geometry,
     PlanetAstronomy? astronomy,
     PlanetEnvironment? environment,
+    String? sourceMapLayerId,
+    bool clearSourceMapLayerId = false,
     List<Model3DLayer>? layers,
     List<Model3DLandmark>? landmarks,
     List<Model3DRegion>? regions,
@@ -47,6 +51,9 @@ class DaySeven3DModel {
     geometry: geometry ?? this.geometry,
     astronomy: astronomy ?? this.astronomy,
     environment: environment ?? this.environment,
+    sourceMapLayerId: clearSourceMapLayerId
+        ? null
+        : (sourceMapLayerId ?? this.sourceMapLayerId),
     layers: layers ?? this.layers,
     landmarks: landmarks ?? this.landmarks,
     regions: regions ?? this.regions,
@@ -57,6 +64,8 @@ class DaySeven3DModel {
     'geometry': geometry.toJson(),
     'astronomy': astronomy.toJson(),
     'environment': environment.toJson(),
+    if (sourceMapLayerId != null && sourceMapLayerId!.isNotEmpty)
+      'sourceMapLayerId': sourceMapLayerId,
     if (layers.isNotEmpty) 'layers': [for (final l in layers) l.toJson()],
     if (landmarks.isNotEmpty)
       'landmarks': [for (final lm in landmarks) lm.toJson()],
@@ -116,6 +125,7 @@ class DaySeven3DModel {
       geometry: PlanetGeometry.fromJson(_map(json['geometry'])),
       astronomy: PlanetAstronomy.fromJson(_map(json['astronomy'])),
       environment: PlanetEnvironment.fromJson(_map(json['environment'])),
+      sourceMapLayerId: _optionalString(json['sourceMapLayerId']),
       layers: layers,
       landmarks: landmarks,
       regions: regions,
@@ -516,9 +526,9 @@ class Model3DLandmark {
     this.color = 'amber',
     this.document,
     this.description,
-  })  : latitude = latitude.isFinite ? latitude.clamp(-90.0, 90.0) : 0.0,
-        longitude = longitude.isFinite ? longitude.clamp(-180.0, 180.0) : 0.0,
-        elevationMeters = elevationMeters.isFinite ? elevationMeters : 0.0;
+  }) : latitude = latitude.isFinite ? latitude.clamp(-90.0, 90.0) : 0.0,
+       longitude = longitude.isFinite ? longitude.clamp(-180.0, 180.0) : 0.0,
+       elevationMeters = elevationMeters.isFinite ? elevationMeters : 0.0;
 
   final String id;
   final String name;
@@ -614,7 +624,7 @@ class Model3DRegion {
            if (pt.length >= 2 && pt[0].isFinite && pt[1].isFinite)
              List<double>.unmodifiable(<double>[
                pt[0].clamp(-180.0, 180.0), // longitude
-               pt[1].clamp(-90.0, 90.0),   // latitude
+               pt[1].clamp(-90.0, 90.0), // latitude
              ]),
        ]);
 

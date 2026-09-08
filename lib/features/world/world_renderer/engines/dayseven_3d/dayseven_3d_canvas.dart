@@ -167,7 +167,8 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
                           deltaPitch: -details.focalPointDelta.dy * sensitivity,
                         );
                         final scaleChanged =
-                            details.scale > 0 && details.scale != _lastGestureScale;
+                            details.scale > 0 &&
+                            details.scale != _lastGestureScale;
                         if (details.pointerCount > 1 || scaleChanged) {
                           if (scaleChanged) {
                             _viewport.zoomBy(details.scale / _lastGestureScale);
@@ -235,8 +236,9 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
                           ),
                           decoration: BoxDecoration(
                             color: colors.island.withValues(alpha: 0.9),
-                            borderRadius:
-                                const BorderRadius.all(DsRadius.control),
+                            borderRadius: const BorderRadius.all(
+                              DsRadius.control,
+                            ),
                             border: Border.all(color: colors.fern),
                           ),
                           child: Text(
@@ -293,15 +295,12 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
                               horizontal: DsSpace.xs,
                               vertical: DsSpace.xxs,
                             ),
-                            onPressed: () => ref
-                                .read(dropPinModeProvider.notifier)
-                                .state = false,
+                            onPressed: () =>
+                                ref.read(dropPinModeProvider.notifier).state =
+                                    false,
                             child: Text(
                               'Cancel',
-                              style: uiTextStyle(
-                                size: 11,
-                                color: colors.muted,
-                              ),
+                              style: uiTextStyle(size: 11, color: colors.muted),
                             ),
                           ),
                         ],
@@ -646,6 +645,12 @@ class _DaySeven3DGlobePainter extends CustomPainter {
 }
 
 Model3DLayer? _firstVisibleLayer(DaySeven3DModel model) {
+  final sourceId = model.sourceMapLayerId;
+  if (sourceId != null) {
+    for (final layer in model.layers) {
+      if (layer.id == sourceId && layer.visible) return layer;
+    }
+  }
   for (final layer in model.layers) {
     if (layer.visible) return layer;
   }
@@ -684,8 +689,8 @@ class _DaySeven3DControls extends ConsumerWidget {
             child: Icon(
               icon,
               size: 16,
-              color: iconColor ??
-                  (onPressed == null ? colors.faint : colors.text),
+              color:
+                  iconColor ?? (onPressed == null ? colors.faint : colors.text),
             ),
           ),
         );

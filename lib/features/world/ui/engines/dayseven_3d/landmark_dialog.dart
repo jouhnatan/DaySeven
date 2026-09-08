@@ -23,15 +23,15 @@ Future<void> showLandmarkDialog({
     text: existing != null
         ? existing.latitude.toStringAsFixed(2)
         : (initialLatitude != null
-            ? initialLatitude.toStringAsFixed(2)
-            : '0.0'),
+              ? initialLatitude.toStringAsFixed(2)
+              : '0.0'),
   );
   final lonController = TextEditingController(
     text: existing != null
         ? existing.longitude.toStringAsFixed(2)
         : (initialLongitude != null
-            ? initialLongitude.toStringAsFixed(2)
-            : '0.0'),
+              ? initialLongitude.toStringAsFixed(2)
+              : '0.0'),
   );
   final docController = TextEditingController(text: existing?.document ?? '');
   final descController = TextEditingController(

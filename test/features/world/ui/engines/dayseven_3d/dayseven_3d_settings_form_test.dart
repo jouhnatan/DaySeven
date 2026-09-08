@@ -48,7 +48,7 @@ void main() {
   ) async {
     final container = await pumpForm(tester);
 
-    expect(find.text('3D Model & Environment'), findsOneWidget);
+    expect(find.text('Map & landmarks'), findsOneWidget);
     expect(find.text('Texture Layers'), findsOneWidget);
     expect(find.text('Environment'), findsOneWidget);
     expect(find.text('Planetary Geometry'), findsOneWidget);
