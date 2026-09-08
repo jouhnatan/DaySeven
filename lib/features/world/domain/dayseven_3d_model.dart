@@ -1,8 +1,7 @@
 /// The geographic World model shared by the 2D map and 3D globe.
 ///
-/// Designed to be human-readable and standard JSON so it can be exported and
-/// manipulated in third-party 3D tools and libraries (Blender, Godot, Three.js,
-/// QGIS).
+/// Stored as human-readable JSON in the World document so model changes remain
+/// inspectable and migration-safe.
 library;
 
 import 'package:flutter/foundation.dart';

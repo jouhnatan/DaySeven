@@ -80,7 +80,7 @@ class _WorldSettingsPaneState extends ConsumerState<WorldSettingsPane> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: DsSpace.xl),
+                  const SizedBox(height: DsSpace.sm),
                   const DaySeven3DSettingsForm(),
                 ],
               ),

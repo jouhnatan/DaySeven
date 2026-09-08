@@ -16,8 +16,6 @@ import 'package:dayseven/features/world/application/world_controller.dart';
 import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
 import 'package:dayseven/features/world/domain/world_layer.dart';
-import 'package:dayseven/features/world/export/world_3d_exporter.dart';
-import 'package:dayseven/features/world/export/world_map_exporter.dart';
 import 'package:dayseven/features/world/ui/engines/dayseven_3d/landmark_dialog.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';
@@ -169,6 +167,7 @@ class _DaySeven3DSettingsFormState
         ),
         DsSettingRow(
           key: const Key('dayseven-3d-ocean-setting'),
+          first: true,
           label: 'Ocean / Hydrosphere',
           trailing: _compactSwitch(
             context,
@@ -187,6 +186,7 @@ class _DaySeven3DSettingsFormState
         if (model.environment.ocean.enabled)
           DsSettingRow(
             key: const Key('dayseven-3d-sea-level-setting'),
+            first: true,
             label: 'Sea Level',
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -225,6 +225,7 @@ class _DaySeven3DSettingsFormState
           ),
         DsSettingRow(
           key: const Key('dayseven-3d-sun-azimuth-setting'),
+          first: true,
           label: 'Sunlight Direction',
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -277,6 +278,7 @@ class _DaySeven3DSettingsFormState
         ),
         DsSettingRow(
           key: const Key('dayseven-3d-axial-tilt-setting'),
+          first: true,
           label: 'Axial Tilt',
           trailing: Text(
             '${model.astronomy.axialTiltDeg.toStringAsFixed(1)}°',
@@ -317,196 +319,8 @@ class _DaySeven3DSettingsFormState
             _LandmarkRow(landmark: landmark),
             const SizedBox(height: DsSpace.xs),
           ],
-
-        const SizedBox(height: DsSpace.xl),
-
-        // The pixels remain separate from `.unearth` geographic metadata.
-        _buildSectionTitle('Export source map', colors),
-        const SizedBox(height: DsSpace.sm),
-        Row(
-          children: [
-            Expanded(
-              child: DsButton(
-                key: const Key('export-map-png-button'),
-                variant: DsButtonVariant.secondary,
-                onPressed: model.layers.isEmpty
-                    ? null
-                    : () => _exportMap(
-                        open.world.title,
-                        model,
-                        WorldMapImageFormat.png,
-                      ),
-                child: const Text('Export PNG'),
-              ),
-            ),
-            const SizedBox(width: DsSpace.sm),
-            Expanded(
-              child: DsButton(
-                key: const Key('export-map-jpeg-button'),
-                variant: DsButtonVariant.secondary,
-                onPressed: model.layers.isEmpty
-                    ? null
-                    : () => _exportMap(
-                        open.world.title,
-                        model,
-                        WorldMapImageFormat.jpeg,
-                      ),
-                child: const Text('Export JPEG'),
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: DsSpace.xl),
-
-        // --- Export World ---
-        _buildSectionTitle('Export world', colors),
-        const SizedBox(height: DsSpace.sm),
-        Row(
-          children: [
-            Expanded(
-              child: DsButton(
-                key: const Key('export-model-json-button'),
-                variant: DsButtonVariant.secondary,
-                semanticLabel: 'Export model metadata as JSON',
-                padding: const EdgeInsets.symmetric(
-                  horizontal: DsSpace.xs,
-                  vertical: DsSpace.s,
-                ),
-                onPressed: () => _exportFile(
-                  title: open.world.title,
-                  model: model,
-                  extension: 'json',
-                  typeGroup: const XTypeGroup(
-                    label: 'JSON',
-                    extensions: ['json'],
-                    uniformTypeIdentifiers: ['public.json'],
-                  ),
-                  exporter: (model, title) => const World3DExporter()
-                      .exportModelJson(model, worldTitle: title),
-                ),
-                child: const Text('Export JSON', maxLines: 1),
-              ),
-            ),
-            const SizedBox(width: DsSpace.xs),
-            Expanded(
-              child: DsButton(
-                key: const Key('export-geojson-button'),
-                variant: DsButtonVariant.secondary,
-                semanticLabel: 'Export landmarks and regions as GeoJSON',
-                padding: const EdgeInsets.symmetric(
-                  horizontal: DsSpace.xs,
-                  vertical: DsSpace.s,
-                ),
-                onPressed: () => _exportFile(
-                  title: open.world.title,
-                  model: model,
-                  extension: 'geojson',
-                  typeGroup: const XTypeGroup(
-                    label: 'GeoJSON',
-                    extensions: ['geojson', 'json'],
-                    uniformTypeIdentifiers: ['public.json'],
-                  ),
-                  exporter: (model, title) => const World3DExporter()
-                      .exportGeoJson(model, worldTitle: title),
-                ),
-                child: const Text('Export GeoJSON', maxLines: 1),
-              ),
-            ),
-            const SizedBox(width: DsSpace.xs),
-            Expanded(
-              child: DsButton(
-                key: const Key('export-threejs-html-button'),
-                variant: DsButtonVariant.secondary,
-                semanticLabel: 'Export standalone WebGL 3D Viewer HTML',
-                padding: const EdgeInsets.symmetric(
-                  horizontal: DsSpace.xs,
-                  vertical: DsSpace.s,
-                ),
-                onPressed: () => _exportFile(
-                  title: open.world.title,
-                  model: model,
-                  extension: 'html',
-                  typeGroup: const XTypeGroup(
-                    label: 'HTML',
-                    extensions: ['html', 'htm'],
-                    uniformTypeIdentifiers: ['public.html'],
-                  ),
-                  exporter: (model, title) => const World3DExporter()
-                      .exportStandaloneThreeJsHtml(model, worldTitle: title),
-                ),
-                child: const Text('Export 3D HTML', maxLines: 1),
-              ),
-            ),
-          ],
-        ),
       ],
     );
-  }
-
-  Future<void> _exportFile({
-    required String title,
-    required DaySeven3DModel model,
-    required String extension,
-    required XTypeGroup typeGroup,
-    required String Function(DaySeven3DModel model, String title) exporter,
-  }) async {
-    try {
-      final base = title.trim().isEmpty ? 'World' : sanitizeNodeName(title);
-      final cleanTitle = base.isEmpty ? 'World' : base;
-      final location = await getSaveLocation(
-        suggestedName: '$cleanTitle.$extension',
-        acceptedTypeGroups: [typeGroup],
-      );
-      if (location == null || !mounted) return;
-
-      final content = exporter(model, cleanTitle);
-      await File(location.path).writeAsString(content);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Exported to ${location.path}')));
-    } catch (e) {
-      _showError('Export failed: $e');
-    }
-  }
-
-  Future<void> _exportMap(
-    String title,
-    DaySeven3DModel model,
-    WorldMapImageFormat format,
-  ) async {
-    try {
-      final layer = _sourceMapLayer(model);
-      final session = ref.read(kbSessionProvider);
-      if (layer == null || session == null) {
-        throw const FormatException('Import a source map before exporting.');
-      }
-      final base = title.trim().isEmpty ? 'World' : sanitizeNodeName(title);
-      final location = await getSaveLocation(
-        suggestedName: '$base.${format.extension}',
-        acceptedTypeGroups: [
-          XTypeGroup(
-            label: format == WorldMapImageFormat.png ? 'PNG' : 'JPEG',
-            extensions: [format.extension],
-            uniformTypeIdentifiers: [
-              format == WorldMapImageFormat.png ? 'public.png' : 'public.jpeg',
-            ],
-          ),
-        ],
-      );
-      if (location == null || !mounted) return;
-      final source = await File(session.kb.assetPathFor(layer.assetId))
-          .readAsBytes();
-      final output = const WorldMapExporter().transcode(source, format: format);
-      await File(location.path).writeAsBytes(output, flush: true);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Exported to ${location.path}')));
-    } on Object catch (error) {
-      _showError('Export failed: $error');
-    }
   }
 
   Widget _buildSectionTitle(String title, DsColors colors) =>
