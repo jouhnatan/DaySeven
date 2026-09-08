@@ -7,7 +7,6 @@ import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
 import 'package:dayseven/features/world/domain/world.dart';
 import 'package:dayseven/features/world/ui/engines/dayseven_3d/dayseven_3d_settings_form.dart';
-import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 void main() {
@@ -55,10 +54,8 @@ void main() {
     expect(find.text('Environment'), findsOneWidget);
     expect(find.text('Planetary Geometry'), findsOneWidget);
     expect(find.text('Landmarks (0)'), findsOneWidget);
-    expect(find.text('Export world'), findsOneWidget);
-    expect(find.byKey(const Key('export-model-json-button')), findsOneWidget);
-    expect(find.byKey(const Key('export-geojson-button')), findsOneWidget);
-    expect(find.byKey(const Key('export-threejs-html-button')), findsOneWidget);
+    expect(find.text('Export source map'), findsNothing);
+    expect(find.text('Export world'), findsNothing);
 
     final environmentHeader = tester.widget<Text>(find.text('Environment'));
     expect(environmentHeader.style!.fontFamily, kUiHeaderFontFamily);
@@ -228,36 +225,4 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 700));
   });
-
-  testWidgets(
-    'export buttons expose accessible semantic labels and are interactive',
-    (tester) async {
-      await pumpForm(tester);
-
-      final jsonBtn = find.byKey(const Key('export-model-json-button'));
-      final geoJsonBtn = find.byKey(const Key('export-geojson-button'));
-      final htmlBtn = find.byKey(const Key('export-threejs-html-button'));
-
-      await tester.ensureVisible(jsonBtn);
-      await tester.pumpAndSettle();
-
-      expect(jsonBtn, findsOneWidget);
-      expect(geoJsonBtn, findsOneWidget);
-      expect(htmlBtn, findsOneWidget);
-
-      expect(
-        tester.widget<DsButton>(jsonBtn).semanticLabel,
-        'Export model metadata as JSON',
-      );
-      expect(
-        tester.widget<DsButton>(geoJsonBtn).semanticLabel,
-        'Export landmarks and regions as GeoJSON',
-      );
-      expect(
-        tester.widget<DsButton>(htmlBtn).semanticLabel,
-        'Export standalone WebGL 3D Viewer HTML',
-      );
-      await tester.pump(const Duration(milliseconds: 700));
-    },
-  );
 }
