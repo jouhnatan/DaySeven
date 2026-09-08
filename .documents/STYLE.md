@@ -30,6 +30,7 @@ none may be added.
 | `sage` | `#B7CDB6` | App mark, avatars, illustration, chart fills. |
 | `onSage` | `#2A4433` | Text on sage. |
 | `slate` | `#3E5A56` | Links. |
+| `sapphire` | `#3E6FA8` | Internal document-link text and page icons. |
 | `success` | `#3A6E4C` | Positive state. |
 | `warning` | `#8A6A18` | Attention. Never below 14px. |
 | `warningWash` | `#F2E7C4` | Warning banner fill; text on it is `ink`. |
@@ -50,7 +51,7 @@ none may be added.
   seam — never a gap, never two abutting borders (§3).
 
 Contrast (measured): ink/paper 15.4:1 · muted/paper 5.7:1 · onFern/fern 11.3:1 ·
-slate/paper 7.0:1 · success/paper 5.6:1 · danger/paper 8.4:1 · warning/paper 4.7:1.
+slate/paper 7.0:1 · sapphire/paper 4.84:1 · success/paper 5.6:1 · danger/paper 8.4:1 · warning/paper 4.7:1.
 Non-text (borders only): line/paper 1.85:1 · hairline/paper 1.47:1.
 
 ---

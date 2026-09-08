@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/kb/document_links.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
@@ -70,7 +71,7 @@ class _PreviewBlock extends StatelessWidget {
         content = _richText(
           heading,
           headingStyle(heading.level, colors.text),
-          colors.link,
+          colors,
         );
       case final ListItemBlock item:
         final marker = item.checked == null
@@ -90,7 +91,7 @@ class _PreviewBlock extends StatelessWidget {
                 child: _richText(
                   item,
                   editorTextStyle(size: 14, height: 1.5, color: colors.text),
-                  colors.link,
+                  colors,
                 ),
               ),
             ],
@@ -110,14 +111,14 @@ class _PreviewBlock extends StatelessWidget {
               italic: true,
               color: colors.text,
             ),
-            colors.link,
+            colors,
           ),
         );
       case final TextBlock text:
         content = _richText(
           text,
           editorTextStyle(size: 14, height: 1.5, color: colors.text),
-          colors.link,
+          colors,
         );
       case final CodeBlock code:
         content = Container(
@@ -144,9 +145,14 @@ class _PreviewBlock extends StatelessWidget {
                   for (final cell in row)
                     Padding(
                       padding: const EdgeInsets.all(5),
-                      child: Text(
-                        cell.map((span) => span.text).join(),
-                        style: editorTextStyle(size: 11, color: colors.text),
+                      child: Text.rich(
+                        TextSpan(
+                          children: _inlineSpans(
+                            cell,
+                            editorTextStyle(size: 11, color: colors.text),
+                            colors,
+                          ),
+                        ),
                       ),
                     ),
                 ],
@@ -176,17 +182,49 @@ class _PreviewBlock extends StatelessWidget {
     );
   }
 
-  Widget _richText(TextBlock block, TextStyle base, Color linkColor) =>
+  Widget _richText(TextBlock block, TextStyle base, DsColors colors) =>
       Text.rich(
-        TextSpan(
-          children: [
-            for (final span in block.spans)
-              TextSpan(
-                text: span.text,
-                style: styleFor(span, base, linkColor: linkColor),
-              ),
-          ],
-        ),
+        TextSpan(children: _inlineSpans(block.spans, base, colors)),
         textAlign: _textAlign,
       );
+}
+
+List<InlineSpan> _inlineSpans(
+  List<TextSpanNode> spans,
+  TextStyle base, [
+  DsColors? colors,
+]) {
+  final documentColor = colors?.documentLink ?? CF.sapphire;
+  final linkColor = colors?.link ?? CF.slate;
+  return [
+    for (final span in spans)
+      if (isDocumentLinkHref(span.href))
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.description_outlined,
+                size: base.fontSize ?? 14,
+                color: documentColor,
+              ),
+              const SizedBox(width: 3),
+              Text(
+                span.text,
+                style: styleFor(span.copyWith(href: (_) => null), base)
+                    .copyWith(
+                      color: documentColor,
+                      decoration: TextDecoration.none,
+                    ),
+              ),
+            ],
+          ),
+        )
+      else
+        TextSpan(
+          text: span.text,
+          style: styleFor(span, base, linkColor: linkColor),
+        ),
+  ];
 }

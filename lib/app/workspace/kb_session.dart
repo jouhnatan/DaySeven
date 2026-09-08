@@ -10,8 +10,10 @@ import 'package:path/path.dart' as p;
 
 import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
+import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/blocks/search_index.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/shared/kb/document_links.dart';
 import 'package:dayseven/shared/kb/folder_lock.dart';
 import 'package:dayseven/shared/kb/paths.dart';
 
@@ -111,7 +113,9 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
   ///
   /// This changes only the tree and search index. The two synchronization
   /// reads that intentionally ignore this view setting remain untouched.
-  @Deprecated('Workspace metadata is hidden by default and no longer toggle-able.')
+  @Deprecated(
+    'Workspace metadata is hidden by default and no longer toggle-able.',
+  )
   Future<void> setWorkspaceMetadataVisible(bool visible) async {
     _showMetadata = visible;
     final session = state.valueOrNull;
@@ -249,10 +253,21 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
     final open = _ref.read(documentControllerProvider);
     final movesOpenDocument =
         open != null && isPathAtOrBelow(open.relativePath, relativePath);
-    if (movesOpenDocument) await documentController.flush();
+    // The open document may contain a backlink to the item being moved even
+    // when it is not itself inside that item. Persist it before taking the
+    // rewrite snapshot so no unsaved text can be replaced by an older copy.
+    if (open != null) await documentController.flush();
+
+    final documentsBeforeMove = await _readDocuments(session);
 
     final destination = await relocate(session);
     if (destination == relativePath) return destination;
+
+    final rewritten = rewriteDocumentLinksForMove(
+      documents: documentsBeforeMove,
+      fromPath: relativePath,
+      toPath: destination,
+    );
 
     // A moved folder takes a whole subtree of paths with it, so the index is
     // rebuilt; a single document only needs its own row repointed.
@@ -263,6 +278,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
       // in the index at all, so moving one leaves the index alone.
       await session.index.rebuild();
     }
+    await _writeRewrittenDocuments(session, rewritten);
 
     if (open != null && movesOpenDocument) {
       documentController.relocate(
@@ -270,6 +286,7 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
         relocatePath(open.relativePath, from: relativePath, to: destination),
       );
     }
+    _replaceOpenDocumentIfRewritten(rewritten);
 
     final store = await _ref.read(appStoreProvider.future);
     await store.noteDocumentsMoved(
@@ -291,7 +308,13 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
     final documentController = _ref.read(documentControllerProvider.notifier);
     final wasOpen =
         _ref.read(documentControllerProvider)?.relativePath == relativePath;
-    if (wasOpen) await documentController.flush();
+    // A different open document may refer to this one. Persist it before the
+    // backlink scan for the same reason as a moved open document.
+    if (_ref.read(documentControllerProvider) != null) {
+      await documentController.flush();
+    }
+
+    final documentsBeforeMove = await _readDocuments(session);
 
     final destination = await session.kb.renameDocument(relativePath, name);
     if (destination == relativePath) {
@@ -301,7 +324,24 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
       session.index.rename(relativePath, destination);
     }
 
-    if (wasOpen) {
+    if (destination != relativePath) {
+      final rewritten = rewriteDocumentLinksForMove(
+        documents: documentsBeforeMove,
+        fromPath: relativePath,
+        toPath: destination,
+        renameMovedDocumentTitle: true,
+      );
+      await _writeRewrittenDocuments(session, rewritten);
+
+      if (wasOpen) {
+        documentController.relocate(
+          relativePath,
+          destination,
+          title: documentTitleFromPath(destination),
+        );
+      }
+      _replaceOpenDocumentIfRewritten(rewritten);
+    } else if (wasOpen) {
       documentController.relocate(
         relativePath,
         destination,
@@ -317,6 +357,39 @@ class KbController extends StateNotifier<AsyncValue<KbSession?>> {
     await store.noteDocumentEdited(session.kb.manifest.kbId, destination);
     await refreshTree();
     return destination;
+  }
+
+  Future<Map<String, BlockDocument>> _readDocuments(KbSession session) async {
+    final documents = <String, BlockDocument>{};
+    for (final path in documentPathsIn(session.tree)) {
+      documents[path] = await session.kb.readDocument(path);
+    }
+    return documents;
+  }
+
+  Future<void> _writeRewrittenDocuments(
+    KbSession session,
+    Map<String, BlockDocument> rewritten,
+  ) async {
+    final store = await _ref.read(appStoreProvider.future);
+    for (final entry in rewritten.entries) {
+      await session.kb.writeDocument(entry.key, entry.value);
+      session.index.upsert(entry.key, entry.value);
+      await store.noteDocumentEdited(session.kb.manifest.kbId, entry.key);
+    }
+  }
+
+  void _replaceOpenDocumentIfRewritten(Map<String, BlockDocument> rewritten) {
+    final open = _ref.read(documentControllerProvider);
+    final document = open == null ? null : rewritten[open.relativePath];
+    if (open == null || document == null) return;
+    _ref
+        .read(documentControllerProvider.notifier)
+        .replacePersistedDocument(
+          relativePath: open.relativePath,
+          previousDocumentId: open.document.id,
+          document: document,
+        );
   }
 
   /// Deletes one document or folder and clears every local reference to it.

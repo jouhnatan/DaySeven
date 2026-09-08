@@ -9,17 +9,26 @@
 library;
 
 import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:dayseven/app/workspace/editing_focus.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
+import 'package:dayseven/shared/kb/document_links.dart';
 import 'package:dayseven/shared/ui/block_text_style.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class RichTextController extends TextEditingController {
-  RichTextController({List<TextSpanNode> spans = const []})
-    : _formats = _explode(spans),
-      super(text: spans.map((s) => s.text).join());
+  RichTextController({
+    List<TextSpanNode> spans = const [],
+    this.onOpenDocumentLink,
+  }) : _formats = _explode(spans),
+       super(text: _displayText(spans));
+
+  static const _documentToken = '\uFFFC';
+
+  final ValueChanged<String>? onOpenDocumentLink;
 
   List<Format> _formats;
 
@@ -27,9 +36,16 @@ class RichTextController extends TextEditingController {
   /// [_formats], this belongs to text that has not been inserted yet.
   Format? _typingFormat;
 
+  static String _displayText(List<TextSpanNode> spans) => spans
+      .map((span) => isDocumentLinkHref(span.href) ? _documentToken : span.text)
+      .join();
+
   static List<Format> _explode(List<TextSpanNode> spans) => [
     for (final span in spans)
-      for (var i = 0; i < span.text.length; i++) span,
+      if (isDocumentLinkHref(span.href))
+        span
+      else
+        for (var i = 0; i < span.text.length; i++) span,
   ];
 
   /// The current content as document spans, with adjacent like-formatted runs
@@ -48,6 +64,12 @@ class RichTextController extends TextEditingController {
 
     for (var i = 0; i < text.length; i++) {
       final format = i < _formats.length ? _formats[i] : kPlainFormat;
+      if (text[i] == _documentToken && isDocumentLinkHref(format.href)) {
+        flush();
+        current = null;
+        out.add(format);
+        continue;
+      }
       if (current == null || !current.sameFormatting(format)) {
         flush();
         current = format;
@@ -64,8 +86,28 @@ class RichTextController extends TextEditingController {
     _formats = _explode(spans);
     _typingFormat = null;
     super.value = TextEditingValue(
-      text: spans.map((s) => s.text).join(),
+      text: _displayText(spans),
       selection: const TextSelection.collapsed(offset: 0),
+    );
+  }
+
+  /// Replaces the current selection with one atomic, portable page link.
+  void insertDocumentLink({required String label, required String href}) {
+    final selection = this.selection.isValid
+        ? this.selection
+        : TextSelection.collapsed(offset: text.length);
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(start, text.length);
+    final nextText = text.replaceRange(start, end, _documentToken);
+    _formats = [
+      ..._formats.take(start),
+      TextSpanNode(text: label, href: href),
+      ..._formats.skip(end),
+    ];
+    _typingFormat = null;
+    super.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: start + 1),
     );
   }
 
@@ -113,13 +155,16 @@ class RichTextController extends TextEditingController {
         case dmp.DIFF_DELETE:
           oldIndex += d.text.length;
         case dmp.DIFF_INSERT:
-          final inherited =
+          var inherited =
               insertedFormat ??
               (out.isNotEmpty
                   ? out.last
                   : (oldIndex < oldFormats.length
                         ? oldFormats[oldIndex]
                         : kPlainFormat));
+          if (isDocumentLinkHref(inherited.href)) {
+            inherited = inherited.copyWith(text: '', href: (_) => null);
+          }
           for (var i = 0; i < d.text.length; i++) {
             out.add(inherited);
           }
@@ -220,8 +265,9 @@ class RichTextController extends TextEditingController {
     required bool withComposing,
   }) {
     final base = style ?? const TextStyle();
-    final linkColor = context.ds.link;
-    final children = <TextSpan>[];
+    final colors = context.ds;
+    final linkColor = colors.link;
+    final children = <InlineSpan>[];
     final buffer = StringBuffer();
     Format? current;
 
@@ -239,6 +285,58 @@ class RichTextController extends TextEditingController {
 
     for (var i = 0; i < text.length; i++) {
       final format = i < _formats.length ? _formats[i] : kPlainFormat;
+      if (text[i] == _documentToken && isDocumentLinkHref(format.href)) {
+        flush();
+        current = null;
+        final tokenOffset = i;
+        final documentStyle = styleFor(
+          format.copyWith(href: (_) => null),
+          base,
+        ).copyWith(color: colors.documentLink, decoration: TextDecoration.none);
+        children.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Semantics(
+              link: true,
+              label: format.text,
+              child: GestureDetector(
+                key: ValueKey('document-link-${format.href}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  final keyboard = HardwareKeyboard.instance;
+                  final follows = defaultTargetPlatform == TargetPlatform.macOS
+                      ? keyboard.isMetaPressed
+                      : keyboard.isControlPressed;
+                  if (follows) {
+                    onOpenDocumentLink?.call(format.href!);
+                  } else {
+                    selection = TextSelection(
+                      baseOffset: tokenOffset,
+                      extentOffset: tokenOffset + 1,
+                    );
+                  }
+                },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.description_outlined,
+                        size: base.fontSize ?? 15,
+                        color: colors.documentLink,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(format.text, style: documentStyle),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
       if (current == null || !current.sameFormatting(format)) {
         flush();
         current = format;
