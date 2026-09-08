@@ -2,6 +2,7 @@ import 'package:dayseven/features/editing_toolbar/ui/controls/alignment_controls
 import 'package:dayseven/features/editing_toolbar/ui/controls/bold_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/divider_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/document_spacing_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/controls/document_link_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/heading_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/italic_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/strikethrough_control.dart';
@@ -163,6 +164,20 @@ void main() {
       'Insert divider',
     );
     await tester.tap(find.byIcon(Icons.horizontal_rule));
+    expect(pressed, isTrue);
+  });
+
+  testWidgets('page link module owns its icon, label, and callback', (
+    tester,
+  ) async {
+    var pressed = false;
+    await tester.pumpWidget(
+      app(DocumentLinkControl(onPressed: () => pressed = true)),
+    );
+
+    expect(find.byIcon(Icons.description_outlined), findsOneWidget);
+    expect(find.byTooltip('Link to page'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.description_outlined));
     expect(pressed, isTrue);
   });
 
