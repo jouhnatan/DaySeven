@@ -6,9 +6,10 @@ import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import 'globe_mesh.dart';
+
 const double kGlobeMinScale = 1.0;
 const double kGlobeMaxScale = 8.0;
-const double kGlobeZoomStep = 1.6;
 
 /// A latitude and longitude found on the visible globe hemisphere.
 class GlobeSphereCoordinates {
@@ -27,39 +28,58 @@ class GlobeSphereCoordinates {
 
 /// Interactive camera state for the headless globe renderer.
 class GlobeViewportController extends ChangeNotifier {
-  double _pitch = 0;
-  double _yaw = 0;
+  GlobeRotation _rotation = GlobeRotation.identity;
+  GlobeRotation _targetRotation = GlobeRotation.identity;
   double _scale = kGlobeMinScale;
+  double _targetScale = kGlobeMinScale;
 
-  double get pitch => _pitch;
-  double get yaw => _yaw;
+  GlobeRotation get rotation => _rotation;
   double get scale => _scale;
+  double get targetScale => _targetScale;
 
-  bool get canZoomIn => _scale < kGlobeMaxScale;
-  bool get canZoomOut => _scale > kGlobeMinScale;
+  bool get isAnimating =>
+      (_scale - _targetScale).abs() > 0.0001 ||
+      _rotation.distanceTo(_targetRotation) > 0.0001;
 
-  /// Rotates the camera, keeping latitude within the visible globe range.
+  /// Adds rotation around the fixed screen axes.
+  ///
+  /// Composing on the left keeps an upward drag visually upward even after the
+  /// globe has been turned horizontally.
   void rotateBy({double deltaPitch = 0, double deltaYaw = 0}) {
-    _pitch = (_pitch + deltaPitch).clamp(-math.pi / 2, math.pi / 2).toDouble();
-    _yaw = _wrapYaw(_yaw + deltaYaw);
+    final pitch = GlobeRotation.axisAngle(
+      const GlobeVector3(1, 0, 0),
+      deltaPitch,
+    );
+    final yaw = GlobeRotation.axisAngle(const GlobeVector3(0, 1, 0), deltaYaw);
+    _targetRotation = yaw * pitch * _targetRotation;
     notifyListeners();
   }
 
-  /// Changes magnification within the fixed globe limits.
+  /// Moves the zoom target within the fixed globe limits.
   void zoomBy(double factor) {
-    _scale = (_scale * factor).clamp(kGlobeMinScale, kGlobeMaxScale).toDouble();
+    if (!factor.isFinite || factor <= 0) return;
+    _targetScale = (_targetScale * factor)
+        .clamp(kGlobeMinScale, kGlobeMaxScale)
+        .toDouble();
     notifyListeners();
   }
 
-  void zoomIn() => zoomBy(kGlobeZoomStep);
+  /// Advances the rendered camera toward its latest input targets.
+  void advance(Duration elapsed) {
+    if (!isAnimating) return;
+    final seconds = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
+    final rotationAmount = 1 - math.exp(-seconds / 0.055);
+    final zoomAmount = 1 - math.exp(-seconds / 0.12);
 
-  void zoomOut() => zoomBy(1 / kGlobeZoomStep);
+    _rotation = GlobeRotation.slerp(_rotation, _targetRotation, rotationAmount);
+    _scale += (_targetScale - _scale) * zoomAmount;
 
-  /// Returns the camera to the centre of the whole globe.
-  void reset() {
-    _pitch = 0;
-    _yaw = 0;
-    _scale = kGlobeMinScale;
+    if (_rotation.distanceTo(_targetRotation) < 0.0001) {
+      _rotation = _targetRotation;
+    }
+    if ((_scale - _targetScale).abs() < 0.0001) {
+      _scale = _targetScale;
+    }
     notifyListeners();
   }
 
@@ -82,31 +102,13 @@ class GlobeViewportController extends ChangeNotifier {
     if (distanceSquared > 1) return null;
 
     final cameraZ = math.sqrt(math.max(0, 1 - distanceSquared));
-    // Undo the same Y-then-X camera rotations used by GlobeMesh.project.
-    final cosYaw = math.cos(_yaw);
-    final sinYaw = math.sin(_yaw);
-    final yawAdjustedX = screenX * cosYaw - cameraZ * sinYaw;
-    final yawAdjustedZ = screenX * sinYaw + cameraZ * cosYaw;
-    final cameraY = -screenY;
-    final cosPitch = math.cos(_pitch);
-    final sinPitch = math.sin(_pitch);
-    final localY = cameraY * cosPitch + yawAdjustedZ * sinPitch;
-    final localX = yawAdjustedX;
-    final localZ = -cameraY * sinPitch + yawAdjustedZ * cosPitch;
+    final local = _rotation.inverseRotate(
+      GlobeVector3(screenX, -screenY, cameraZ),
+    );
 
     return GlobeSphereCoordinates(
-      latitude: math.asin(localY.clamp(-1.0, 1.0).toDouble()),
-      longitude: math.atan2(localX, localZ),
+      latitude: math.asin(local.y.clamp(-1.0, 1.0).toDouble()),
+      longitude: math.atan2(local.x, local.z),
     );
   }
-}
-
-double _wrapYaw(double value) {
-  final fullTurn = 2 * math.pi;
-  var wrapped = (value + math.pi) % fullTurn;
-  if (wrapped < 0) wrapped += fullTurn;
-  wrapped -= math.pi;
-  // Keep the positive boundary representable while retaining [-pi, pi].
-  if (wrapped == -math.pi && value > 0) return math.pi;
-  return wrapped;
 }
