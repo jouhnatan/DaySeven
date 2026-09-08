@@ -96,19 +96,10 @@ void main() {
     expect(find.text('Far Antimeridian'), findsNothing);
     expect(find.byKey(const ValueKey('pin-lm-back')), findsNothing);
 
-    // Zoom and reset controls
-    expect(find.byKey(const Key('dayseven-3d-zoom-in')), findsOneWidget);
-    expect(find.byKey(const Key('dayseven-3d-zoom-out')), findsOneWidget);
-    expect(find.byKey(const Key('dayseven-3d-reset-view')), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('dayseven-3d-zoom-in')));
-    await tester.pumpAndSettle();
-
-    // Reset view becomes active after zoom
-    final resetBtn = find.byKey(const Key('dayseven-3d-reset-view'));
-    expect(resetBtn, findsOneWidget);
-    await tester.tap(resetBtn);
-    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('dayseven-3d-zoom-in')), findsNothing);
+    expect(find.byKey(const Key('dayseven-3d-zoom-out')), findsNothing);
+    expect(find.byKey(const Key('dayseven-3d-reset-view')), findsNothing);
+    expect(find.byKey(const Key('dayseven-3d-drop-pin-toggle')), findsNothing);
   });
 
   testWidgets(
@@ -158,91 +149,6 @@ void main() {
   });
 
   testWidgets(
-    'drop-pin toggle enables mode, displays banner, and can be cancelled',
-    (tester) async {
-      final container = await pumpCanvas(tester);
-
-      expect(container.read(dropPinModeProvider), isFalse);
-      expect(
-        find.byKey(const Key('dayseven-3d-drop-pin-banner')),
-        findsNothing,
-      );
-
-      // Tap toggle button
-      final toggleBtn = find.byKey(const Key('dayseven-3d-drop-pin-toggle'));
-      expect(toggleBtn, findsOneWidget);
-      await tester.tap(toggleBtn);
-      await tester.pumpAndSettle();
-
-      expect(container.read(dropPinModeProvider), isTrue);
-      expect(
-        find.byKey(const Key('dayseven-3d-drop-pin-banner')),
-        findsOneWidget,
-      );
-      expect(
-        find.text('Click anywhere on the globe to drop a landmark pin'),
-        findsOneWidget,
-      );
-
-      // Cancel drop pin mode
-      await tester.tap(find.byKey(const Key('dayseven-3d-cancel-drop-pin')));
-      await tester.pumpAndSettle();
-
-      expect(container.read(dropPinModeProvider), isFalse);
-      expect(
-        find.byKey(const Key('dayseven-3d-drop-pin-banner')),
-        findsNothing,
-      );
-    },
-  );
-
-  testWidgets(
-    'dropping pin on the globe via tap in drop-pin mode opens dialog prefilled with coordinates and adds landmark',
-    (tester) async {
-      final container = await pumpCanvas(tester);
-
-      // Enable drop pin mode
-      await tester.tap(find.byKey(const Key('dayseven-3d-drop-pin-toggle')));
-      await tester.pumpAndSettle();
-
-      // Tap the center of the globe (viewport center is 400, 300 for 800x600 size)
-      await tester.tapAt(const Offset(400, 300));
-      await tester.pumpAndSettle();
-
-      // Dialog should be open
-      expect(find.text('Add Landmark Pin'), findsOneWidget);
-
-      // Coordinates at center should be pre-filled to approximately 0.00, 0.00
-      final latInput = tester.widget<TextField>(
-        find.byKey(const Key('landmark-lat-input')),
-      );
-      final lonInput = tester.widget<TextField>(
-        find.byKey(const Key('landmark-lon-input')),
-      );
-      expect(double.parse(latInput.controller!.text), closeTo(0.0, 0.1));
-      expect(double.parse(lonInput.controller!.text), closeTo(0.0, 0.1));
-
-      // Enter name and save
-      await tester.enterText(
-        find.byKey(const Key('landmark-name-input')),
-        'Equatorial Outpost',
-      );
-      await tester.tap(find.byKey(const Key('landmark-dialog-save-button')));
-      await tester.pumpAndSettle();
-
-      // Verify landmark was added to the model and renders on globe
-      final landmarks = container
-          .read(openWorldProvider)!
-          .world
-          .model3d!
-          .landmarks;
-      expect(landmarks.any((lm) => lm.name == 'Equatorial Outpost'), isTrue);
-      expect(find.text('Equatorial Outpost'), findsOneWidget);
-      await tester.pump(const Duration(milliseconds: 500));
-    },
-  );
-
-  testWidgets(
     'dropping pin on the globe via secondary tap opens dialog directly',
     (tester) async {
       await pumpCanvas(tester);
@@ -266,28 +172,6 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(find.text('Add Landmark Pin'), findsNothing);
-    },
-  );
-
-  testWidgets(
-    'tap outside globe sphere disc does not trigger drop-pin dialog',
-    (tester) async {
-      await pumpCanvas(tester);
-
-      // Enable drop pin mode
-      await tester.tap(find.byKey(const Key('dayseven-3d-drop-pin-toggle')));
-      await tester.pumpAndSettle();
-
-      // Tap corner (0, 0), which is outside the sphere disc
-      await tester.tapAt(const Offset(10, 10));
-      await tester.pumpAndSettle();
-
-      // Dialog should NOT open
-      expect(find.text('Add Landmark Pin'), findsNothing);
-      expect(
-        find.byKey(const Key('dayseven-3d-drop-pin-banner')),
-        findsOneWidget,
-      );
     },
   );
 

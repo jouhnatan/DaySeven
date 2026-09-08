@@ -22,13 +22,22 @@ class AppStore {
   AppStore(this._file);
 
   final File _file;
+  Future<void> _pendingUpdate = Future.value();
+  static var _temporarySequence = 0;
 
   static Future<AppStore> open() async =>
       AppStore.openIn(await getApplicationSupportDirectory());
 
   static Future<AppStore> openIn(Directory dir) async {
     await dir.create(recursive: true);
-    return AppStore(File(p.join(dir.path, 'dayseven.json')));
+    final file = File(p.join(dir.path, 'dayseven.json'));
+    final backup = File('${file.path}.backup');
+    if (!await file.exists() && await backup.exists()) {
+      await backup.rename(file.path);
+    } else if (await backup.exists()) {
+      await backup.delete();
+    }
+    return AppStore(file);
   }
 
   Future<Map<String, Object?>> _read() async {
@@ -44,17 +53,47 @@ class AppStore {
   /// map. A write torn by a crash or a full disk would otherwise read back as
   /// "no settings" and silently reset the whole installation.
   Future<void> _write(Map<String, Object?> data) async {
-    final temporary = File('${_file.path}.$pid.tmp');
+    final temporary = File('${_file.path}.$pid.${_temporarySequence++}.tmp');
     await temporary.writeAsString(jsonEncode(data), flush: true);
-    await temporary.rename(_file.path);
+    if (!Platform.isWindows || !await _file.exists()) {
+      await temporary.rename(_file.path);
+      return;
+    }
+
+    // Windows cannot rename over an existing file. Preserve the old settings
+    // until the new file is in place, and recover the backup on the next open
+    // if the process exits between the two renames.
+    final backup = File('${_file.path}.backup');
+    if (await backup.exists()) await backup.delete();
+    await _file.rename(backup.path);
+    try {
+      await temporary.rename(_file.path);
+    } on Object {
+      if (!await _file.exists() && await backup.exists()) {
+        await backup.rename(_file.path);
+      }
+      rethrow;
+    }
+    await backup.delete();
+  }
+
+  /// Serializes each read-modify-write transaction so concurrent UI events do
+  /// not overwrite one another or compete for an atomic-write temporary file.
+  Future<void> _update(void Function(Map<String, Object?> data) update) {
+    final operation = _pendingUpdate.then((_) async {
+      final data = await _read();
+      update(data);
+      await _write(data);
+    });
+    _pendingUpdate = operation.onError((_, _) {});
+    return operation;
   }
 
   Future<List<String>> recentKbPaths() async =>
       ((await _read())['recentKbPaths'] as List<Object?>? ?? const [])
           .cast<String>();
 
-  Future<void> noteKbOpened(String path) async {
-    final data = await _read();
+  Future<void> noteKbOpened(String path) => _update((data) {
     final list =
         (data['recentKbPaths'] as List<Object?>? ?? const [])
             .cast<String>()
@@ -62,8 +101,7 @@ class AppStore {
             .toList()
           ..insert(0, path);
     data['recentKbPaths'] = list.take(10).toList();
-    await _write(data);
-  }
+  });
 
   Future<Map<String, double>> paneWidths() async {
     final raw =
@@ -74,13 +112,11 @@ class AppStore {
     };
   }
 
-  Future<void> setPaneWidth(String pane, double width) async {
-    final data = await _read();
+  Future<void> setPaneWidth(String pane, double width) => _update((data) {
     final widths = (data['paneWidths'] as Map<String, Object?>? ?? {});
     widths[pane] = width;
     data['paneWidths'] = widths;
-    await _write(data);
-  }
+  });
 
   /// Visibility of optional shell panes. Unknown and malformed values are
   /// ignored so older or hand-edited settings keep the default layout.
@@ -93,16 +129,14 @@ class AppStore {
     };
   }
 
-  Future<void> setPaneVisibility(String pane, bool visible) async {
-    final data = await _read();
+  Future<void> setPaneVisibility(String pane, bool visible) => _update((data) {
     final raw = data['paneVisibility'];
     final visibility = raw is Map<String, Object?>
         ? Map<String, Object?>.from(raw)
         : <String, Object?>{};
     visibility[pane] = visible;
     data['paneVisibility'] = visibility;
-    await _write(data);
-  }
+  });
 
   /// Developer toggles. Off unless explicitly turned on, and read through
   /// `?? false` everywhere, so a missing or hand-mangled settings file behaves
@@ -115,16 +149,14 @@ class AppStore {
   }
 
   @Deprecated('The Developer setting menu is deprecated.')
-  Future<void> setDeveloperFlag(String name, bool enabled) async {
-    final data = await _read();
+  Future<void> setDeveloperFlag(String name, bool enabled) => _update((data) {
     final raw = data['developerFlags'];
     final flags = raw is Map<String, Object?>
         ? Map<String, Object?>.from(raw)
         : <String, Object?>{};
     flags[name] = enabled;
     data['developerFlags'] = flags;
-    await _write(data);
-  }
+  });
 
   /// Shows `metadata/` in the tree, search and indexing.
   ///
@@ -202,37 +234,34 @@ class AppStore {
     List<String> keys,
     String kbId,
     List<String> Function(List<String> current) update,
-  ) async {
-    final data = await _read();
+  ) => _update((data) {
     for (final key in keys) {
       final all = (data[key] as Map<String, Object?>? ?? {});
       final current = (all[kbId] as List<Object?>? ?? const []).cast<String>();
       all[kbId] = update(current);
       data[key] = all;
     }
-    await _write(data);
-  }
+  });
 }
 
 final appStoreProvider = FutureProvider<AppStore>((ref) async {
   final profile = ref.watch(appProfileProvider);
-  final directory = profile?.directory ?? await getApplicationSupportDirectory();
+  final directory =
+      profile?.directory ?? await getApplicationSupportDirectory();
   return AppStore.openIn(directory);
 });
 
 @Deprecated('The Developer setting menu is deprecated.')
 class DeveloperSettings {
-  const DeveloperSettings({
-    this.showWorkspaceMetadata = false,
-  });
+  const DeveloperSettings({this.showWorkspaceMetadata = false});
 
   final bool showWorkspaceMetadata;
 
-  DeveloperSettings copyWith({
-    bool? showWorkspaceMetadata,
-  }) => DeveloperSettings(
-    showWorkspaceMetadata: showWorkspaceMetadata ?? this.showWorkspaceMetadata,
-  );
+  DeveloperSettings copyWith({bool? showWorkspaceMetadata}) =>
+      DeveloperSettings(
+        showWorkspaceMetadata:
+            showWorkspaceMetadata ?? this.showWorkspaceMetadata,
+      );
 }
 
 @Deprecated('The Developer setting menu is deprecated.')

@@ -33,6 +33,89 @@ class GlobeVector3 {
   double get length => math.sqrt(dot(this));
 }
 
+/// A normalized quaternion used to orient the globe in screen space.
+class GlobeRotation {
+  const GlobeRotation._(this.w, this.x, this.y, this.z);
+
+  static const identity = GlobeRotation._(1, 0, 0, 0);
+
+  factory GlobeRotation.axisAngle(GlobeVector3 axis, double angle) {
+    final halfAngle = angle / 2;
+    final sine = math.sin(halfAngle);
+    return GlobeRotation._(
+      math.cos(halfAngle),
+      axis.x * sine,
+      axis.y * sine,
+      axis.z * sine,
+    ).normalized();
+  }
+
+  final double w;
+  final double x;
+  final double y;
+  final double z;
+
+  GlobeRotation operator *(GlobeRotation other) => GlobeRotation._(
+    w * other.w - x * other.x - y * other.y - z * other.z,
+    w * other.x + x * other.w + y * other.z - z * other.y,
+    w * other.y - x * other.z + y * other.w + z * other.x,
+    w * other.z + x * other.y - y * other.x + z * other.w,
+  ).normalized();
+
+  GlobeRotation normalized() {
+    final length = math.sqrt(w * w + x * x + y * y + z * z);
+    if (length == 0) return identity;
+    return GlobeRotation._(w / length, x / length, y / length, z / length);
+  }
+
+  GlobeVector3 rotate(GlobeVector3 point) {
+    final quaternionVector = GlobeVector3(x, y, z);
+    final twiceCross = quaternionVector.cross(point) * 2;
+    return point + twiceCross * w + quaternionVector.cross(twiceCross);
+  }
+
+  GlobeVector3 inverseRotate(GlobeVector3 point) =>
+      GlobeRotation._(w, -x, -y, -z).rotate(point);
+
+  static GlobeRotation slerp(
+    GlobeRotation start,
+    GlobeRotation end,
+    double amount,
+  ) {
+    var adjustedEnd = end;
+    var dot =
+        start.w * end.w + start.x * end.x + start.y * end.y + start.z * end.z;
+    if (dot < 0) {
+      dot = -dot;
+      adjustedEnd = GlobeRotation._(-end.w, -end.x, -end.y, -end.z);
+    }
+    if (dot > 0.9995) {
+      return GlobeRotation._(
+        start.w + (adjustedEnd.w - start.w) * amount,
+        start.x + (adjustedEnd.x - start.x) * amount,
+        start.y + (adjustedEnd.y - start.y) * amount,
+        start.z + (adjustedEnd.z - start.z) * amount,
+      ).normalized();
+    }
+
+    final angle = math.acos(dot.clamp(-1.0, 1.0));
+    final denominator = math.sin(angle);
+    final startWeight = math.sin((1 - amount) * angle) / denominator;
+    final endWeight = math.sin(amount * angle) / denominator;
+    return GlobeRotation._(
+      start.w * startWeight + adjustedEnd.w * endWeight,
+      start.x * startWeight + adjustedEnd.x * endWeight,
+      start.y * startWeight + adjustedEnd.y * endWeight,
+      start.z * startWeight + adjustedEnd.z * endWeight,
+    ).normalized();
+  }
+
+  double distanceTo(GlobeRotation other) {
+    final dot = (w * other.w + x * other.x + y * other.y + z * other.z).abs();
+    return 2 * math.acos(dot.clamp(-1.0, 1.0));
+  }
+}
+
 /// One source vertex in the sphere, including its seam-safe UV coordinate.
 class GlobeMeshVertex {
   const GlobeMeshVertex({
@@ -130,11 +213,10 @@ class GlobeMesh {
 
   /// Rotates the sphere and projects it into a viewport-sized screen space.
   ///
-  /// Longitude zero faces the camera before [yaw] is applied. Positive screen
-  /// y is down, so the sphere's positive latitude projects upward.
+  /// Longitude zero faces the camera before [rotation] is applied. Positive
+  /// screen y is down, so the sphere's positive latitude projects upward.
   GlobeProjectedMesh project({
-    double pitch = 0,
-    double yaw = 0,
+    GlobeRotation rotation = GlobeRotation.identity,
     required ui.Offset center,
     required double radius,
   }) {
@@ -144,7 +226,7 @@ class GlobeMesh {
     final normals = <GlobeVector3>[];
 
     for (final vertex in vertices) {
-      final rotated = _rotate(vertex.position, pitch: pitch, yaw: yaw);
+      final rotated = rotation.rotate(vertex.position);
       transformed.add(rotated);
       positions.add(
         ui.Offset(
@@ -153,7 +235,7 @@ class GlobeMesh {
         ),
       );
       uvs.add(vertex.uv);
-      normals.add(_rotate(vertex.normal, pitch: pitch, yaw: yaw));
+      normals.add(rotation.rotate(vertex.normal));
     }
 
     final visibleIndices = <int>[];
@@ -260,29 +342,3 @@ List<int> _buildIndices(int latitudeSegments, int longitudeSegments) {
   }
   return indices;
 }
-
-GlobeVector3 _rotate(
-  GlobeVector3 point, {
-  required double pitch,
-  required double yaw,
-}) {
-  final cosPitch = math.cos(pitch);
-  final sinPitch = math.sin(pitch);
-  final pitchedY = point.y * cosPitch - point.z * sinPitch;
-  final pitchedZ = point.y * sinPitch + point.z * cosPitch;
-
-  final cosYaw = math.cos(yaw);
-  final sinYaw = math.sin(yaw);
-  return GlobeVector3(
-    point.x * cosYaw + pitchedZ * sinYaw,
-    pitchedY,
-    -point.x * sinYaw + pitchedZ * cosYaw,
-  );
-}
-
-/// Rotates [point] by camera [pitch] and [yaw] angles.
-GlobeVector3 rotateGlobeVector(
-  GlobeVector3 point, {
-  required double pitch,
-  required double yaw,
-}) => _rotate(point, pitch: pitch, yaw: yaw);

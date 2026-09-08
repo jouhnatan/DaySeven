@@ -35,8 +35,7 @@ class GlobePainter extends CustomPainter {
     final radius = math.min(size.width, size.height) / 2 * viewport.scale;
     final center = Offset(size.width / 2, size.height / 2);
     final projected = mesh.project(
-      pitch: viewport.pitch,
-      yaw: viewport.yaw,
+      rotation: viewport.rotation,
       center: center,
       radius: radius,
     );

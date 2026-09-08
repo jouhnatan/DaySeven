@@ -44,6 +44,3 @@ final worldObjectsProvider = FutureProvider<List<KbFile>>((ref) async {
 final selectedWorldDimensionProvider = StateProvider<WorldDimension>(
   (ref) => WorldDimension.threeD,
 );
-
-/// Whether the 3D globe is in "drop pin" mode for placing landmark pins.
-final dropPinModeProvider = StateProvider<bool>((ref) => false);
