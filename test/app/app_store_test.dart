@@ -25,4 +25,18 @@ void main() {
     expect(await store.paneWidths(), containsPair('worldSettings', 280));
     expect(await store.paneVisibility(), containsPair('right', false));
   });
+
+  test('opening recovers an interrupted Windows replacement backup', () async {
+    final directory = Directory.systemTemp.createTempSync(
+      'dayseven_app_store_recovery_test',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final backup = File('${directory.path}/dayseven.json.backup');
+    await backup.writeAsString('{"recentKbPaths":["/recovered"]}');
+
+    final store = await AppStore.openIn(directory);
+
+    expect(await store.recentKbPaths(), ['/recovered']);
+    expect(backup.existsSync(), isFalse);
+  });
 }

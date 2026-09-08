@@ -30,7 +30,14 @@ class AppStore {
 
   static Future<AppStore> openIn(Directory dir) async {
     await dir.create(recursive: true);
-    return AppStore(File(p.join(dir.path, 'dayseven.json')));
+    final file = File(p.join(dir.path, 'dayseven.json'));
+    final backup = File('${file.path}.backup');
+    if (!await file.exists() && await backup.exists()) {
+      await backup.rename(file.path);
+    } else if (await backup.exists()) {
+      await backup.delete();
+    }
+    return AppStore(file);
   }
 
   Future<Map<String, Object?>> _read() async {
@@ -48,7 +55,26 @@ class AppStore {
   Future<void> _write(Map<String, Object?> data) async {
     final temporary = File('${_file.path}.$pid.${_temporarySequence++}.tmp');
     await temporary.writeAsString(jsonEncode(data), flush: true);
-    await temporary.rename(_file.path);
+    if (!Platform.isWindows || !await _file.exists()) {
+      await temporary.rename(_file.path);
+      return;
+    }
+
+    // Windows cannot rename over an existing file. Preserve the old settings
+    // until the new file is in place, and recover the backup on the next open
+    // if the process exits between the two renames.
+    final backup = File('${_file.path}.backup');
+    if (await backup.exists()) await backup.delete();
+    await _file.rename(backup.path);
+    try {
+      await temporary.rename(_file.path);
+    } on Object {
+      if (!await _file.exists() && await backup.exists()) {
+        await backup.rename(_file.path);
+      }
+      rethrow;
+    }
+    await backup.delete();
   }
 
   /// Serializes each read-modify-write transaction so concurrent UI events do
