@@ -368,6 +368,38 @@ void main() {
     await settle(tester, container);
   });
 
+  testWidgets('page-link button inserts a link through the document picker', (
+    tester,
+  ) async {
+    final container = await openEditor(tester);
+    await tester.runAsync(() async {
+      final session = container.read(kbSessionProvider)!;
+      await session.kb.createFolder('Places');
+      await session.kb.createDocument(
+        title: 'The Fen',
+        folderRelativePath: 'Places',
+      );
+      await container.read(kbControllerProvider.notifier).refreshTree();
+    });
+    await selectInParagraph(tester, 3);
+
+    await tester.tap(find.byTooltip('Link to page'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('document-link-choice-Places/The Fen.md')),
+    );
+    await tester.pumpAndSettle();
+
+    final document = container.read(documentControllerProvider)!.document;
+    final spans = (document.blocks.single as ParagraphBlock).spans;
+    expect(
+      spans.first,
+      const TextSpanNode(text: 'The Fen', href: 'Places/The Fen.md'),
+    );
+    expect(find.byTooltip('Link to page'), findsOneWidget);
+    await settle(tester, container);
+  });
+
   testWidgets('block spacing changes the document instead of one block', (
     tester,
   ) async {

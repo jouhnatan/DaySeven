@@ -91,6 +91,7 @@ abstract class EditingSurface {
   /// null turns the focused block back into body text.
   void setHeadingLevel(int? level);
 
+  void insertDocumentLink();
   void insertImage();
   void insertDivider();
 }
@@ -126,6 +127,7 @@ class EditingFocusController extends StateNotifier<EditingFocus?> {
   void setAlign(BlockAlign align) => _surface?.setAlign(align);
   void setBlockSpacing(double spacing) => _surface?.setBlockSpacing(spacing);
   void setHeadingLevel(int? level) => _surface?.setHeadingLevel(level);
+  void insertDocumentLink() => _surface?.insertDocumentLink();
   void insertImage() => _surface?.insertImage();
   void insertDivider() => _surface?.insertDivider();
 }

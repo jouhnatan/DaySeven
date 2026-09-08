@@ -321,6 +321,14 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   }
 
   @override
+  void insertDocumentLink() {
+    if (widget.readOnly) return;
+    final blockId = ref.read(editingFocusProvider)?.blockId;
+    if (blockId == null || !_controllers.containsKey(blockId)) return;
+    unawaited(_insertDocumentLink(blockId));
+  }
+
+  @override
   void insertImage() {
     if (widget.readOnly) return;
     final focus = ref.read(editingFocusProvider);
