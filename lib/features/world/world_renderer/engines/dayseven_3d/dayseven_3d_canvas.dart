@@ -330,7 +330,7 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
                         Icon(Icons.info_outline, size: 14, color: colors.muted),
                         const SizedBox(width: DsSpace.xs),
                         Text(
-                          'Base mesh • Import a PNG layer in World Settings',
+                          'Base mesh • Import a PNG or JPEG source map in World Settings',
                           style: uiTextStyle(size: 12, color: colors.muted),
                         ),
                       ],

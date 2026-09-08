@@ -62,13 +62,13 @@ void main() {
     );
   });
 
-  testWidgets('adds one source layer used by both render modes', (
+  testWidgets('selects the latest source layer without deleting earlier data', (
     tester,
   ) async {
     final (container, _) = await openWorld(tester);
     final controller = container.read(openWorldProvider.notifier);
 
-    controller.addModel3DLayer(
+    controller.setSourceMapLayer(
       const Model3DLayer(
         id: 'surface',
         name: 'Surface',
@@ -76,10 +76,21 @@ void main() {
         assetId: 'surface.jpg',
       ),
     );
+    controller.setSourceMapLayer(
+      const Model3DLayer(
+        id: 'replacement',
+        name: 'Replacement',
+        type: Model3DLayerType.albedo,
+        assetId: 'replacement.png',
+      ),
+    );
 
     final model = container.read(openWorldProvider)!.world.model!;
-    expect(model.layers.single.assetId, 'surface.jpg');
-    expect(model.sourceMapLayerId, 'surface');
+    expect(model.layers.map((layer) => layer.assetId), [
+      'surface.jpg',
+      'replacement.png',
+    ]);
+    expect(model.sourceMapLayerId, 'replacement');
     await tester.runAsync(() => controller.flush());
   });
 
