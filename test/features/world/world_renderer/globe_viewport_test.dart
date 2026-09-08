@@ -1,45 +1,66 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:dayseven/features/world/world_renderer/globe_mesh.dart';
 import 'package:dayseven/features/world/world_renderer/globe_viewport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('pitch is clamped to the globe limits', () {
+  test('rotation interpolates toward its target', () {
     final viewport = GlobeViewportController();
     addTearDown(viewport.dispose);
 
-    viewport.rotateBy(deltaPitch: math.pi);
-    expect(viewport.pitch, closeTo(math.pi / 2, 0.000001));
-    viewport.rotateBy(deltaPitch: -math.pi * 2);
-    expect(viewport.pitch, closeTo(-math.pi / 2, 0.000001));
+    const front = GlobeVector3(0, 0, 1);
+    viewport.rotateBy(deltaPitch: math.pi / 2);
+    expect(viewport.rotation.rotate(front).y, 0);
+
+    viewport.advance(const Duration(milliseconds: 30));
+    expect(viewport.rotation.rotate(front).y, lessThan(0));
+    expect(viewport.rotation.rotate(front).z, greaterThan(0));
+
+    viewport.advance(const Duration(seconds: 2));
+    expect(viewport.rotation.rotate(front).y, closeTo(-1, 0.0001));
+    expect(viewport.isAnimating, isFalse);
   });
 
-  test('yaw wraps around the full circle', () {
-    final viewport = GlobeViewportController();
-    addTearDown(viewport.dispose);
+  test(
+    'vertical rotation remains screen-relative after horizontal rotation',
+    () {
+      final viewport = GlobeViewportController();
+      addTearDown(viewport.dispose);
 
-    viewport.rotateBy(deltaYaw: math.pi * 3);
-    expect(viewport.yaw, closeTo(math.pi, 0.000001));
-    viewport.rotateBy(deltaYaw: math.pi / 2);
-    expect(viewport.yaw, closeTo(-math.pi / 2, 0.000001));
-  });
+      viewport.rotateBy(deltaYaw: math.pi / 2);
+      viewport.advance(const Duration(seconds: 2));
+      final localFront = viewport.rotation.inverseRotate(
+        const GlobeVector3(0, 0, 1),
+      );
 
-  test('zoom limits and reset are enforced', () {
+      viewport.rotateBy(deltaPitch: math.pi / 4);
+      viewport.advance(const Duration(seconds: 2));
+      final moved = viewport.rotation.rotate(localFront);
+
+      expect(moved.x, closeTo(0, 0.0001));
+      expect(moved.y, closeTo(-math.sqrt1_2, 0.0001));
+      expect(moved.z, closeTo(math.sqrt1_2, 0.0001));
+    },
+  );
+
+  test('zoom interpolates and limits its target', () {
     final viewport = GlobeViewportController();
     addTearDown(viewport.dispose);
 
     viewport.zoomBy(100);
-    expect(viewport.scale, kGlobeMaxScale);
-    viewport.zoomBy(0.001);
     expect(viewport.scale, kGlobeMinScale);
-    viewport
-      ..rotateBy(deltaPitch: 0.5, deltaYaw: 0.75)
-      ..zoomIn()
-      ..reset();
+    expect(viewport.targetScale, kGlobeMaxScale);
+    viewport.advance(const Duration(milliseconds: 60));
+    expect(viewport.scale, greaterThan(kGlobeMinScale));
+    expect(viewport.scale, lessThan(kGlobeMaxScale));
+    viewport.advance(const Duration(seconds: 2));
+    expect(viewport.scale, kGlobeMaxScale);
 
-    expect(viewport.pitch, 0);
-    expect(viewport.yaw, 0);
+    viewport.zoomBy(0.001);
+    expect(viewport.targetScale, kGlobeMinScale);
+    viewport.advance(const Duration(seconds: 2));
     expect(viewport.scale, kGlobeMinScale);
   });
 

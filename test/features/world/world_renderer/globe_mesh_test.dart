@@ -92,7 +92,7 @@ void main() {
     final rotated = mesh.project(
       center: Offset.zero,
       radius: 100,
-      yaw: math.pi,
+      rotation: GlobeRotation.axisAngle(const GlobeVector3(0, 1, 0), math.pi),
     );
     expect(rotated.indices.length, greaterThan(0));
     expect(rotated.indices.length, lessThan(mesh.indices.length));

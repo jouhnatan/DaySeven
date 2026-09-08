@@ -11,6 +11,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
@@ -22,9 +23,7 @@ import 'package:dayseven/features/world/world_renderer/globe_mesh.dart';
 import 'package:dayseven/features/world/world_renderer/globe_painter.dart';
 import 'package:dayseven/features/world/world_renderer/globe_texture_loader.dart';
 import 'package:dayseven/features/world/world_renderer/globe_viewport.dart';
-import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';
-import 'package:flutter/services.dart';
 
 class DaySeven3DCanvas extends ConsumerStatefulWidget {
   const DaySeven3DCanvas({super.key});
@@ -33,27 +32,30 @@ class DaySeven3DCanvas extends ConsumerStatefulWidget {
   ConsumerState<DaySeven3DCanvas> createState() => _DaySeven3DCanvasState();
 }
 
-class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
+class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas>
+    with SingleTickerProviderStateMixin {
   final GlobeViewportController _viewport = GlobeViewportController();
   final GlobeTextureLoader _textureLoader = GlobeTextureLoader();
   final GlobeMesh _mesh = GlobeMesh();
+  late final Ticker _cameraTicker;
   String? _pendingAssetId;
   String? _pendingAssetPath;
   double _lastGestureScale = 1;
-  GlobeSphereCoordinates? _hoverCoordinates;
-  Offset? _hoverPosition;
+  Duration? _lastCameraTick;
 
   @override
   void initState() {
     super.initState();
-    _viewport.addListener(_rebuild);
+    _cameraTicker = createTicker(_onCameraTick);
+    _viewport.addListener(_onViewportChanged);
     _textureLoader.addListener(_rebuild);
   }
 
   @override
   void dispose() {
+    _cameraTicker.dispose();
     _viewport
-      ..removeListener(_rebuild)
+      ..removeListener(_onViewportChanged)
       ..dispose();
     _textureLoader
       ..removeListener(_rebuild)
@@ -63,6 +65,25 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
 
   void _rebuild() {
     if (mounted) setState(() {});
+  }
+
+  void _onViewportChanged() {
+    if (_viewport.isAnimating && !_cameraTicker.isActive) {
+      _lastCameraTick = null;
+      _cameraTicker.start();
+    }
+    _rebuild();
+  }
+
+  void _onCameraTick(Duration elapsed) {
+    final previous = _lastCameraTick;
+    _lastCameraTick = elapsed;
+    if (previous == null) return;
+    _viewport.advance(elapsed - previous);
+    if (!_viewport.isAnimating) {
+      _cameraTicker.stop();
+      _lastCameraTick = null;
+    }
   }
 
   @override
@@ -96,265 +117,107 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
           radius: radius,
         );
 
-        final isDroppingPin = ref.watch(dropPinModeProvider);
-
-        return Focus(
-          autofocus: true,
-          onKeyEvent: (node, event) {
-            if (event is KeyDownEvent &&
-                event.logicalKey == LogicalKeyboardKey.escape &&
-                isDroppingPin) {
-              ref.read(dropPinModeProvider.notifier).state = false;
-              return KeyEventResult.handled;
-            }
-            return KeyEventResult.ignored;
-          },
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Interactive 3D Globe gesture detector and canvas
-              Positioned.fill(
-                child: MouseRegion(
-                  cursor: isDroppingPin
-                      ? SystemMouseCursors.precise
-                      : MouseCursor.defer,
-                  onHover: (event) {
-                    if (isDroppingPin) {
-                      final coords = _viewport.toSphereCoordinates(
-                        event.localPosition,
-                        Size(constraints.maxWidth, constraints.maxHeight),
-                      );
-                      setState(() {
-                        _hoverCoordinates = coords;
-                        _hoverPosition = event.localPosition;
-                      });
-                    } else if (_hoverCoordinates != null) {
-                      setState(() {
-                        _hoverCoordinates = null;
-                        _hoverPosition = null;
-                      });
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // Interactive 3D Globe gesture detector and canvas
+            Positioned.fill(
+              child: Listener(
+                onPointerSignal: _onPointerSignal,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onSecondaryTapUp: (details) => _attemptDropPinAt(
+                    details.localPosition,
+                    Size(constraints.maxWidth, constraints.maxHeight),
+                  ),
+                  onLongPressStart: (details) => _attemptDropPinAt(
+                    details.localPosition,
+                    Size(constraints.maxWidth, constraints.maxHeight),
+                  ),
+                  onScaleStart: (_) => _lastGestureScale = 1,
+                  onScaleUpdate: (details) {
+                    const sensitivity = 0.005;
+                    _viewport.rotateBy(
+                      deltaYaw: details.focalPointDelta.dx * sensitivity,
+                      deltaPitch: -details.focalPointDelta.dy * sensitivity,
+                    );
+                    final scaleChanged =
+                        details.scale > 0 && details.scale != _lastGestureScale;
+                    if (scaleChanged) {
+                      _viewport.zoomBy(details.scale / _lastGestureScale);
                     }
+                    _lastGestureScale = details.scale;
                   },
-                  onExit: (_) {
-                    if (_hoverCoordinates != null) {
-                      setState(() {
-                        _hoverCoordinates = null;
-                        _hoverPosition = null;
-                      });
-                    }
-                  },
-                  child: Listener(
-                    onPointerSignal: _onPointerSignal,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapUp: (details) => _onCanvasTap(
-                        details.localPosition,
-                        Size(constraints.maxWidth, constraints.maxHeight),
-                      ),
-                      onSecondaryTapUp: (details) => _attemptDropPinAt(
-                        details.localPosition,
-                        Size(constraints.maxWidth, constraints.maxHeight),
-                      ),
-                      onLongPressStart: (details) => _attemptDropPinAt(
-                        details.localPosition,
-                        Size(constraints.maxWidth, constraints.maxHeight),
-                      ),
-                      onScaleStart: (_) => _lastGestureScale = 1,
-                      onScaleUpdate: (details) {
-                        const sensitivity = 0.005;
-                        _viewport.rotateBy(
-                          deltaYaw: details.focalPointDelta.dx * sensitivity,
-                          deltaPitch: -details.focalPointDelta.dy * sensitivity,
-                        );
-                        final scaleChanged =
-                            details.scale > 0 &&
-                            details.scale != _lastGestureScale;
-                        if (details.pointerCount > 1 || scaleChanged) {
-                          if (scaleChanged) {
-                            _viewport.zoomBy(details.scale / _lastGestureScale);
-                          }
-                        }
-                        _lastGestureScale = details.scale;
-                      },
-                      onScaleEnd: (_) => _lastGestureScale = 1,
-                      child: CustomPaint(
-                        key: const Key('dayseven-3d-globe'),
-                        painter: _DaySeven3DGlobePainter(
-                          texture: _textureLoader.texture,
-                          viewport: _viewport,
-                          mesh: _mesh,
-                          model: model,
-                          pitch: _viewport.pitch,
-                          yaw: _viewport.yaw,
-                          scale: _viewport.scale,
-                          sphereBaseColor: colors.cardSurface,
-                          atmosphereGlowColor: colors.fern,
-                        ),
-                        child: const SizedBox.expand(),
-                      ),
+                  onScaleEnd: (_) => _lastGestureScale = 1,
+                  child: CustomPaint(
+                    key: const Key('dayseven-3d-globe'),
+                    painter: _DaySeven3DGlobePainter(
+                      texture: _textureLoader.texture,
+                      viewport: _viewport,
+                      mesh: _mesh,
+                      model: model,
+                      sphereBaseColor: colors.cardSurface,
+                      atmosphereGlowColor: colors.fern,
                     ),
+                    child: const SizedBox.expand(),
                   ),
                 ),
               ),
+            ),
 
-              // Landmark billboard pins projected onto globe front-facing hemisphere
-              for (final item in projectedLandmarks)
-                Positioned(
-                  key: ValueKey('pin-${item.landmark.id}'),
-                  left: item.screenPosition.dx - 12,
-                  top: item.screenPosition.dy - 24,
-                  child: _LandmarkPinWidget(
-                    landmark: item.landmark,
-                    depth: item.depth,
-                    onTap: () {
-                      if (item.landmark.document != null &&
-                          item.landmark.document!.isNotEmpty) {
-                        _handleLandmarkTap(item.landmark);
-                      } else {
-                        _handleLandmarkEdit(item.landmark);
-                      }
-                    },
-                    onEdit: () => _handleLandmarkEdit(item.landmark),
-                  ),
-                ),
-
-              // Drop Pin hover marker preview
-              if (isDroppingPin &&
-                  _hoverCoordinates != null &&
-                  _hoverPosition != null)
-                Positioned(
-                  left: _hoverPosition!.dx - 24,
-                  top: _hoverPosition!.dy - 36,
-                  child: IgnorePointer(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: DsSpace.xs,
-                            vertical: DsSpace.xxs,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colors.island.withValues(alpha: 0.9),
-                            borderRadius: const BorderRadius.all(
-                              DsRadius.control,
-                            ),
-                            border: Border.all(color: colors.fern),
-                          ),
-                          child: Text(
-                            '${(_hoverCoordinates!.latitude * 180.0 / math.pi).toStringAsFixed(1)}°, ${(_hoverCoordinates!.longitude * 180.0 / math.pi).toStringAsFixed(1)}°',
-                            style: uiTextStyle(
-                              size: 9,
-                              weight: 600,
-                              color: colors.fern,
-                            ),
-                          ),
-                        ),
-                        Icon(Icons.place, size: 20, color: colors.fern),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // Drop Pin Mode banner notice
-              if (isDroppingPin)
-                Positioned(
-                  top: DsSpace.m,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      key: const Key('dayseven-3d-drop-pin-banner'),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: DsSpace.m,
-                        vertical: DsSpace.s,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.island.withValues(alpha: 0.95),
-                        borderRadius: const BorderRadius.all(DsRadius.menu),
-                        border: Border.all(color: colors.fern),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.place, size: 16, color: colors.fern),
-                          const SizedBox(width: DsSpace.xs),
-                          Text(
-                            'Click anywhere on the globe to drop a landmark pin',
-                            style: uiTextStyle(
-                              size: 12,
-                              weight: 500,
-                              color: colors.text,
-                            ),
-                          ),
-                          const SizedBox(width: DsSpace.s),
-                          DsButton(
-                            key: const Key('dayseven-3d-cancel-drop-pin'),
-                            variant: DsButtonVariant.quiet,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: DsSpace.xs,
-                              vertical: DsSpace.xxs,
-                            ),
-                            onPressed: () =>
-                                ref.read(dropPinModeProvider.notifier).state =
-                                    false,
-                            child: Text(
-                              'Cancel',
-                              style: uiTextStyle(size: 11, color: colors.muted),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-              // Empty state notice when no textures are attached
-              if (visibleLayer == null && !isDroppingPin)
-                Positioned(
-                  top: DsSpace.m,
-                  left: DsSpace.m,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: DsSpace.m,
-                      vertical: DsSpace.s,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.island.withValues(alpha: 0.85),
-                      borderRadius: const BorderRadius.all(DsRadius.menu),
-                      border: Border.all(color: colors.border),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.info_outline, size: 14, color: colors.muted),
-                        const SizedBox(width: DsSpace.xs),
-                        Text(
-                          'Base mesh • Import a PNG or JPEG source map in World Settings',
-                          style: uiTextStyle(size: 12, color: colors.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // Bottom-right Viewport navigation controls
+            // Landmark billboard pins projected onto globe front-facing hemisphere
+            for (final item in projectedLandmarks)
               Positioned(
-                right: DsSpace.gap,
-                bottom: DsSpace.gap,
-                child: _DaySeven3DControls(viewport: _viewport),
+                key: ValueKey('pin-${item.landmark.id}'),
+                left: item.screenPosition.dx - 12,
+                top: item.screenPosition.dy - 24,
+                child: _LandmarkPinWidget(
+                  landmark: item.landmark,
+                  depth: item.depth,
+                  onTap: () {
+                    if (item.landmark.document != null &&
+                        item.landmark.document!.isNotEmpty) {
+                      _handleLandmarkTap(item.landmark);
+                    } else {
+                      _handleLandmarkEdit(item.landmark);
+                    }
+                  },
+                  onEdit: () => _handleLandmarkEdit(item.landmark),
+                ),
               ),
-            ],
-          ),
+
+            // Empty state notice when no textures are attached
+            if (visibleLayer == null)
+              Positioned(
+                top: DsSpace.m,
+                left: DsSpace.m,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DsSpace.m,
+                    vertical: DsSpace.s,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.island.withValues(alpha: 0.85),
+                    borderRadius: const BorderRadius.all(DsRadius.menu),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.info_outline, size: 14, color: colors.muted),
+                      const SizedBox(width: DsSpace.xs),
+                      Text(
+                        'Base mesh • Import a PNG or JPEG source map in World Settings',
+                        style: uiTextStyle(size: 12, color: colors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );
-  }
-
-  void _onCanvasTap(Offset localPosition, Size size) {
-    final isDroppingPin = ref.read(dropPinModeProvider);
-    if (!isDroppingPin) return;
-    _attemptDropPinAt(localPosition, size);
   }
 
   void _attemptDropPinAt(Offset localPosition, Size size) {
@@ -363,12 +226,6 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
 
     final latDeg = (coords.latitude * 180.0 / math.pi).clamp(-90.0, 90.0);
     final lonDeg = (coords.longitude * 180.0 / math.pi).clamp(-180.0, 180.0);
-
-    ref.read(dropPinModeProvider.notifier).state = false;
-    setState(() {
-      _hoverCoordinates = null;
-      _hoverPosition = null;
-    });
 
     showLandmarkDialog(
       context: context,
@@ -419,11 +276,8 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
 
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
-    if (event.scrollDelta.dy < 0) {
-      _viewport.zoomIn();
-    } else if (event.scrollDelta.dy > 0) {
-      _viewport.zoomOut();
-    }
+    const sensitivity = 0.003;
+    _viewport.zoomBy(math.exp(-event.scrollDelta.dy * sensitivity));
   }
 
   Future<void> _handleLandmarkTap(Model3DLandmark landmark) async {
@@ -452,11 +306,7 @@ class _DaySeven3DCanvasState extends ConsumerState<DaySeven3DCanvas> {
         cosLat * math.cos(lonRad),
       );
 
-      final rotated = rotateGlobeVector(
-        spherical,
-        pitch: _viewport.pitch,
-        yaw: _viewport.yaw,
-      );
+      final rotated = _viewport.rotation.rotate(spherical);
 
       // Only project landmarks on the front-facing hemisphere
       if (rotated.z > 0.05) {
@@ -583,9 +433,6 @@ class _DaySeven3DGlobePainter extends CustomPainter {
     required this.viewport,
     required this.mesh,
     required this.model,
-    required this.pitch,
-    required this.yaw,
-    required this.scale,
     required this.sphereBaseColor,
     required this.atmosphereGlowColor,
   }) : _innerPainter = GlobePainter(
@@ -601,9 +448,6 @@ class _DaySeven3DGlobePainter extends CustomPainter {
   final GlobeViewportController viewport;
   final GlobeMesh mesh;
   final DaySeven3DModel model;
-  final double pitch;
-  final double yaw;
-  final double scale;
   final Color sphereBaseColor;
   final Color atmosphereGlowColor;
   final GlobePainter _innerPainter;
@@ -636,9 +480,6 @@ class _DaySeven3DGlobePainter extends CustomPainter {
   bool shouldRepaint(covariant _DaySeven3DGlobePainter oldDelegate) {
     return oldDelegate.texture != texture ||
         oldDelegate.model != model ||
-        oldDelegate.pitch != pitch ||
-        oldDelegate.yaw != yaw ||
-        oldDelegate.scale != scale ||
         oldDelegate.sphereBaseColor != sphereBaseColor ||
         oldDelegate.atmosphereGlowColor != atmosphereGlowColor;
   }
@@ -655,102 +496,4 @@ Model3DLayer? _firstVisibleLayer(DaySeven3DModel model) {
     if (layer.visible) return layer;
   }
   return null;
-}
-
-class _DaySeven3DControls extends ConsumerWidget {
-  const _DaySeven3DControls({required this.viewport});
-
-  final GlobeViewportController viewport;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.ds;
-    final isDroppingPin = ref.watch(dropPinModeProvider);
-
-    return AnimatedBuilder(
-      animation: viewport,
-      builder: (context, _) {
-        Widget button({
-          required Key key,
-          required IconData icon,
-          required String tooltip,
-          required String semanticLabel,
-          required VoidCallback? onPressed,
-          Color? iconColor,
-        }) => Tooltip(
-          message: tooltip,
-          child: DsButton(
-            key: key,
-            onPressed: onPressed,
-            semanticLabel: semanticLabel,
-            height: DsSize.control,
-            padding: const EdgeInsets.all(DsSpace.xs),
-            borderRadius: const BorderRadius.all(DsRadius.island),
-            child: Icon(
-              icon,
-              size: 16,
-              color:
-                  iconColor ?? (onPressed == null ? colors.faint : colors.text),
-            ),
-          ),
-        );
-
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.island,
-            borderRadius: const BorderRadius.all(DsRadius.island),
-            border: Border.all(color: colors.border),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              button(
-                key: const Key('dayseven-3d-drop-pin-toggle'),
-                icon: isDroppingPin
-                    ? Icons.place
-                    : Icons.add_location_alt_outlined,
-                tooltip: isDroppingPin
-                    ? 'Cancel pin placement'
-                    : 'Drop landmark pin on globe',
-                semanticLabel: 'Drop landmark pin on globe',
-                iconColor: isDroppingPin ? colors.fern : null,
-                onPressed: () {
-                  ref.read(dropPinModeProvider.notifier).state = !isDroppingPin;
-                },
-              ),
-              DsSeam.vertical(),
-              button(
-                key: const Key('dayseven-3d-reset-view'),
-                icon: Icons.center_focus_strong,
-                tooltip: 'Reset view',
-                semanticLabel: 'Reset the globe view',
-                onPressed:
-                    viewport.canZoomOut ||
-                        viewport.pitch != 0 ||
-                        viewport.yaw != 0
-                    ? viewport.reset
-                    : null,
-              ),
-              DsSeam.vertical(),
-              button(
-                key: const Key('dayseven-3d-zoom-in'),
-                icon: Icons.add,
-                tooltip: 'Zoom in',
-                semanticLabel: 'Zoom in',
-                onPressed: viewport.canZoomIn ? viewport.zoomIn : null,
-              ),
-              DsSeam.vertical(),
-              button(
-                key: const Key('dayseven-3d-zoom-out'),
-                icon: Icons.remove,
-                tooltip: 'Zoom out',
-                semanticLabel: 'Zoom out',
-                onPressed: viewport.canZoomOut ? viewport.zoomOut : null,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }

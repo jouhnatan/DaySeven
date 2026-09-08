@@ -79,58 +79,31 @@ class _DaySeven2DCanvasState extends ConsumerState<DaySeven2DCanvas> {
       builder: (context, constraints) {
         final available = Size(constraints.maxWidth, constraints.maxHeight);
         final mapSize = _fitTwoToOne(available);
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            InteractiveViewer(
-              key: const Key('dayseven-2d-map-viewport'),
-              minScale: 0.5,
-              maxScale: 8,
-              boundaryMargin: const EdgeInsets.all(200),
-              constrained: false,
-              child: SizedBox(
-                key: const Key('dayseven-2d-map'),
-                width: mapSize.width,
-                height: mapSize.height,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapUp: (details) =>
-                      _dropPin(details.localPosition, mapSize),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Positioned.fill(
-                        child: RawImage(
-                          image: _textureLoader.texture,
-                          fit: BoxFit.fill,
-                          filterQuality: FilterQuality.medium,
-                        ),
-                      ),
-                      for (final landmark in model.landmarks)
-                        _buildLandmark(landmark, mapSize),
-                    ],
+        return InteractiveViewer(
+          key: const Key('dayseven-2d-map-viewport'),
+          minScale: 0.5,
+          maxScale: 8,
+          boundaryMargin: const EdgeInsets.all(200),
+          constrained: false,
+          child: SizedBox(
+            key: const Key('dayseven-2d-map'),
+            width: mapSize.width,
+            height: mapSize.height,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: RawImage(
+                    image: _textureLoader.texture,
+                    fit: BoxFit.fill,
+                    filterQuality: FilterQuality.medium,
                   ),
                 ),
-              ),
+                for (final landmark in model.landmarks)
+                  _buildLandmark(landmark, mapSize),
+              ],
             ),
-            Positioned(
-              right: DsSpace.gap,
-              bottom: DsSpace.gap,
-              child: DsButton(
-                key: const Key('dayseven-2d-drop-pin-button'),
-                variant: ref.watch(dropPinModeProvider)
-                    ? DsButtonVariant.primary
-                    : DsButtonVariant.secondary,
-                onPressed: () {
-                  final notifier = ref.read(dropPinModeProvider.notifier);
-                  notifier.state = !notifier.state;
-                },
-                child: Text(
-                  ref.watch(dropPinModeProvider) ? 'Cancel pin' : 'Drop pin',
-                ),
-              ),
-            ),
-          ],
+          ),
         );
       },
     );
@@ -168,21 +141,6 @@ class _DaySeven2DCanvasState extends ConsumerState<DaySeven2DCanvas> {
       context: context,
       controller: ref.read(openWorldProvider.notifier),
       existing: landmark,
-    );
-  }
-
-  Future<void> _dropPin(Offset position, Size size) async {
-    if (!ref.read(dropPinModeProvider)) return;
-    final coordinates = EquirectangularProjection.pixelsToGeographic(
-      position: position,
-      size: size,
-    );
-    ref.read(dropPinModeProvider.notifier).state = false;
-    await showLandmarkDialog(
-      context: context,
-      controller: ref.read(openWorldProvider.notifier),
-      initialLatitude: coordinates.latitude,
-      initialLongitude: coordinates.longitude,
     );
   }
 
