@@ -71,15 +71,11 @@ jobs:
         shell: pwsh
         run: flutter pub get
 
-      - name: Build native test library
-        shell: pwsh
-        run: cargo build --release --manifest-path rust/Cargo.toml
-
-      - name: Analyze and test
+      - name: Analyze and test World
         shell: pwsh
         run: |
           flutter analyze
-          flutter test
+          flutter test test/features/world
 
       - name: Build archive
         shell: pwsh

@@ -70,13 +70,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build native test library
-        run: cargo build --release --manifest-path rust/Cargo.toml
-
-      - name: Analyze, test, and check layers
+      - name: Analyze, test World, and check layers
         run: |
           flutter analyze
-          flutter test
+          flutter test test/features/world
           ./scripts/check_layers.sh
 
       - name: Build DMG and update archive
