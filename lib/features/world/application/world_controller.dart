@@ -11,14 +11,11 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
-import 'package:dayseven/features/world/application/world_engine_registry.dart';
 import 'package:dayseven/features/world/application/world_providers.dart';
 import 'package:dayseven/features/world/data/world_repository.dart';
 import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
 import 'package:dayseven/features/world/domain/world.dart';
 import 'package:dayseven/features/world/domain/world_dimension.dart';
-import 'package:dayseven/features/world/domain/world_engine.dart';
-import 'package:dayseven/features/world/domain/world_layer.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 
 class OpenWorld {
@@ -52,7 +49,6 @@ class WorldController extends StateNotifier<OpenWorld?> {
   // World and Timeline use the same delay on purpose: both are object files
   // whose edits should settle before the next write reaches disk.
   static const _saveDelay = Duration(milliseconds: 600);
-  static const _engineRegistry = WorldEngineRegistry();
 
   Future<void> open(String relativePath) async {
     final generation = ++_openGeneration;
@@ -71,8 +67,18 @@ class WorldController extends StateNotifier<OpenWorld?> {
     final world = stored.title == fileName
         ? stored
         : stored.copyWith(title: fileName);
-    state = OpenWorld(relativePath: relativePath, world: world, dirty: false);
+    final needsMigration =
+        stored.requiresMigration ||
+        stored.engineId != null ||
+        stored.layers.isNotEmpty ||
+        stored.engineSettings.isNotEmpty;
+    state = OpenWorld(
+      relativePath: relativePath,
+      world: world,
+      dirty: needsMigration,
+    );
     _ref.read(selectedWorldDimensionProvider.notifier).state = world.dimension;
+    if (needsMigration) await flush();
   }
 
   void close({bool save = true}) {
@@ -130,110 +136,30 @@ class WorldController extends StateNotifier<OpenWorld?> {
     // An edit may have arrived while the disk write was in flight. Only the
     // exact snapshot that was written becomes clean.
     if (mounted && identical(state, current)) {
-      state = current.copyWith(dirty: false);
+      state = current.copyWith(
+        world: current.world.copyWith(requiresMigration: false),
+        dirty: false,
+      );
     }
   }
 
-  /// Adds [layer] to the open World.
-  void addLayer(WorldLayer layer) {
-    final current = state;
-    if (current == null) return;
-    edit(current.world.copyWith(layers: [...current.world.layers, layer]));
-  }
-
-  /// Removes a layer reference without removing its asset file.
-  void removeLayer(String layerId) {
-    final current = state;
-    if (current == null) return;
-    final layers = current.world.layers
-        .where((layer) => layer.id != layerId)
-        .toList();
-    if (layers.length == current.world.layers.length) return;
-
-    // Clearing a reference is not a reason to delete somebody's picture; the
-    // asset remains in `.settings/assets/`, just as timeline map assets do.
-    edit(current.world.copyWith(layers: layers));
-  }
-
-  /// Changes the visibility flag of one layer.
-  void setLayerVisible(String layerId, bool visible) {
-    final current = state;
-    if (current == null) return;
-    final layers = [...current.world.layers];
-    final index = layers.indexWhere((layer) => layer.id == layerId);
-    if (index < 0 || layers[index].visible == visible) return;
-
-    final layer = layers[index];
-    layers[index] = WorldLayer(
-      id: layer.id,
-      kind: layer.kind,
-      assetId: layer.assetId,
-      metadata: layer.metadata,
-      visible: visible,
-    );
-    edit(current.world.copyWith(layers: layers));
-  }
-
-  /// Updates the 3D model metadata on the open World.
+  /// Updates the geographic model shared by both render modes.
   void updateModel3D(DaySeven3DModel next) {
     final current = state;
     if (current == null) return;
-    edit(current.world.copyWith(model3d: next));
-  }
-
-  /// Migrates an existing World Orogen world to DaySeven 3D.
-  void migrateOrogenToDaySeven3D() {
-    final current = state;
-    if (current == null) return;
-
-    final existingModel = current.world.model3d;
-    final existingLayers = existingModel?.layers ?? const <Model3DLayer>[];
-    final existingIds = {for (final l in existingLayers) l.id};
-
-    final convertedLayers = <Model3DLayer>[
-      ...existingLayers,
-      for (final layer in current.world.layers)
-        if (!existingIds.contains(layer.id))
-          Model3DLayer(
-            id: layer.id,
-            name: switch (layer.kind) {
-              WorldLayerKind.heightmap => 'Elevation (Heightmap)',
-              WorldLayerKind.landHeightmap => 'Land Elevation',
-              WorldLayerKind.satellite => 'Surface Color (Satellite)',
-              WorldLayerKind.climate => 'Climate Map',
-              WorldLayerKind.landMask => 'Land Mask',
-            },
-            type: switch (layer.kind) {
-              WorldLayerKind.heightmap ||
-              WorldLayerKind.landHeightmap => Model3DLayerType.heightmap,
-              WorldLayerKind.satellite => Model3DLayerType.albedo,
-              WorldLayerKind.climate => Model3DLayerType.biomes,
-              WorldLayerKind.landMask => Model3DLayerType.specular,
-            },
-            assetId: layer.assetId,
-            visible: layer.visible,
-          ),
-    ];
-
-    final updatedModel = (existingModel ?? DaySeven3DModel()).copyWith(
-      layers: convertedLayers,
-    );
-
-    edit(
-      current.world.copyWith(
-        engineId: WorldEngine.dayseven3D.id,
-        model3d: updatedModel,
-      ),
-    );
+    edit(current.world.copyWith(model: next));
   }
 
   /// Adds [layer] to the 3D model stack.
   void addModel3DLayer(Model3DLayer layer) {
     final current = state;
     if (current == null) return;
-    final model = current.world.model3d ?? DaySeven3DModel();
-    final updated = model.copyWith(layers: [...model.layers, layer]);
-    edit(current.world.copyWith(model3d: updated));
+    final model = current.world.model ?? DaySeven3DModel();
+    final updated = model.copyWith(
+      layers: [...model.layers, layer],
+      sourceMapLayerId: model.sourceMapLayerId ?? layer.id,
+    );
+    edit(current.world.copyWith(model: updated));
   }
 
   /// Removes [layerId] from the 3D model stack.
@@ -244,7 +170,18 @@ class WorldController extends StateNotifier<OpenWorld?> {
     if (model == null) return;
     final layers = model.layers.where((l) => l.id != layerId).toList();
     if (layers.length == model.layers.length) return;
-    edit(current.world.copyWith(model3d: model.copyWith(layers: layers)));
+    final removedSource = model.sourceMapLayerId == layerId;
+    edit(
+      current.world.copyWith(
+        model: model.copyWith(
+          layers: layers,
+          sourceMapLayerId: removedSource && layers.isNotEmpty
+              ? layers.last.id
+              : model.sourceMapLayerId,
+          clearSourceMapLayerId: removedSource && layers.isEmpty,
+        ),
+      ),
+    );
   }
 
   /// Changes the visibility of a 3D model texture layer.
@@ -290,8 +227,9 @@ class WorldController extends StateNotifier<OpenWorld?> {
     if (current == null) return;
     final model = current.world.model3d;
     if (model == null) return;
-    final landmarks =
-        model.landmarks.where((lm) => lm.id != landmarkId).toList();
+    final landmarks = model.landmarks
+        .where((lm) => lm.id != landmarkId)
+        .toList();
     if (landmarks.length == model.landmarks.length) return;
     edit(current.world.copyWith(model3d: model.copyWith(landmarks: landmarks)));
   }
@@ -322,40 +260,14 @@ class WorldController extends StateNotifier<OpenWorld?> {
     }
   }
 
-  /// Chooses the engine id stored on the open World.
-  ///
-  /// If no World is currently open, loads an existing World from the Knowledge
-  /// Base or creates a new one so that engine selection immediately takes effect.
-  Future<void> setEngine(String engineId) async {
-    final current = state;
-    if (current != null) {
-      edit(current.world.copyWith(engineId: engineId));
-      return;
-    }
-    await _ensureOpen(engineId: engineId);
-  }
-
-  /// Changes dimension, clearing an engine that cannot exist in the new one.
+  /// Changes how the same geographic model is rendered.
   ///
   /// If no World is currently open, loads an existing World from the Knowledge
   /// Base or creates a new one so that dimension selection immediately takes effect.
   Future<void> setDimension(WorldDimension dimension) async {
     final current = state;
     if (current != null) {
-      final availableEngines = _engineRegistry.enginesFor(dimension);
-      final hasEngines = availableEngines.isNotEmpty;
-      final currentEngineValid =
-          availableEngines.any((e) => e.id == current.world.engineId);
-      final nextEngineId = currentEngineValid
-          ? current.world.engineId
-          : (hasEngines ? _engineRegistry.defaultFor(dimension)?.id : null);
-      edit(
-        current.world.copyWith(
-          dimension: dimension,
-          engineId: nextEngineId,
-          clearEngineId: !hasEngines,
-        ),
-      );
+      edit(current.world.copyWith(dimension: dimension));
       return;
     }
     await _ensureOpen(dimension: dimension);
@@ -363,22 +275,15 @@ class WorldController extends StateNotifier<OpenWorld?> {
 
   /// Ensures a World is open by loading an existing one from the Knowledge Base
   /// or creating a new one if none exists yet.
-  Future<void> _ensureOpen({
-    String? engineId,
-    WorldDimension? dimension,
-  }) async {
+  Future<void> _ensureOpen({WorldDimension? dimension}) async {
     final session = _ref.read(kbSessionProvider);
     final WorldDimension targetDimension =
         dimension ?? _ref.read(selectedWorldDimensionProvider);
-    final effectiveEngineId =
-        engineId ?? _engineRegistry.defaultFor(targetDimension)?.id;
-
     if (session == null) {
       final world = World(
         id: newId(),
         title: 'World',
         dimension: targetDimension,
-        engineId: effectiveEngineId,
       );
       state = OpenWorld(
         relativePath: 'World$kObjectExtension',
@@ -397,20 +302,9 @@ class WorldController extends StateNotifier<OpenWorld?> {
     if (worlds.isNotEmpty) {
       await open(worlds.first.relativePath);
       if (mounted && state != null) {
-        var world = state!.world;
+        final world = state!.world;
         if (dimension != null) {
-          final hasEngines =
-              _engineRegistry.enginesFor(dimension).isNotEmpty;
-          world = world.copyWith(
-            dimension: dimension,
-            clearEngineId: !hasEngines,
-          );
-        }
-        if (engineId != null) {
-          world = world.copyWith(engineId: engineId);
-        }
-        if (world != state!.world) {
-          edit(world);
+          edit(world.copyWith(dimension: dimension));
         }
       }
     } else {
@@ -423,23 +317,11 @@ class WorldController extends StateNotifier<OpenWorld?> {
           id: newId(),
           title: name,
           dimension: targetDimension,
-          engineId: effectiveEngineId,
         ).toJson(),
       );
       if (!mounted) return;
       await open(relativePath);
     }
-  }
-
-  /// Replaces one engine's raw settings without discarding unknown fields.
-  void updateEngineSettings(String engineId, Map<String, Object?> settings) {
-    final current = state;
-    if (current == null) return;
-    final engineSettings = <String, Map<String, Object?>>{
-      ...current.world.engineSettings,
-      engineId: Map<String, Object?>.from(settings),
-    };
-    edit(current.world.copyWith(engineSettings: engineSettings));
   }
 
   @override

@@ -5,7 +5,7 @@ constructs. Objects live beside documents in the Knowledge Base folder, in
 files with one extension — `.unearth` — and a `kind` at the root of the JSON
 saying which sort of object this one is.
 
-Today there is one kind: `timeline`.
+Today there are two kinds: `timeline` and `world`.
 
 ## Why one extension
 
@@ -141,6 +141,58 @@ again — a file can also arrive by being renamed.
 Clearing a map removes the reference and **leaves the image on disk**. Nothing
 else refers to it, but deleting somebody's picture because they cleared a
 reference to it is not a trade this app makes anywhere else either.
+
+## What a World looks like
+
+World format 3 keeps one geographic model and chooses only how to render it:
+
+```json
+{
+  "kind": "world",
+  "version": 3,
+  "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1",
+  "title": "Aster",
+  "renderMode": "2d",
+  "model": {
+    "sourceMapLayerId": "surface",
+    "layers": [{
+      "id": "surface",
+      "name": "Surface Color",
+      "type": "albedo",
+      "assetId": "0192f3aa-….jpg",
+      "projection": "equirectangular",
+      "visible": true,
+      "opacity": 1.0
+    }],
+    "landmarks": [{
+      "id": "aldenmoor",
+      "name": "Aldenmoor",
+      "latitude": 52.4,
+      "longitude": -3.1,
+      "document": "Places/Aldenmoor.md"
+    }]
+  }
+}
+```
+
+The PNG or JPEG pixels are copied to `.settings/assets/`; they are not encoded
+inside JSON and the `.unearth` data is not written into image metadata.
+`sourceMapLayerId` makes both 2D and 3D read the exact same asset. Landmarks
+remain a table of latitude/longitude values in `.unearth`, so switching views
+does not transform or duplicate them.
+
+Both renderers use the same equirectangular projection. For longitude
+$\lambda$, latitude $\phi$, image width $W$, and image height $H$:
+
+$$
+X = W\frac{\lambda+\pi}{2\pi},
+\qquad
+Y = H\frac{\pi/2-\phi}{\pi}
+$$
+
+Version 2 World files used an engine id and could carry Orogen layers. They are
+read into the shared model, keep their existing asset ids, and are written back
+as version 3. No image is rewritten or deleted during migration.
 
 ### The main document
 

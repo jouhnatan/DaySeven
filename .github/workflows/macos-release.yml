@@ -13,6 +13,8 @@ on:
       - "scripts/build_macos.sh"
       - "scripts/publish_macos.sh"
       - "scripts/pubspec_version.sh"
+      - "scripts/check_layers.sh"
+      - "test/**"
       - "pubspec.lock"
       - "pubspec.yaml"
   push:
@@ -67,6 +69,15 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Build native test library
+        run: cargo build --release --manifest-path rust/Cargo.toml
+
+      - name: Analyze, test, and check layers
+        run: |
+          flutter analyze
+          flutter test
+          ./scripts/check_layers.sh
 
       - name: Build DMG and update archive
         run: ./scripts/build_macos.sh

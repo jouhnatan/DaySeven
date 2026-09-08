@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'world_metadata.dart';
 
-/// The five image exports produced by World Orogen.
+/// Legacy layer roles retained while v2 Worlds migrate into the shared model.
 enum WorldLayerKind {
   satellite('satellite', 'Satellite'),
   climate('climate', 'Climate'),

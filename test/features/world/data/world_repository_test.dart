@@ -27,8 +27,7 @@ void main() {
     const world = World(
       id: 'world-1',
       title: 'Aster',
-      dimension: WorldDimension.threeD,
-      engineId: 'orogen',
+      dimension: WorldDimension.twoD,
     );
     const worldPath = 'Aster.unearth';
     await repository.write(worldPath, world);
@@ -47,7 +46,7 @@ void main() {
 
     expect(restored.id, world.id);
     expect(restored.title, world.title);
-    expect(restored.engineId, world.engineId);
+    expect(restored.dimension, WorldDimension.twoD);
     expect(worlds.map((file) => file.relativePath), [worldPath]);
   });
 }

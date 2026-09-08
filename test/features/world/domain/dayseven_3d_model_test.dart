@@ -117,23 +117,22 @@ void main() {
       expect(restored.regions.single.coordinates[0], [10.0, 20.0]);
     });
 
-    test('rejection of unsupported newer \$schema versions prevents data loss', () {
-      expect(
-        () => DaySeven3DModel.fromJson({
-          '\$schema': 'https://dayseven.app/schemas/v2/world-model-3d.json',
-        }),
-        throwsA(isA<FormatException>()),
-      );
-    });
+    test(
+      'rejection of unsupported newer \$schema versions prevents data loss',
+      () {
+        expect(
+          () => DaySeven3DModel.fromJson({
+            '\$schema': 'https://dayseven.app/schemas/v2/world-model-3d.json',
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      },
+    );
 
     test('collections are deeply immutable', () {
       final model = DaySeven3DModel(
         layers: [
-          const Model3DLayer(
-            id: 'l1',
-            name: 'Layer 1',
-            assetId: 'asset1.png',
-          ),
+          const Model3DLayer(id: 'l1', name: 'Layer 1', assetId: 'asset1.png'),
         ],
         landmarks: [
           Model3DLandmark(
@@ -190,26 +189,29 @@ void main() {
       expect(restored.regions, isEmpty);
     });
 
-    test('clamps landmark coordinates and handles non-finite numbers safely', () {
-      final landmark = Model3DLandmark(
-        id: 'lm-clamp',
-        name: 'Far Outpost',
-        latitude: 120.0,
-        longitude: -240.0,
-      );
+    test(
+      'clamps landmark coordinates and handles non-finite numbers safely',
+      () {
+        final landmark = Model3DLandmark(
+          id: 'lm-clamp',
+          name: 'Far Outpost',
+          latitude: 120.0,
+          longitude: -240.0,
+        );
 
-      expect(landmark.latitude, 90.0);
-      expect(landmark.longitude, -180.0);
+        expect(landmark.latitude, 90.0);
+        expect(landmark.longitude, -180.0);
 
-      final nanLandmark = Model3DLandmark(
-        id: 'lm-nan',
-        name: 'Void Outpost',
-        latitude: double.nan,
-        longitude: double.infinity,
-      );
+        final nanLandmark = Model3DLandmark(
+          id: 'lm-nan',
+          name: 'Void Outpost',
+          latitude: double.nan,
+          longitude: double.infinity,
+        );
 
-      expect(nanLandmark.latitude, 0.0);
-      expect(nanLandmark.longitude, 0.0);
-    });
+        expect(nanLandmark.latitude, 0.0);
+        expect(nanLandmark.longitude, 0.0);
+      },
+    );
   });
 }

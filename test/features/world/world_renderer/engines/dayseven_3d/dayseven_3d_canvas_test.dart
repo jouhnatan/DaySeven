@@ -163,7 +163,10 @@ void main() {
       final container = await pumpCanvas(tester);
 
       expect(container.read(dropPinModeProvider), isFalse);
-      expect(find.byKey(const Key('dayseven-3d-drop-pin-banner')), findsNothing);
+      expect(
+        find.byKey(const Key('dayseven-3d-drop-pin-banner')),
+        findsNothing,
+      );
 
       // Tap toggle button
       final toggleBtn = find.byKey(const Key('dayseven-3d-drop-pin-toggle'));
@@ -186,7 +189,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(container.read(dropPinModeProvider), isFalse);
-      expect(find.byKey(const Key('dayseven-3d-drop-pin-banner')), findsNothing);
+      expect(
+        find.byKey(const Key('dayseven-3d-drop-pin-banner')),
+        findsNothing,
+      );
     },
   );
 
@@ -225,12 +231,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify landmark was added to the model and renders on globe
-      final landmarks =
-          container.read(openWorldProvider)!.world.model3d!.landmarks;
-      expect(
-        landmarks.any((lm) => lm.name == 'Equatorial Outpost'),
-        isTrue,
-      );
+      final landmarks = container
+          .read(openWorldProvider)!
+          .world
+          .model3d!
+          .landmarks;
+      expect(landmarks.any((lm) => lm.name == 'Equatorial Outpost'), isTrue);
       expect(find.text('Equatorial Outpost'), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 500));
     },
@@ -358,8 +364,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Vanishing Tower'), findsNothing);
-    final landmarks =
-        container.read(openWorldProvider)!.world.model3d!.landmarks;
+    final landmarks = container
+        .read(openWorldProvider)!
+        .world
+        .model3d!
+        .landmarks;
     expect(landmarks.any((lm) => lm.id == 'lm-to-delete'), isFalse);
     await tester.pump(const Duration(milliseconds: 500));
   });
