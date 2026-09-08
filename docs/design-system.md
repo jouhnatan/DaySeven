@@ -45,6 +45,7 @@ These hex values are the system. Do not shift, tint, or "improve" them.
 | `sage` | `#B7CDB6` | The app mark, avatar fills, illustration, chart fills. Decorative only. |
 | `onSage` | `#2A4433` | Text on `sage`. |
 | `slate` | `#3E5A56` | Links and informational accents. The cool voice. |
+| `sapphire` | `#3E6FA8` | Internal document-link text and page icons. |
 | `success` | `#3A6E4C` | Positive state (up to date, saved, synced). |
 | `warning` | `#8A6A18` | Attention, not failure (unsaved changes, quota near limit). |
 | `warningWash` | `#F2E7C4` | Background for a warning banner. Text on it is `ink`. |
@@ -67,6 +68,7 @@ These hex values are the system. Do not shift, tint, or "improve" them.
 | `onFern` on `fernHover` | 7.67:1 | AAA |
 | `fern` on `paper` | 11.64:1 | AAA |
 | `slate` on `paper` | 6.99:1 | AA all sizes |
+| `sapphire` on `paper` | 4.84:1 | AA all sizes |
 | `success` on `paper` | 5.57:1 | AA all sizes |
 | `danger` on `paper` | 8.40:1 | AAA |
 | `warning` on `paper` | 4.71:1 | AA normal text only — never below 14px |
@@ -119,6 +121,7 @@ abstract final class CF {
   static const sage   = Color(0xFFB7CDB6);
   static const onSage = Color(0xFF2A4433);
   static const slate  = Color(0xFF3E5A56);
+  static const sapphire = Color(0xFF3E6FA8);
 
   static const success     = Color(0xFF3A6E4C);
   static const warning     = Color(0xFF8A6A18);

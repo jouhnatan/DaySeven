@@ -35,6 +35,7 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/shared/kb/document_links.dart';
 import 'package:dayseven/features/editor/ui/rich_controller.dart';
 
 double _blockSpacingGap(double spacing) => switch (spacing) {
@@ -129,7 +130,10 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
 
   RichTextController _controllerFor(TextBlock block) =>
       _controllers.putIfAbsent(block.id, () {
-        final controller = RichTextController(spans: block.spans);
+        final controller = RichTextController(
+          spans: block.spans,
+          onOpenDocumentLink: (href) => unawaited(_openDocumentLink(href)),
+        );
         controller.addListener(() {
           _onParagraphChanged(block.id);
           // The controller notifies on selection changes too, so this is also
@@ -138,6 +142,26 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
         });
         return controller;
       });
+
+  Future<void> _openDocumentLink(String href) async {
+    final session = ref.read(kbSessionProvider);
+    if (session == null) return;
+    final target = resolveDocumentLink(
+      widget.open.relativePath,
+      href,
+      documentPaths: documentPathsIn(session.tree).toSet(),
+    );
+    if (target == null) {
+      ref
+          .read(notificationStoreProvider.notifier)
+          .record(
+            DsNotificationKind.error,
+            'That linked page could not be found.',
+          );
+      return;
+    }
+    await ref.read(documentControllerProvider.notifier).open(target.path);
+  }
 
   /// One controller per cell, keyed by block id and position so a table's
   /// cells behave like any other block: independent, and undisturbed by edits
@@ -596,6 +620,26 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
     _focusFor(blockId).requestFocus();
   }
 
+  Future<void> _insertDocumentLink(String blockId) async {
+    final controller = _controllers[blockId];
+    final session = ref.read(kbSessionProvider);
+    if (controller == null || session == null) return;
+    final selection = controller.selection;
+    final files = walkKbTree(session.tree).whereType<KbFile>().toList();
+    final target = await showDialog<KbFile>(
+      context: context,
+      builder: (context) => _DocumentLinkPicker(files: files),
+    );
+    if (target == null || !mounted) return;
+
+    if (selection.isValid) controller.selection = selection;
+    controller.insertDocumentLink(
+      label: target.displayName,
+      href: documentLinkHref(widget.open.relativePath, target.relativePath),
+    );
+    _focusFor(blockId).requestFocus();
+  }
+
   // --------------------------------------------------------- block editing --
 
   void _splitBlock(String blockId) {
@@ -985,8 +1029,13 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
         height: kDsCompactMenuItemHeight,
       );
       menu.pushItem(
-        label: 'Link…',
+        label: 'Link to website…',
         value: () => _setLink(block.id),
+        height: kDsCompactMenuItemHeight,
+      );
+      menu.pushItem(
+        label: 'Link to page…',
+        value: () => _insertDocumentLink(block.id),
         height: kDsCompactMenuItemHeight,
       );
       menu.pushDivider();
@@ -1377,12 +1426,17 @@ List<TextSpanNode> _sliceSpans(List<TextSpanNode> spans, int start, int end) {
   var cursor = 0;
   for (final span in spans) {
     final spanStart = cursor;
-    final spanEnd = cursor + span.text.length;
+    final isDocumentLink = isDocumentLinkHref(span.href);
+    final spanEnd = cursor + (isDocumentLink ? 1 : span.text.length);
     cursor = spanEnd;
 
     final from = start.clamp(spanStart, spanEnd);
     final to = end.clamp(spanStart, spanEnd);
     if (to <= from) continue;
+    if (isDocumentLink) {
+      out.add(span);
+      continue;
+    }
     out.add(
       span.copyWith(
         text: span.text.substring(from - spanStart, to - spanStart),
@@ -2252,6 +2306,121 @@ class _AddParagraph extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DocumentLinkPicker extends StatefulWidget {
+  const _DocumentLinkPicker({required this.files});
+
+  final List<KbFile> files;
+
+  @override
+  State<_DocumentLinkPicker> createState() => _DocumentLinkPickerState();
+}
+
+class _DocumentLinkPickerState extends State<_DocumentLinkPicker> {
+  late final TextEditingController _search = TextEditingController()
+    ..addListener(_searchChanged);
+
+  void _searchChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ds;
+    final query = _search.text.trim().toLowerCase();
+    final files = [
+      for (final file in widget.files)
+        if (query.isEmpty ||
+            file.displayName.toLowerCase().contains(query) ||
+            file.relativePath.toLowerCase().contains(query))
+          file,
+    ];
+
+    return DsDialog(
+      width: 420,
+      title: Text(
+        'Link to page',
+        style: uiHeaderTextStyle(size: 16, color: colors.text),
+      ),
+      actions: [
+        DsDialogAction(
+          label: 'Cancel',
+          onPressed: () => Navigator.of(context).pop(),
+          tone: DsDialogActionTone.muted,
+        ),
+      ],
+      children: [
+        DsField(controller: _search, hint: 'Search pages', autofocus: true),
+        SizedBox(
+          height: 280,
+          child: files.isEmpty
+              ? Center(
+                  child: Text(
+                    'No matching pages.',
+                    style: uiTextStyle(size: 13, color: colors.muted),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: files.length,
+                  itemBuilder: (context, index) {
+                    final file = files[index];
+                    return InkWell(
+                      key: ValueKey(
+                        'document-link-choice-${file.relativePath}',
+                      ),
+                      onTap: () => Navigator.of(context).pop(file),
+                      hoverColor: colors.hover,
+                      child: SizedBox(
+                        height: DsSize.listRow,
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.description_outlined,
+                              size: 16,
+                              color: colors.documentLink,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    file.displayName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: uiTextStyle(
+                                      size: 13,
+                                      color: colors.documentLink,
+                                    ),
+                                  ),
+                                  Text(
+                                    file.relativePath,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: uiTextStyle(
+                                      size: 11.5,
+                                      color: colors.muted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

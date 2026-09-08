@@ -66,6 +66,9 @@ abstract final class CF {
   /// Links and informational accents. The cool voice.
   static const slate = Color(0xFF3E5A56);
 
+  /// Document references. A softened blue that remains readable on paper.
+  static const sapphire = Color(0xFF3E6FA8);
+
   // Semantic. These describe state; they are not accents, and they appear as
   // text plus a small mark rather than as a filled block.
   static const success = Color(0xFF3A6E4C);
@@ -153,6 +156,9 @@ class DsColors extends ThemeExtension<DsColors> {
 
   /// Link text.
   Color get link => CF.slate;
+
+  /// Page icons and names for links to documents in this Knowledge Base.
+  Color get documentLink => CF.sapphire;
 
   /// Attention, not failure: a proposal waiting, a check overdue.
   Color get pending => CF.warning;

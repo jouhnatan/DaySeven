@@ -190,6 +190,47 @@ void main() {
     expect(topPadding('b3'), DsSpace.sm);
   });
 
+  testWidgets('Return treats a page reference as one editable character', (
+    tester,
+  ) async {
+    final (container, _, _) = await openEditor(
+      tester,
+      temp,
+      seed: BlockDocument(
+        id: 'doc-1',
+        title: 'Aldenmoor',
+        blocks: [
+          ParagraphBlock(
+            id: 'b1',
+            spans: const [
+              TextSpanNode(text: 'See '),
+              TextSpanNode(text: 'The Fen', href: 'Places/The Fen.md'),
+              TextSpanNode(text: ' now.'),
+            ],
+          ),
+        ],
+      ),
+    );
+    final field = find.byType(TextField).last;
+    await tester.tap(field);
+    final controller =
+        tester.widget<TextField>(field).controller! as RichTextController;
+    controller.selection = const TextSelection.collapsed(offset: 5);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    final blocks = container.read(documentControllerProvider)!.document.blocks;
+    expect(
+      (blocks.first as ParagraphBlock).spans.last,
+      const TextSpanNode(text: 'The Fen', href: 'Places/The Fen.md'),
+    );
+    expect(blocks.last.plainText, ' now.');
+    await tester.runAsync(
+      () => container.read(documentControllerProvider.notifier).flush(),
+    );
+  });
+
   testWidgets('Windows text modifier keybinds format the selection', (
     tester,
   ) async {
@@ -827,6 +868,51 @@ void main() {
     await tester.runAsync(
       () => container.read(documentControllerProvider.notifier).flush(),
     );
+  });
+
+  testWidgets('page picker inserts a portable Markdown document link', (
+    tester,
+  ) async {
+    final (container, kb, path) = await openEditor(
+      tester,
+      temp,
+      seed: seedWith('See '),
+    );
+    await tester.runAsync(() async {
+      await kb.createFolder('Places');
+      await kb.createDocument(title: 'The Fen', folderRelativePath: 'Places');
+      await container.read(kbControllerProvider.notifier).refreshTree();
+    });
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+    await gesture.moveTo(tester.getCenter(find.byType(TextField).last));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('block-hover-grip')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Link to page…'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('document-link-choice-Places/The Fen.md')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.description_outlined), findsOneWidget);
+    final document = container.read(documentControllerProvider)!.document;
+    final spans = (document.blocks.single as ParagraphBlock).spans;
+    expect(
+      spans.last,
+      const TextSpanNode(text: 'The Fen', href: 'Places/The Fen.md'),
+    );
+
+    await tester.runAsync(() async {
+      await container.read(documentControllerProvider.notifier).flush();
+      expect(
+        await File(kb.absolutePathFor(path)).readAsString(),
+        contains('[The Fen](Places/The%20Fen.md)'),
+      );
+    });
   });
 
   testWidgets(

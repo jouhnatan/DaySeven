@@ -392,7 +392,7 @@ void main() {
   testWidgets('its island follows the editor width while buttons stay intact', (
     tester,
   ) async {
-    final container = await openEditor(tester);
+    await openEditor(tester);
     await selectInParagraph(tester, 3);
 
     final editorIsland = find.ancestor(
@@ -421,7 +421,9 @@ void main() {
       Offset(editorBefore.right + DsSpace.seam / 2, editorBefore.center.dy),
       const Offset(-80, 0),
     );
-    await tester.pumpAndSettle();
+    // The shell has repeating background activity, so waiting for every
+    // scheduler callback to disappear can hang even though resizing is done.
+    await tester.pump(const Duration(milliseconds: 200));
 
     final editorAfter = editorRect();
     final toolbarAfter = toolbarRect();
@@ -435,7 +437,6 @@ void main() {
     // Let the persisted pane-width debounce finish before disposing the test
     // container.
     await tester.pump(const Duration(milliseconds: 450));
-    await settle(tester, container);
   });
 
   testWidgets('Differences lives in the toolbar ellipsis menu', (tester) async {
