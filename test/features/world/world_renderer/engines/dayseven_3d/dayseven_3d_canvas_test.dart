@@ -5,9 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:dayseven/app/app_store.dart';
 import 'package:dayseven/app/view.dart';
-import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/features/world/application/world_controller.dart';
 import 'package:dayseven/features/world/application/world_providers.dart';
@@ -129,16 +127,16 @@ void main() {
 
   testWidgets('clicking landmark pin opens linked document', (tester) async {
     final container = await pumpCanvas(tester);
+    container.read(viewProvider.notifier).state = DsView.world;
 
     await tester.runAsync(() async {
       await tester.tap(find.text('Highpass Citadel'));
       final deadline = DateTime.now().add(const Duration(seconds: 5));
-      final kbId = container.read(kbSessionProvider)!.kb.manifest.kbId;
-      final store = await container.read(appStoreProvider.future);
-      while (DateTime.now().isBefore(deadline)) {
-        final opened = container.read(documentControllerProvider)?.relativePath;
-        final recent = await store.recentDocuments(kbId);
-        if (opened == 'Lore/Highpass.md' && recent.contains(opened)) break;
+      // The view changes only after opening the document — including recording
+      // it in app history — has completed. Waiting on that state avoids racing
+      // AppStore's atomic file replacement on Windows.
+      while (container.read(viewProvider) != DsView.editor &&
+          DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
     });
