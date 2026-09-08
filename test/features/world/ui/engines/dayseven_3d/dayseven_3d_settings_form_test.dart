@@ -48,15 +48,21 @@ void main() {
   ) async {
     final container = await pumpForm(tester);
 
-    expect(find.text('Map & landmarks'), findsOneWidget);
-    expect(find.text('Texture Layers'), findsOneWidget);
+    expect(find.text('Import as'), findsOneWidget);
+    expect(find.byKey(const Key('world-import-format-toggle')), findsOneWidget);
+    expect(find.text('Surface Color (Albedo)'), findsNothing);
+    expect(find.text('Elevation (Heightmap)'), findsNothing);
     expect(find.text('Environment'), findsOneWidget);
     expect(find.text('Planetary Geometry'), findsOneWidget);
     expect(find.text('Landmarks (0)'), findsOneWidget);
-    expect(find.text('Export 3D World'), findsOneWidget);
+    expect(find.text('Export world'), findsOneWidget);
     expect(find.byKey(const Key('export-model-json-button')), findsOneWidget);
     expect(find.byKey(const Key('export-geojson-button')), findsOneWidget);
     expect(find.byKey(const Key('export-threejs-html-button')), findsOneWidget);
+
+    final environmentHeader = tester.widget<Text>(find.text('Environment'));
+    expect(environmentHeader.style!.fontFamily, kUiHeaderFontFamily);
+    expect(environmentHeader.style!.fontSize, greaterThan(13));
 
     // Toggle atmosphere
     final atmosphereSwitch = find.descendant(
@@ -156,46 +162,35 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
   });
 
-  testWidgets(
-    'renders texture layers, toggles visibility, and confirms removal',
-    (tester) async {
-      final container = await pumpForm(
-        tester,
-        model3d: DaySeven3DModel(
-          layers: [
-            const Model3DLayer(
-              id: 'l-1',
-              name: 'Primary Heightmap',
-              type: Model3DLayerType.heightmap,
-              assetId: 'heightmap.png',
-              visible: true,
-            ),
-          ],
-        ),
-      );
+  testWidgets('shows only the selected source map below import', (
+    tester,
+  ) async {
+    await pumpForm(
+      tester,
+      model3d: DaySeven3DModel(
+        sourceMapLayerId: 'l-2',
+        layers: const [
+          Model3DLayer(
+            id: 'l-1',
+            name: 'old-map.png',
+            type: Model3DLayerType.heightmap,
+            assetId: 'old-map.png',
+          ),
+          Model3DLayer(
+            id: 'l-2',
+            name: 'current-map.jpg',
+            type: Model3DLayerType.albedo,
+            assetId: 'current-map.jpg',
+          ),
+        ],
+      ),
+    );
 
-      expect(find.text('Primary Heightmap'), findsOneWidget);
-      expect(find.text('Elevation (Heightmap)'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Hide layer'));
-      await tester.pump();
-
-      final layers = container.read(openWorldProvider)!.world.model3d!.layers;
-      expect(layers.first.visible, isFalse);
-
-      // Tap remove -> confirmation dialog
-      await tester.tap(find.byTooltip('Remove layer'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Remove “Primary Heightmap”?'), findsOneWidget);
-
-      await tester.tap(find.text('Remove'));
-      await tester.pumpAndSettle();
-
-      expect(container.read(openWorldProvider)!.world.model3d!.layers, isEmpty);
-      await tester.pump(const Duration(milliseconds: 700));
-    },
-  );
+    expect(find.text('Source map'), findsOneWidget);
+    expect(find.byKey(const Key('world-source-map-link')), findsOneWidget);
+    expect(find.text('current-map.jpg'), findsOneWidget);
+    expect(find.text('old-map.png'), findsNothing);
+  });
 
   testWidgets('confirms landmark deletion', (tester) async {
     final container = await pumpForm(

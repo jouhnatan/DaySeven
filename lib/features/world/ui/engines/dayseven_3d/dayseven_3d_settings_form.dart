@@ -1,11 +1,10 @@
 /// The settings form owned by the native DaySeven 3D engine.
 ///
 /// Provides visual configuration of planetary geometry, astronomy,
-/// environment (atmosphere, ocean, sun lighting), multi-layer texture stack
-/// (equirectangular PNG import), and landmarks linked to Knowledge Base documents.
+/// environment (atmosphere, ocean, sun lighting), an equirectangular source map,
+/// and landmarks linked to Knowledge Base documents.
 library;
 
-import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -25,6 +24,29 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
+enum _WorldMapImportFormat {
+  png(
+    label: 'PNG',
+    extensions: ['png'],
+    uniformTypeIdentifiers: ['public.png'],
+  ),
+  jpeg(
+    label: 'JPEG',
+    extensions: ['jpg', 'jpeg'],
+    uniformTypeIdentifiers: ['public.jpeg'],
+  );
+
+  const _WorldMapImportFormat({
+    required this.label,
+    required this.extensions,
+    required this.uniformTypeIdentifiers,
+  });
+
+  final String label;
+  final List<String> extensions;
+  final List<String> uniformTypeIdentifiers;
+}
+
 class DaySeven3DSettingsForm extends ConsumerStatefulWidget {
   const DaySeven3DSettingsForm({super.key});
 
@@ -36,7 +58,7 @@ class DaySeven3DSettingsForm extends ConsumerStatefulWidget {
 class _DaySeven3DSettingsFormState
     extends ConsumerState<DaySeven3DSettingsForm> {
   bool _importing = false;
-  Model3DLayerType _selectedImportType = Model3DLayerType.albedo;
+  _WorldMapImportFormat _importFormat = _WorldMapImportFormat.png;
 
   @override
   Widget build(BuildContext context) {
@@ -46,56 +68,80 @@ class _DaySeven3DSettingsFormState
     final colors = context.ds;
     final model = open.world.model3d ?? DaySeven3DModel();
     final controller = ref.read(openWorldProvider.notifier);
+    final sourceMap = _sourceMapLayer(model);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const DsMenuHeader('Map & landmarks'),
-        const SizedBox(height: DsSpace.m),
-
-        // --- Layers Stack ---
-        _buildSectionTitle('Texture Layers', colors),
-        const SizedBox(height: DsSpace.sm),
-        if (model.layers.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: DsSpace.s),
-            child: Text(
-              'No map layers attached. Import an equirectangular PNG or JPEG below.',
-              style: uiTextStyle(size: 13, color: colors.muted),
+        DsSettingRow(
+          key: const Key('world-import-format-setting'),
+          first: true,
+          label: 'Import as',
+          trailing: SizedBox(
+            width: 142,
+            child: DsSegmented<_WorldMapImportFormat>(
+              key: const Key('world-import-format-toggle'),
+              value: _importFormat,
+              options: const [
+                DsSegmentedOption(
+                  value: _WorldMapImportFormat.png,
+                  semanticLabel: 'Import a PNG source map',
+                  child: Text('PNG'),
+                ),
+                DsSegmentedOption(
+                  value: _WorldMapImportFormat.jpeg,
+                  semanticLabel: 'Import a JPEG source map',
+                  child: Text('JPEG'),
+                ),
+              ],
+              onPick: (format) => setState(() => _importFormat = format),
             ),
+          ),
+        ),
+        const SizedBox(height: DsSpace.sm),
+        DsButton(
+          key: const Key('dayseven-3d-import-layer-button'),
+          variant: DsButtonVariant.primary,
+          onPressed: _importing ? null : _importLayer,
+          child: Text(_importing ? 'Importing…' : 'Import map'),
+        ),
+        const SizedBox(height: DsSpace.sm),
+        if (sourceMap == null)
+          Text(
+            'Choose an equirectangular 2:1 source map.',
+            style: uiTextStyle(size: 12, color: colors.muted),
           )
         else
-          for (final layer in model.layers) ...[
-            _ModelLayerRow(layer: layer),
-            const SizedBox(height: DsSpace.xs),
-          ],
-
-        const SizedBox(height: DsSpace.sm),
-        Row(
-          children: [
-            Expanded(
-              child: DsButton(
-                key: const Key('dayseven-3d-import-layer-button'),
-                variant: DsButtonVariant.primary,
-                onPressed: _importing ? null : _importLayer,
-                child: Text(_importing ? 'Importing…' : 'Import map'),
+          Row(
+            children: [
+              Text(
+                'Source map',
+                style: uiTextStyle(size: 12, color: colors.muted),
               ),
-            ),
-            const SizedBox(width: DsSpace.sm),
-            PopupMenuButton<Model3DLayerType>(
-              tooltip: 'Choose layer type to import',
-              icon: Icon(Icons.tune, size: 18, color: colors.muted),
-              onSelected: (type) => setState(() => _selectedImportType = type),
-              itemBuilder: (context) => [
-                for (final type in Model3DLayerType.values)
-                  PopupMenuItem(
-                    value: type,
-                    child: Text(type.label, style: uiTextStyle(size: 13)),
+              const SizedBox(width: DsSpace.sm),
+              Expanded(
+                child: InkWell(
+                  key: const Key('world-source-map-link'),
+                  onTap: () => _openSourceMap(sourceMap),
+                  child: Text(
+                    sourceMap.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style:
+                        uiTextStyle(
+                          size: 12,
+                          weight: 500,
+                          color: colors.link,
+                        ).copyWith(
+                          decoration: TextDecoration.underline,
+                          decorationColor: colors.link,
+                        ),
                   ),
-              ],
-            ),
-          ],
-        ),
+                ),
+              ),
+            ],
+          ),
 
         const SizedBox(height: DsSpace.xl),
 
@@ -105,9 +151,9 @@ class _DaySeven3DSettingsFormState
         DsSettingRow(
           key: const Key('dayseven-3d-atmosphere-setting'),
           label: 'Atmosphere',
-          trailing: Switch.adaptive(
+          trailing: _compactSwitch(
+            context,
             value: model.environment.atmosphere.enabled,
-            activeTrackColor: colors.fern,
             onChanged: (enabled) {
               controller.updateModel3D(
                 model.copyWith(
@@ -124,9 +170,9 @@ class _DaySeven3DSettingsFormState
         DsSettingRow(
           key: const Key('dayseven-3d-ocean-setting'),
           label: 'Ocean / Hydrosphere',
-          trailing: Switch.adaptive(
+          trailing: _compactSwitch(
+            context,
             value: model.environment.ocean.enabled,
-            activeTrackColor: colors.fern,
             onChanged: (enabled) {
               controller.updateModel3D(
                 model.copyWith(
@@ -313,8 +359,8 @@ class _DaySeven3DSettingsFormState
 
         const SizedBox(height: DsSpace.xl),
 
-        // --- Export 3D World ---
-        _buildSectionTitle('Export 3D World', colors),
+        // --- Export World ---
+        _buildSectionTitle('Export world', colors),
         const SizedBox(height: DsSpace.sm),
         Row(
           children: [
@@ -463,9 +509,25 @@ class _DaySeven3DSettingsFormState
     }
   }
 
-  Widget _buildSectionTitle(String title, DsColors colors) => Text(
-    title,
-    style: uiTextStyle(size: 11, weight: 600, color: colors.muted),
+  Widget _buildSectionTitle(String title, DsColors colors) =>
+      Text(title, style: uiHeaderTextStyle(size: 14.5, color: colors.text));
+
+  Widget _compactSwitch(
+    BuildContext context, {
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) => SizedBox(
+    width: 38,
+    height: 22,
+    child: FittedBox(
+      fit: BoxFit.fill,
+      child: Switch.adaptive(
+        value: value,
+        activeTrackColor: context.ds.fern,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        onChanged: onChanged,
+      ),
+    ),
   );
 
   SliderThemeData _sliderTheme(BuildContext context) {
@@ -485,11 +547,11 @@ class _DaySeven3DSettingsFormState
     setState(() => _importing = true);
     try {
       final file = await openFile(
-        acceptedTypeGroups: const [
+        acceptedTypeGroups: [
           XTypeGroup(
-            label: 'PNG or JPEG',
-            extensions: ['png', 'jpg', 'jpeg'],
-            uniformTypeIdentifiers: ['public.png', 'public.jpeg'],
+            label: _importFormat.label,
+            extensions: _importFormat.extensions,
+            uniformTypeIdentifiers: _importFormat.uniformTypeIdentifiers,
           ),
         ],
       );
@@ -499,7 +561,7 @@ class _DaySeven3DSettingsFormState
           .read(worldAssetRepositoryProvider)
           .importLayer(
             id: newId(),
-            kind: WorldLayerKind.heightmap,
+            kind: WorldLayerKind.satellite,
             source: File(file.path),
           );
       if (!mounted) return;
@@ -507,21 +569,37 @@ class _DaySeven3DSettingsFormState
       final controller = ref.read(openWorldProvider.notifier);
       final modelLayer = Model3DLayer(
         id: layer.id,
-        name:
-            '${_selectedImportType.label} ${layer.metadata?.width ?? ""}x${layer.metadata?.height ?? ""}'
-                .trim(),
-        type: _selectedImportType,
+        name: file.name,
+        type: Model3DLayerType.albedo,
         assetId: layer.assetId,
         visible: true,
       );
 
-      controller.addModel3DLayer(modelLayer);
+      controller.setSourceMapLayer(modelLayer);
     } on KbException catch (error) {
       _showError(error.message);
     } on Object catch (error) {
       _showError('Could not import texture layer: $error');
     } finally {
       if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _openSourceMap(Model3DLayer layer) async {
+    final session = ref.read(kbSessionProvider);
+    if (session == null) return;
+
+    final path = session.kb.assetPathFor(layer.assetId);
+    try {
+      if (Platform.isMacOS) {
+        await Process.start('open', [path]);
+      } else if (Platform.isWindows) {
+        await Process.start('rundll32', ['url.dll,FileProtocolHandler', path]);
+      } else {
+        await Process.start('xdg-open', [path]);
+      }
+    } on Object catch (error) {
+      _showError('Could not open source map: $error');
     }
   }
 
@@ -551,103 +629,6 @@ Model3DLayer? _sourceMapLayer(DaySeven3DModel model) {
     if (layer.visible) return layer;
   }
   return null;
-}
-
-class _ModelLayerRow extends ConsumerWidget {
-  const _ModelLayerRow({required this.layer});
-
-  final Model3DLayer layer;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.ds;
-    final controller = ref.read(openWorldProvider.notifier);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: DsSpace.sm,
-        vertical: DsSpace.xs,
-      ),
-      decoration: BoxDecoration(
-        color: colors.cardSurface,
-        borderRadius: const BorderRadius.all(DsRadius.island),
-        border: Border.all(color: colors.border),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: Icon(
-              layer.visible ? Icons.visibility : Icons.visibility_off,
-              size: 16,
-              color: layer.visible ? colors.text : colors.muted,
-            ),
-            tooltip: layer.visible ? 'Hide layer' : 'Show layer',
-            onPressed: () =>
-                controller.setModel3DLayerVisible(layer.id, !layer.visible),
-          ),
-          const SizedBox(width: DsSpace.xs),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  layer.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: uiTextStyle(size: 13, weight: 500),
-                ),
-                Text(
-                  layer.type.label,
-                  style: uiTextStyle(size: 11, color: colors.muted),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: Icon(Icons.close, size: 16, color: colors.muted),
-            tooltip: 'Remove layer',
-            onPressed: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (dialogContext) => DsDialog(
-                  title: Text(
-                    'Remove “${layer.name}”?',
-                    style: uiTextStyle(
-                      size: 16,
-                      weight: 600,
-                      color: colors.text,
-                    ),
-                  ),
-                  actions: [
-                    DsDialogAction(
-                      label: 'Cancel',
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      tone: DsDialogActionTone.muted,
-                    ),
-                    DsDialogAction(
-                      label: 'Remove',
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      tone: DsDialogActionTone.danger,
-                    ),
-                  ],
-                  children: [
-                    Text(
-                      'This removes the texture layer from the 3D model. The source file remains in your Knowledge Base assets.',
-                      style: uiTextStyle(size: 13, color: colors.muted),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed == true) {
-                controller.removeModel3DLayer(layer.id);
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _LandmarkRow extends ConsumerWidget {

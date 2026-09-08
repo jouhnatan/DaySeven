@@ -28,9 +28,13 @@ void main() {
     );
 
     expect(find.text('Render as'), findsOneWidget);
+    expect(find.byKey(const Key('world-render-mode-toggle')), findsOneWidget);
+    expect(find.byKey(const Key('world-import-format-toggle')), findsOneWidget);
+    expect(find.text('Import as'), findsOneWidget);
+    expect(find.text('PNG'), findsOneWidget);
+    expect(find.text('JPEG'), findsOneWidget);
+    expect(find.text('Import map'), findsOneWidget);
     expect(find.text('Engine'), findsNothing);
-    await tester.tap(find.byKey(const Key('world-render-mode-dropdown')));
-    await tester.pumpAndSettle();
     expect(find.text('2D'), findsOneWidget);
     expect(find.text('World Orogen'), findsNothing);
 

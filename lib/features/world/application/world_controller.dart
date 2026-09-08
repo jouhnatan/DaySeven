@@ -162,6 +162,24 @@ class WorldController extends StateNotifier<OpenWorld?> {
     edit(current.world.copyWith(model: updated));
   }
 
+  /// Makes [layer] the one source map shared by the 2D and 3D renderers.
+  ///
+  /// Existing imported assets remain referenced so migration never destroys
+  /// data, but only this layer is presented as the source map in the UI.
+  void setSourceMapLayer(Model3DLayer layer) {
+    final current = state;
+    if (current == null) return;
+    final model = current.world.model ?? DaySeven3DModel();
+    edit(
+      current.world.copyWith(
+        model: model.copyWith(
+          layers: [...model.layers, layer],
+          sourceMapLayerId: layer.id,
+        ),
+      ),
+    );
+  }
+
   /// Removes [layerId] from the 3D model stack.
   void removeModel3DLayer(String layerId) {
     final current = state;
