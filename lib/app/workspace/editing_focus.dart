@@ -92,6 +92,7 @@ abstract class EditingSurface {
   void setHeadingLevel(int? level);
 
   void insertDocumentLink();
+  void insertSpecialCharacter(String character);
   void insertImage();
   void insertDivider();
 }
@@ -128,6 +129,8 @@ class EditingFocusController extends StateNotifier<EditingFocus?> {
   void setBlockSpacing(double spacing) => _surface?.setBlockSpacing(spacing);
   void setHeadingLevel(int? level) => _surface?.setHeadingLevel(level);
   void insertDocumentLink() => _surface?.insertDocumentLink();
+  void insertSpecialCharacter(String character) =>
+      _surface?.insertSpecialCharacter(character);
   void insertImage() => _surface?.insertImage();
   void insertDivider() => _surface?.insertDivider();
 }
