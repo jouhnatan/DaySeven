@@ -111,6 +111,23 @@ class RichTextController extends TextEditingController {
     );
   }
 
+  /// Replaces [selection], or the controller's current selection, with plain
+  /// text while preserving the formatting inheritance used by normal typing.
+  void replaceSelection(String replacement, {TextSelection? selection}) {
+    final target = selection?.isValid ?? false
+        ? selection!
+        : this.selection.isValid
+        ? this.selection
+        : TextSelection.collapsed(offset: text.length);
+    final start = target.start.clamp(0, text.length);
+    final end = target.end.clamp(start, text.length);
+
+    value = TextEditingValue(
+      text: text.replaceRange(start, end, replacement),
+      selection: TextSelection.collapsed(offset: start + replacement.length),
+    );
+  }
+
   @override
   set value(TextEditingValue newValue) {
     if (newValue.text != text) {

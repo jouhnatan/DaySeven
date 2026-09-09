@@ -329,6 +329,26 @@ class _DocumentEditorState extends ConsumerState<DocumentEditor>
   }
 
   @override
+  void insertSpecialCharacter(String character) {
+    if (widget.readOnly || character.isEmpty) return;
+    final focus = ref.read(editingFocusProvider);
+    if (focus == null) return;
+    final controller = _controllers[focus.blockId];
+    if (controller == null) return;
+
+    final currentSelection = controller.selection;
+    final selection =
+        focus.hasSelection &&
+            (!currentSelection.isValid || currentSelection.isCollapsed)
+        ? _lastSelection[focus.blockId]
+        : currentSelection;
+    if (selection == null || !selection.isValid) return;
+
+    controller.replaceSelection(character, selection: selection);
+    _focusFor(focus.blockId).requestFocus();
+  }
+
+  @override
   void insertImage() {
     if (widget.readOnly) return;
     final focus = ref.read(editingFocusProvider);

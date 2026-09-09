@@ -14,7 +14,9 @@ import 'package:dayseven/features/editing_toolbar/ui/controls/image_control.dart
 import 'package:dayseven/features/editing_toolbar/ui/controls/italic_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/document_spacing_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/strikethrough_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/controls/special_character_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/underline_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/special_character_picker.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 class EditingToolbar extends ConsumerWidget {
@@ -57,6 +59,15 @@ class EditingToolbar extends ConsumerWidget {
           UnderlineControl(
             active: focus.isActive(EditingFormat.underline),
             onPressed: () => notifier.toggleFormat(EditingFormat.underline),
+          ),
+          const SizedBox(width: DsSpace.controlGap),
+          SpecialCharacterControl(
+            onPressed: () async {
+              final character = await showSpecialCharacterPicker(context);
+              if (character != null) {
+                notifier.insertSpecialCharacter(character);
+              }
+            },
           ),
           const SizedBox(width: DsSpace.controlGap),
           DocumentLinkControl(onPressed: notifier.insertDocumentLink),

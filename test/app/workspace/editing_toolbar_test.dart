@@ -400,6 +400,37 @@ void main() {
     await settle(tester, container);
   });
 
+  testWidgets('special-character picker replaces the selection and refocuses', (
+    tester,
+  ) async {
+    final container = await openEditor(tester);
+    await selectInParagraph(tester, 3);
+
+    await tester.tap(find.byTooltip('Insert special character'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('special-character-picker')), findsOneWidget);
+
+    final search = find.descendant(
+      of: find.byKey(const Key('special-character-search')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(search, 'em dash');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('special-character-—')));
+    await tester.pumpAndSettle();
+
+    final block =
+        container.read(documentControllerProvider)!.document.blocks.single
+            as ParagraphBlock;
+    expect(block.plainText, '— first age ended.');
+    expect(find.byKey(const Key('special-character-picker')), findsNothing);
+    expect(
+      tester.widget<TextField>(paragraphField()).focusNode!.hasFocus,
+      isTrue,
+    );
+    await settle(tester, container);
+  });
+
   testWidgets('block spacing changes the document instead of one block', (
     tester,
   ) async {

@@ -6,6 +6,7 @@ import 'package:dayseven/features/editing_toolbar/ui/controls/document_link_cont
 import 'package:dayseven/features/editing_toolbar/ui/controls/heading_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/italic_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/strikethrough_control.dart';
+import 'package:dayseven/features/editing_toolbar/ui/controls/special_character_control.dart';
 import 'package:dayseven/features/editing_toolbar/ui/controls/underline_control.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/ui/controls.dart';
@@ -178,6 +179,20 @@ void main() {
     expect(find.byIcon(Icons.description_outlined), findsOneWidget);
     expect(find.byTooltip('Link to page'), findsOneWidget);
     await tester.tap(find.byIcon(Icons.description_outlined));
+    expect(pressed, isTrue);
+  });
+
+  testWidgets('special character module owns its icon, label, and callback', (
+    tester,
+  ) async {
+    var pressed = false;
+    await tester.pumpWidget(
+      app(SpecialCharacterControl(onPressed: () => pressed = true)),
+    );
+
+    expect(find.byIcon(Icons.emoji_symbols_outlined), findsOneWidget);
+    expect(find.byTooltip('Insert special character'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.emoji_symbols_outlined));
     expect(pressed, isTrue);
   });
 

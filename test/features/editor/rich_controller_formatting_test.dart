@@ -40,6 +40,22 @@ void main() {
       expect(_isOn(format, inserted), isTrue);
     }
   });
+
+  test('plain-text replacement uses the selection and typing format', () {
+    final controller = RichTextController(
+      spans: const [TextSpanNode(text: 'world', italic: true)],
+    );
+    addTearDown(controller.dispose);
+
+    controller.replaceSelection(
+      'Ω',
+      selection: const TextSelection(baseOffset: 1, extentOffset: 4),
+    );
+
+    expect(controller.text, 'wΩd');
+    expect(controller.selection, const TextSelection.collapsed(offset: 2));
+    expect(controller.toSpans().single.italic, isTrue);
+  });
 }
 
 bool _isOn(EditingFormat format, TextSpanNode value) => switch (format) {
