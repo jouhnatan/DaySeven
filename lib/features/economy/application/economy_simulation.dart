@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -183,31 +184,25 @@ TradeSimulation _build(World world) {
   return TradeSimulation(nodeRuns: nodeRuns, routes: routeRuns);
 }
 
+/// Identifies every input the built run depends on.
+///
+/// The whole economy is in here rather than the fields the current builder
+/// happens to read: population and person counts decide how many workers and
+/// traders a city runs, and its resource assignments decide what they carry.
+/// A key that listed only routes and nodes left a moved slider showing the
+/// run built from the old numbers.
 String _networkKeyFor(World? world) {
   if (world == null) return 'none';
-  final buffer = StringBuffer();
+  final buffer = StringBuffer()
+    // Two Worlds can hold the same cities and routes; a run belongs to one.
+    ..write(world.id)
+    ..write(jsonEncode(world.economy.toJson()));
   for (final landmark in world.model?.landmarks ?? const <Model3DLandmark>[]) {
     if (landmark.category != 'city') continue;
     buffer
       ..write(landmark.id)
       ..write(landmark.latitude)
       ..write(landmark.longitude);
-  }
-  for (final route in world.economy.tradeRoutes) {
-    buffer
-      ..write(route.id)
-      ..write(route.fromLandmarkId)
-      ..write(route.toLandmarkId)
-      ..write(route.resourceId)
-      ..write(route.controlPoints);
-  }
-  for (final node in world.economy.resourceNodes) {
-    buffer
-      ..write(node.id)
-      ..write(node.resourceId)
-      ..write(node.latitude)
-      ..write(node.longitude)
-      ..write(node.homeLandmarkId);
   }
   return buffer.toString();
 }
