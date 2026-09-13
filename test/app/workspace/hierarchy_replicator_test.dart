@@ -8,6 +8,7 @@ import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/shared/backend/asset_repository.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
+import 'package:dayseven/shared/backend/object_repository.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/blocks/revision.dart';
@@ -16,6 +17,8 @@ import 'package:dayseven/shared/blocks/search_index.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../support/object_sync_fakes.dart';
 
 class FakeAssetRepository extends AssetRepository {
   @override
@@ -164,6 +167,7 @@ void main() {
         overrides: [
           kbSessionProvider.overrideWithValue(session),
           documentRepositoryProvider.overrideWithValue(docs),
+          objectRepositoryProvider.overrideWithValue(FakeObjectRepository()),
           assetRepositoryProvider.overrideWithValue(FakeAssetRepository()),
           kbRoleProvider.overrideWith((ref) async => KbRole.owner),
           differencesNetworkEnabledProvider.overrideWithValue(true),
@@ -364,6 +368,7 @@ void main() {
           overrides: [
             kbSessionProvider.overrideWithValue(sessionA),
             documentRepositoryProvider.overrideWithValue(docs),
+            objectRepositoryProvider.overrideWithValue(FakeObjectRepository()),
             assetRepositoryProvider.overrideWithValue(FakeAssetRepository()),
             kbRoleProvider.overrideWith((ref) async => KbRole.owner),
             differencesNetworkEnabledProvider.overrideWithValue(true),
@@ -451,6 +456,7 @@ void main() {
         overrides: [
           kbSessionProvider.overrideWithValue(sessionA),
           documentRepositoryProvider.overrideWithValue(fakeDocs),
+          objectRepositoryProvider.overrideWithValue(FakeObjectRepository()),
           assetRepositoryProvider.overrideWithValue(FakeAssetRepository()),
           kbRoleProvider.overrideWith((ref) async => KbRole.owner),
           differencesNetworkEnabledProvider.overrideWithValue(true),

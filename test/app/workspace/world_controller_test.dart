@@ -1,0 +1,165 @@
+import 'dart:io';
+
+import 'package:dayseven/app/workspace/world_providers.dart';
+import 'package:dayseven/shared/world/domain/dayseven_3d_model.dart';
+import 'package:dayseven/shared/world/domain/economy.dart';
+import 'package:dayseven/shared/world/domain/world.dart';
+import 'package:dayseven/shared/world/domain/world_dimension.dart';
+import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/kb_harness.dart';
+
+void main() {
+  late Directory temp;
+
+  setUp(() async {
+    final dirs = await createTempDirs('dayseven_world_controller_test');
+    temp = dirs.temp;
+  });
+
+  Future<(ProviderContainer, KnowledgeBase)> openWorld(
+    WidgetTester tester, {
+    World world = const World(id: 'world-1', title: 'Aster'),
+  }) async {
+    final (container, kb) = await openTestKb(tester, temp);
+    late String path;
+    await tester.runAsync(() async {
+      path = await kb.createObject(name: 'Aster', seed: world.toJson());
+      await container.read(openWorldProvider.notifier).open(path);
+    });
+    return (container, kb);
+  }
+
+  testWidgets('switches render mode without changing the geographic model', (
+    tester,
+  ) async {
+    final model = DaySeven3DModel(
+      landmarks: [
+        Model3DLandmark(
+          id: 'lm-1',
+          name: 'The Spire',
+          latitude: 25,
+          longitude: 50,
+        ),
+      ],
+    );
+    final (container, _) = await openWorld(
+      tester,
+      world: World(id: 'world-1', title: 'Aster', model: model),
+    );
+
+    await container
+        .read(openWorldProvider.notifier)
+        .setDimension(WorldDimension.twoD);
+
+    final world = container.read(openWorldProvider)!.world;
+    expect(world.dimension, WorldDimension.twoD);
+    expect(world.model!.landmarks.single.latitude, 25);
+    expect(world.model!.landmarks.single.longitude, 50);
+    await tester.runAsync(
+      () => container.read(openWorldProvider.notifier).flush(),
+    );
+  });
+
+  testWidgets('selects the latest source layer without deleting earlier data', (
+    tester,
+  ) async {
+    final (container, _) = await openWorld(tester);
+    final controller = container.read(openWorldProvider.notifier);
+
+    controller.setSourceMapLayer(
+      const Model3DLayer(
+        id: 'surface',
+        name: 'Surface',
+        type: Model3DLayerType.albedo,
+        assetId: 'surface.jpg',
+      ),
+    );
+    controller.setSourceMapLayer(
+      const Model3DLayer(
+        id: 'replacement',
+        name: 'Replacement',
+        type: Model3DLayerType.albedo,
+        assetId: 'replacement.png',
+      ),
+    );
+
+    final model = container.read(openWorldProvider)!.world.model!;
+    expect(model.layers.map((layer) => layer.assetId), [
+      'surface.jpg',
+      'replacement.png',
+    ]);
+    expect(model.sourceMapLayerId, 'replacement');
+    await tester.runAsync(() => controller.flush());
+  });
+
+  testWidgets('automatically migrates legacy Orogen layers on open', (
+    tester,
+  ) async {
+    final (container, kb) = await openTestKb(tester, temp);
+    late String path;
+    await tester.runAsync(() async {
+      path = await kb.createObject(
+        name: 'Aster',
+        seed: {
+          'kind': 'world',
+          'version': 2,
+          'id': 'world-1',
+          'title': 'Aster',
+          'dimension': '3d',
+          'engineId': 'orogen',
+          'layers': [
+            {'id': 'surface', 'kind': 'satellite', 'assetId': 'surface.png'},
+          ],
+        },
+      );
+      await container.read(openWorldProvider.notifier).open(path);
+      await container.read(openWorldProvider.notifier).flush();
+    });
+
+    final world = container.read(openWorldProvider)!.world;
+    expect(world.model!.layers.single.id, 'surface');
+    expect(world.model!.sourceMapLayerId, 'surface');
+    final json = await tester.runAsync(() => kb.readObjectJson(path));
+    expect(json!['version'], 4);
+    expect(json['engineId'], isNull);
+    expect(json['model'], isA<Map>());
+  });
+
+  testWidgets('saves economy edits with the world and cascades landmark deletion',
+      (tester) async {
+    final (container, kb) = await openWorld(tester);
+    final controller = container.read(openWorldProvider.notifier);
+
+    controller.addLandmark(
+      Model3DLandmark(id: 'city-1', name: 'Aldenmoor', latitude: 1, longitude: 2),
+    );
+    controller.updateEconomy(
+      controller
+          .state!
+          .world
+          .economy
+          .withLocation(
+            EconomyLocation(
+              id: 'e1',
+              landmarkId: 'city-1',
+              population: 400,
+            ),
+          ),
+    );
+
+    await tester.runAsync(() => controller.flush());
+
+    final stored = await tester.runAsync(
+      () => kb.readObjectJson('Aster$kObjectExtension'),
+    );
+    final saved = World.fromJson(stored!);
+    expect(saved.economy.locationForLandmark('city-1')!.population, 400);
+
+    controller.removeLandmark('city-1');
+    expect(controller.state!.world.economy.locations, isEmpty);
+    await tester.runAsync(() => controller.flush());
+  });
+}

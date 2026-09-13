@@ -71,11 +71,15 @@ jobs:
         shell: pwsh
         run: flutter pub get
 
-      - name: Analyze and test World
+      - name: Analyze and test
         shell: pwsh
         run: |
           flutter analyze
-          flutter test test/features/world
+          # Windows does not run the shell suites: the runner refuses to delete
+          # a temp Knowledge Base while the widget tree's file watchers still
+          # hold a handle, which fails those tests in tear-down. The macOS job
+          # runs them. The full local gate remains `flutter test`.
+          flutter test test/features/world test/features/economy/trade_simulation_test.dart test/features/views test/shared/world test/shared/backend
 
       - name: Build archive
         shell: pwsh

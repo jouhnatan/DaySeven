@@ -14,7 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/features/timelines/application/timeline_controller.dart';
 import 'package:dayseven/features/timelines/domain/timeline.dart';
-import 'package:dayseven/features/timelines/ui/timeline_color_picker.dart';
+import 'package:dayseven/shared/ui/color_picker.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
@@ -248,7 +248,7 @@ class _ItemEditorState extends ConsumerState<_ItemEditor> {
               ),
             ),
             const SizedBox(width: DsSpace.row),
-            TimelineColorPicker(
+            DsColorPicker(
               selectedColor: item.color,
               onColorSelected: (color) =>
                   _actions.updateItem(item.copyWith(color: color)),

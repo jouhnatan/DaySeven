@@ -227,6 +227,14 @@ class DifferencesController extends StateNotifier<DifferencesState>
             _ref.read(canonicalSyncWakeProvider.notifier).state++;
           },
         )
+        // Worlds and their economies publish on the same bus. The payload is
+        // a wake-up only: the durable object rows are read by the pull.
+        .onBroadcast(
+          event: 'object_published',
+          callback: (_) {
+            _ref.read(canonicalSyncWakeProvider.notifier).state++;
+          },
+        )
         .subscribe((status, error) {
           if (!mounted || !identical(_channel, channel)) return;
           state = state.copyWith(

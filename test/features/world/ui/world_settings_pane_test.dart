@@ -1,7 +1,7 @@
-import 'package:dayseven/features/world/application/world_controller.dart';
-import 'package:dayseven/features/world/application/world_providers.dart';
-import 'package:dayseven/features/world/domain/world.dart';
-import 'package:dayseven/features/world/domain/world_dimension.dart';
+import 'package:dayseven/app/workspace/world_controller.dart';
+import 'package:dayseven/app/workspace/world_providers.dart';
+import 'package:dayseven/shared/world/domain/world.dart';
+import 'package:dayseven/shared/world/domain/world_dimension.dart';
 import 'package:dayseven/features/world/ui/world_settings_pane.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 import 'package:flutter/material.dart';

@@ -11,6 +11,7 @@ import 'package:dayseven/features/differences/domain/change_set.dart';
 import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
+import 'package:dayseven/shared/backend/object_repository.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/blocks/revision.dart';
 import 'package:dayseven/shared/blocks/search_index.dart';
@@ -19,6 +20,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../support/object_sync_fakes.dart';
 
 const user = User(
   id: '11111111-1111-4111-8111-111111111111',
@@ -334,6 +337,7 @@ Future<TestContext> context({KbRole role = KbRole.editor}) async {
       differencesRealtimeEnabledProvider.overrideWithValue(false),
       changeSetRepositoryProvider.overrideWithValue(changes),
       documentRepositoryProvider.overrideWithValue(documents),
+      objectRepositoryProvider.overrideWithValue(FakeObjectRepository()),
       appStoreProvider.overrideWith(
         (ref) async => AppStore(File('${directory.path}/app-store.json')),
       ),
@@ -814,56 +818,53 @@ void main() {
     },
   );
 
-  test(
-    'a rejected submission stops resending instead of looping',
-    () async {
-      // The 2026-08-25 outage: `_performSubmission` failed, left its working
-      // copy queued, and the drain re-entered immediately with no delay and no
-      // attempt limit. Five hours and 5.57M rejected requests later the
-      // database was still being asked. Concurrent drains must terminate.
-      final test = await context();
-      addTearDown(test.close);
-      final controller = test.container.read(
-        differencesControllerProvider.notifier,
-      );
-      test.changes.proposalError = const PostgrestException(
-        message: 'document moved on; refresh before publishing',
-        code: '40001',
-      );
-      final edited = test.base.copyWith(
-        blocks: const [
-          ParagraphBlock(
-            id: 'p-1',
-            spans: [TextSpanNode(text: 'Contested paragraph')],
-          ),
-        ],
-      );
-      test.container.read(documentControllerProvider.notifier).edit(edited);
+  test('a rejected submission stops resending instead of looping', () async {
+    // The 2026-08-25 outage: `_performSubmission` failed, left its working
+    // copy queued, and the drain re-entered immediately with no delay and no
+    // attempt limit. Five hours and 5.57M rejected requests later the
+    // database was still being asked. Concurrent drains must terminate.
+    final test = await context();
+    addTearDown(test.close);
+    final controller = test.container.read(
+      differencesControllerProvider.notifier,
+    );
+    test.changes.proposalError = const PostgrestException(
+      message: 'document moved on; refresh before publishing',
+      code: '40001',
+    );
+    final edited = test.base.copyWith(
+      blocks: const [
+        ParagraphBlock(
+          id: 'p-1',
+          spans: [TextSpanNode(text: 'Contested paragraph')],
+        ),
+      ],
+    );
+    test.container.read(documentControllerProvider.notifier).edit(edited);
 
-      // Several drains racing on one document is what multiplied the traffic.
-      await Future.wait([
-        for (var i = 0; i < 8; i++) controller.submitPendingEditNow(edited.id),
-      ]);
-      await settle();
+    // Several drains racing on one document is what multiplied the traffic.
+    await Future.wait([
+      for (var i = 0; i < 8; i++) controller.submitPendingEditNow(edited.id),
+    ]);
+    await settle();
 
-      // The working copy is still queued — the edit is not lost — but the
-      // sending has stopped well short of unbounded.
-      expect(test.changes.proposals, lessThanOrEqualTo(8));
-      final attemptsAfterRace = test.changes.proposals;
+    // The working copy is still queued — the edit is not lost — but the
+    // sending has stopped well short of unbounded.
+    expect(test.changes.proposals, lessThanOrEqualTo(8));
+    final attemptsAfterRace = test.changes.proposals;
 
-      // Draining again without fresh intent must add nothing at all.
-      await settle();
-      await settle();
-      expect(test.changes.proposals, attemptsAfterRace);
-      expect(
-        test.container
-            .read(differencesControllerProvider)
-            .documentSync[edited.id]
-            ?.phase,
-        DifferenceSyncPhase.conflict,
-      );
-    },
-  );
+    // Draining again without fresh intent must add nothing at all.
+    await settle();
+    await settle();
+    expect(test.changes.proposals, attemptsAfterRace);
+    expect(
+      test.container
+          .read(differencesControllerProvider)
+          .documentSync[edited.id]
+          ?.phase,
+      DifferenceSyncPhase.conflict,
+    );
+  });
 
   test(
     'focus does not transmit an offline local edit without Publish',

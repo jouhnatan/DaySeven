@@ -1,8 +1,8 @@
 /// The Views menu: what is placed on the screen.
 ///
-/// Editor, Differences, Timelines and World share the shell's centre slot, so
-/// placing one displaces the other and the menu marks whichever holds it.
-/// Below the divider are the panes seated beside the centre, which toggle
+/// Editor, Differences, Timelines, World and Economy share the shell's centre
+/// slot, so placing one displaces the other and the menu marks whichever holds
+/// it. Below the divider are the panes seated beside the centre, which toggle
 /// freely — which panes those are depends on what is placed, so the shell
 /// supplies them rather than this menu knowing.
 library;
@@ -15,7 +15,7 @@ import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dropdown_menu.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
-enum _ViewsWorkspace { editor, differences, timelines, world }
+enum _ViewsWorkspace { editor, differences, timelines, world, economy }
 
 /// One pane the placed workspace has beside it, and how to toggle it.
 @immutable
@@ -84,6 +84,13 @@ class ViewsMenuButton extends ConsumerWidget {
       isChecked: current == DsView.world,
       leadingKey: const Key('views-menu-world-check'),
     );
+    menu.pushItem(
+      key: const Key('views-menu-economy'),
+      value: _ViewsWorkspace.economy,
+      label: 'Economy',
+      isChecked: current == DsView.economy,
+      leadingKey: const Key('views-menu-economy-check'),
+    );
 
     if (panes.isNotEmpty) menu.pushDivider();
     for (final pane in panes) {
@@ -110,6 +117,8 @@ class ViewsMenuButton extends ConsumerWidget {
         ref.read(viewProvider.notifier).state = DsView.timelines;
       case _ViewsWorkspace.world:
         ref.read(viewProvider.notifier).state = DsView.world;
+      case _ViewsWorkspace.economy:
+        ref.read(viewProvider.notifier).state = DsView.economy;
       case final ViewsPaneToggle pane:
         pane.onToggle();
     }

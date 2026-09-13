@@ -7,10 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dayseven/app/view.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
-import 'package:dayseven/features/world/application/world_controller.dart';
-import 'package:dayseven/features/world/application/world_providers.dart';
-import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
-import 'package:dayseven/features/world/domain/world.dart';
+import 'package:dayseven/app/workspace/world_controller.dart';
+import 'package:dayseven/app/workspace/world_providers.dart';
+import 'package:dayseven/shared/world/domain/dayseven_3d_model.dart';
+import 'package:dayseven/shared/world/domain/world.dart';
 import 'package:dayseven/features/world/world_renderer/engines/dayseven_3d/dayseven_3d_canvas.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 

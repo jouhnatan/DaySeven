@@ -24,13 +24,23 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/open_document.dart';
 import 'package:dayseven/app/workspace/sync_ledger.dart';
 import 'package:dayseven/app/workspace/sync_results.dart';
+import 'package:dayseven/app/workspace/world_providers.dart';
 import 'package:dayseven/features/differences/application/differences_controller.dart';
 import 'package:dayseven/shared/backend/asset_repository.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
+import 'package:dayseven/shared/backend/object_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/shared/world/domain/world.dart';
+
+/// The object kinds this build knows how to sync.
+///
+/// One entry for now: the World object the Economy view shares. Timelines
+/// stay local deliberately, and adding a kind here is the whole switch —
+/// the replication below is kind-blind once an object is selected.
+const Set<String> _syncableObjectKinds = {World.kind};
 
 class _LocalDocument {
   const _LocalDocument({required this.path, required this.document});
@@ -73,6 +83,77 @@ Future<_LocalDocumentInventory> _readLocalDocuments(KnowledgeBase kb) async {
   );
 }
 
+class _LocalObject {
+  const _LocalObject({
+    required this.path,
+    required this.kind,
+    required this.id,
+    required this.title,
+    required this.content,
+    required this.contentHash,
+  });
+
+  final String path;
+  final String kind;
+  final String id;
+  final String title;
+  final Map<String, Object?> content;
+  final String contentHash;
+}
+
+class _LocalObjectInventory {
+  const _LocalObjectInventory({
+    required this.objects,
+    required this.byId,
+    required this.duplicateIds,
+  });
+
+  final List<_LocalObject> objects;
+  final Map<String, _LocalObject> byId;
+  final Set<String> duplicateIds;
+}
+
+/// Reads the `.unearth` objects this build syncs, with a canonical hash of
+/// each. A file that cannot be parsed is skipped rather than fatal: one
+/// damaged object must not stop a whole Knowledge Base from syncing.
+Future<_LocalObjectInventory> _readLocalObjects(KnowledgeBase kb) async {
+  final objects = <_LocalObject>[];
+  final byId = <String, _LocalObject>{};
+  final duplicateIds = <String>{};
+  for (final file in await kb.readObjects()) {
+    final Map<String, Object?> json;
+    try {
+      json = await kb.readObjectJson(file.relativePath);
+    } on Object {
+      continue;
+    }
+    final kind = json['kind'];
+    final id = json['id'];
+    if (kind is! String ||
+        id is! String ||
+        id.isEmpty ||
+        !_syncableObjectKinds.contains(kind)) {
+      continue;
+    }
+    final object = _LocalObject(
+      path: file.relativePath,
+      kind: kind,
+      id: id,
+      title: objectNameFromPath(file.relativePath),
+      content: json,
+      contentHash: canonicalObjectHash(json),
+    );
+    objects.add(object);
+    if (byId.containsKey(id)) duplicateIds.add(id);
+    byId.putIfAbsent(id, () => object);
+  }
+  return _LocalObjectInventory(
+    objects: objects,
+    byId: byId,
+    duplicateIds: duplicateIds,
+  );
+}
+
 /// Keeps a local folder hierarchy and its document contents in sync with the
 /// canonical store. Single-document `publishOpenDocument` stays the explicit
 /// document action; this class is the bulk, idempotent reconciler that manual
@@ -101,6 +182,7 @@ class KbHierarchyReplicator {
   Future<SyncPullResult> ensureLocalMatchesRemote({
     KbSession? sessionOverride,
     DocumentRepository? documentsOverride,
+    ObjectRepository? objectsOverride,
     AssetRepository? assetsOverride,
     KbRole? roleOverride,
   }) async {
@@ -126,12 +208,15 @@ class KbHierarchyReplicator {
     final ledger = await SyncLedger.open(kb);
     final DocumentRepository documents =
         documentsOverride ?? _ref.read(documentRepositoryProvider);
+    final ObjectRepository objects =
+        objectsOverride ?? _ref.read(objectRepositoryProvider);
     final AssetRepository assets =
         assetsOverride ?? _ref.read(assetRepositoryProvider);
     final localInventory = await _readLocalDocuments(kb);
     final snapshots = await documents.snapshot(kb.manifest.kbId);
     final remoteIds = snapshots.map((item) => item.document.id).toSet();
     var updated = 0;
+    var objectsUpdated = 0;
     var conflicts = 0;
     var recovered = 0;
     final conflictIds = <String>{};
@@ -311,6 +396,123 @@ class KbHierarchyReplicator {
       recovered++;
     }
 
+    // Objects (Worlds and their economies) follow the same rules as
+    // documents: overwrite only what still matches the ledger, keep divergent
+    // files in place, and move canonically deleted objects to recovery.
+    final localObjects = await _readLocalObjects(kb);
+    final remoteObjects = (await objects.snapshot(kb.manifest.kbId))
+        .where((snapshot) => _syncableObjectKinds.contains(snapshot.kind))
+        .toList();
+    final remoteObjectIds = {for (final snapshot in remoteObjects) snapshot.id};
+
+    for (final snapshot in remoteObjects) {
+      if (localObjects.duplicateIds.contains(snapshot.id)) {
+        conflicts++;
+        continue;
+      }
+      final previous = ledger.object(snapshot.id);
+      final local = localObjects.byId[snapshot.id];
+      final target = File(kb.absolutePathFor(snapshot.path));
+
+      if (local != null) {
+        final remoteUnchanged =
+            previous != null &&
+            previous.revisionId == snapshot.revisionId &&
+            previous.path == snapshot.path;
+        if (remoteUnchanged) continue;
+
+        if (previous == null) {
+          if (local.contentHash == snapshot.contentHash &&
+              local.path == snapshot.path) {
+            await ledger.recordObject(
+              objectId: snapshot.id,
+              revisionId: snapshot.revisionId,
+              contentHash: snapshot.contentHash,
+              path: snapshot.path,
+            );
+          } else {
+            conflicts++;
+          }
+          continue;
+        }
+
+        final localMoved = local.path != previous.path;
+        final localModified = local.contentHash != previous.contentHash;
+        final remoteMoved = snapshot.path != previous.path;
+        final remoteModified = snapshot.revisionId != previous.revisionId;
+        if (localModified ||
+            (localMoved && remoteMoved) ||
+            (localMoved && remoteModified) ||
+            (local.path != snapshot.path && await target.exists())) {
+          conflicts++;
+          continue;
+        }
+
+        await assets.downloadMissingObject(kb: kb, json: snapshot.content);
+        await kb.writeObjectJson(snapshot.path, snapshot.content);
+        if (local.path != snapshot.path) {
+          final oldFile = File(kb.absolutePathFor(local.path));
+          if (await oldFile.exists()) await oldFile.delete();
+        }
+        await ledger.recordObject(
+          objectId: snapshot.id,
+          revisionId: snapshot.revisionId,
+          contentHash: snapshot.contentHash,
+          path: snapshot.path,
+        );
+        await _reloadOpenWorld(snapshot.id, snapshot.path);
+        objectsUpdated++;
+        continue;
+      }
+
+      if (await target.exists()) {
+        conflicts++;
+        continue;
+      }
+
+      final oldPath = previous?.path ?? snapshot.path;
+      final oldFile = File(kb.absolutePathFor(oldPath));
+      await assets.downloadMissingObject(kb: kb, json: snapshot.content);
+      await kb.writeObjectJson(snapshot.path, snapshot.content);
+      if (oldPath != snapshot.path && await oldFile.exists()) {
+        await oldFile.delete();
+      }
+      await ledger.recordObject(
+        objectId: snapshot.id,
+        revisionId: snapshot.revisionId,
+        contentHash: snapshot.contentHash,
+        path: snapshot.path,
+      );
+      await _reloadOpenWorld(snapshot.id, snapshot.path);
+      objectsUpdated++;
+    }
+
+    for (final entry in ledger.objects.toList()) {
+      if (remoteObjectIds.contains(entry.key)) continue;
+
+      final local = localObjects.byId[entry.key];
+      final actualPath = local?.path ?? entry.value.path;
+      final file = File(kb.absolutePathFor(actualPath));
+      if (!await file.exists()) {
+        await ledger.removeObject(entry.key);
+        continue;
+      }
+      if (local == null || local.contentHash != entry.value.contentHash) {
+        conflicts++;
+        continue;
+      }
+      final recovery = File(
+        p.join(kb.settingsPath, 'recovery', entry.key, p.basename(file.path)),
+      );
+      await recovery.parent.create(recursive: true);
+      await file.rename(recovery.path);
+      if (_ref.read(openWorldProvider)?.world.id == entry.key) {
+        _ref.read(openWorldProvider.notifier).close(save: false);
+      }
+      await ledger.removeObject(entry.key);
+      recovered++;
+    }
+
     if (updated > 0 || recovered > 0) {
       await session.index.rebuild();
       await _ref.read(kbControllerProvider.notifier).refreshTree();
@@ -326,7 +528,7 @@ class KbHierarchyReplicator {
           );
     }
     return SyncPullResult(
-      updated: updated,
+      updated: updated + objectsUpdated,
       conflicts: conflicts,
       recoveredDeletions: recovered,
     );
@@ -339,6 +541,7 @@ class KbHierarchyReplicator {
   Future<SyncPushResult> ensureRemoteMatchesLocal({
     KbSession? sessionOverride,
     DocumentRepository? documentsOverride,
+    ObjectRepository? objectsOverride,
     AssetRepository? assetsOverride,
     KbRole? roleOverride,
   }) async {
@@ -361,6 +564,8 @@ class KbHierarchyReplicator {
     final kbId = kb.manifest.kbId;
     final DocumentRepository documents =
         documentsOverride ?? _ref.read(documentRepositoryProvider);
+    final ObjectRepository objects =
+        objectsOverride ?? _ref.read(objectRepositoryProvider);
     final AssetRepository assets =
         assetsOverride ?? _ref.read(assetRepositoryProvider);
     final ledger = await SyncLedger.open(kb);
@@ -371,6 +576,7 @@ class KbHierarchyReplicator {
     final localInventory = await _readLocalDocuments(kb);
     final seenIds = <String>{};
     var published = 0;
+    var objectsPublished = 0;
     var proposed = 0;
     var unchanged = 0;
     var conflicts = 0;
@@ -453,12 +659,107 @@ class KbHierarchyReplicator {
       }
     }
 
+    // Objects this build syncs follow the same optimistic-locking rules as
+    // documents: publish only what changed, and count a lost race as a
+    // conflict rather than overwriting anyone.
+    final localObjects = await _readLocalObjects(kb);
+    final remoteObjects = (await objects.snapshot(kbId))
+        .where((snapshot) => _syncableObjectKinds.contains(snapshot.kind))
+        .toList();
+    final remoteObjectById = {
+      for (final snapshot in remoteObjects) snapshot.id: snapshot,
+    };
+    final seenObjectIds = <String>{};
+    for (final local in localObjects.objects) {
+      if (!seenObjectIds.add(local.id)) continue;
+      if (localObjects.duplicateIds.contains(local.id)) {
+        conflicts++;
+        continue;
+      }
+      final snapshot = remoteObjectById[local.id];
+      final previous = ledger.object(local.id);
+
+      if (snapshot != null &&
+          snapshot.contentHash == local.contentHash &&
+          snapshot.path == local.path) {
+        await ledger.recordObject(
+          objectId: local.id,
+          revisionId: snapshot.revisionId,
+          contentHash: local.contentHash,
+          path: local.path,
+        );
+        unchanged++;
+        continue;
+      }
+
+      if (snapshot != null) {
+        final localChanged =
+            previous == null ||
+            previous.contentHash != local.contentHash ||
+            previous.path != local.path;
+        if (!localChanged) {
+          unchanged++;
+          continue;
+        }
+        if (previous == null || previous.revisionId != snapshot.revisionId) {
+          conflicts++;
+          continue;
+        }
+      }
+
+      if (remoteObjects.any(
+        (other) => other.path == local.path && other.id != local.id,
+      )) {
+        conflicts++;
+        continue;
+      }
+
+      await assets.uploadReferencedObject(kb: kb, json: local.content);
+      final String revisionId;
+      try {
+        revisionId = await objects.publish(
+          kbId: kbId,
+          objectId: local.id,
+          kind: local.kind,
+          path: local.path,
+          title: local.title,
+          content: local.content,
+          contentHash: local.contentHash,
+          expectedCurrentRevisionId: snapshot?.revisionId,
+        );
+      } on Object catch (error) {
+        if (!isPublishConflict(error)) {
+          // A server that predates object sync must not fail the document
+          // sync around it; the objects simply stay unpublished for now.
+          if (isObjectsUnavailable(error)) break;
+          rethrow;
+        }
+        conflicts++;
+        continue;
+      }
+      await ledger.recordObject(
+        objectId: local.id,
+        revisionId: revisionId,
+        contentHash: local.contentHash,
+        path: local.path,
+      );
+      objectsPublished++;
+    }
+
     return SyncPushResult(
-      published: published,
+      published: published + objectsPublished,
       proposed: proposed,
       unchanged: unchanged,
       conflicts: conflicts,
     );
+  }
+
+  /// Reloads the open World if the pull just replaced its file, so the view
+  /// shows what landed rather than what was on screen before.
+  Future<void> _reloadOpenWorld(String objectId, String path) async {
+    final open = _ref.read(openWorldProvider);
+    if (open?.world.id != objectId) return;
+    await _ref.read(openWorldProvider.notifier).open(path);
   }
 
   /// Bidirectional reconcile: first pulls missing remote hierarchy/data, then
@@ -467,18 +768,21 @@ class KbHierarchyReplicator {
   Future<ReconcileResult> reconcile({
     KbSession? sessionOverride,
     DocumentRepository? documentsOverride,
+    ObjectRepository? objectsOverride,
     AssetRepository? assetsOverride,
   }) async {
     final role = await _ref.read(kbRoleProvider.future);
     final pull = await ensureLocalMatchesRemote(
       sessionOverride: sessionOverride,
       documentsOverride: documentsOverride,
+      objectsOverride: objectsOverride,
       assetsOverride: assetsOverride,
       roleOverride: role,
     );
     final push = await ensureRemoteMatchesLocal(
       sessionOverride: sessionOverride,
       documentsOverride: documentsOverride,
+      objectsOverride: objectsOverride,
       assetsOverride: assetsOverride,
       roleOverride: role,
     );

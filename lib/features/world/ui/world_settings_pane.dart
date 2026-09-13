@@ -8,8 +8,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/features/world/application/world_providers.dart';
-import 'package:dayseven/features/world/domain/world_dimension.dart';
+import 'package:dayseven/app/workspace/world_providers.dart';
+import 'package:dayseven/shared/world/domain/world_dimension.dart';
 import 'package:dayseven/features/world/ui/engines/dayseven_3d/dayseven_3d_settings_form.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/theme.dart';

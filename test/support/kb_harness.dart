@@ -31,8 +31,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const MethodChannel _pathProviderChannel =
-    MethodChannel('plugins.flutter.io/path_provider');
+const MethodChannel _pathProviderChannel = MethodChannel(
+  'plugins.flutter.io/path_provider',
+);
 
 /// Creates two temporary directories and mocks `path_provider` so
 /// `getApplicationSupportDirectory()` returns [support.path].
@@ -49,11 +50,11 @@ Future<({Directory temp, Directory support})> createTempDirs(
 
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_pathProviderChannel, (call) async {
-    if (call.method == 'getApplicationSupportDirectory') {
-      return support.path;
-    }
-    return null;
-  });
+        if (call.method == 'getApplicationSupportDirectory') {
+          return support.path;
+        }
+        return null;
+      });
 
   addTearDown(() async {
     await clearTempMocks();
@@ -65,16 +66,19 @@ Future<({Directory temp, Directory support})> createTempDirs(
 }
 
 Future<void> _deleteDirectoryEventually(Directory directory) async {
-  for (var attempt = 0; attempt < 10; attempt++) {
+  // File watchers and SQLite can release their final handle just after the
+  // provider container is disposed. Windows refuses the delete while any
+  // handle remains, so give the release time rather than failing teardown.
+  for (var attempt = 0; attempt < 40; attempt++) {
     if (!await directory.exists()) return;
     try {
       await directory.delete(recursive: true);
       return;
     } on FileSystemException {
-      if (attempt == 9) rethrow;
-      // File watchers and SQLite can release their final handle just after the
-      // provider container is disposed, especially on Windows.
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (attempt == 39) rethrow;
+      await Future<void>.delayed(
+        Duration(milliseconds: attempt < 10 ? 50 : 200),
+      );
     }
   }
 }
@@ -144,10 +148,7 @@ Future<ProviderContainer> seededKbContainer(
     await kb.createFolder('Characters');
     await kb.createFolder('Characters/Houses');
     await kb.createFolder('Places');
-    await kb.createDocument(
-      title: 'Aldric',
-      folderRelativePath: 'Characters',
-    );
+    await kb.createDocument(title: 'Aldric', folderRelativePath: 'Characters');
     await kb.createDocument(
       title: 'House Vane',
       folderRelativePath: 'Characters/Houses',
