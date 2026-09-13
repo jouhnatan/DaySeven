@@ -143,11 +143,14 @@ class ObjectRepository {
 }
 
 /// True when the server has no object schema yet — PostgREST reports a missing
-/// relation as `PGRST205`, and a raw Postgres error as `42P01`. A build that
-/// speaks objects before the database does must not break document sync.
+/// relation as `PGRST205`, a missing `publish_object` as `PGRST202`, and a raw
+/// Postgres error as `42P01`. A build that speaks objects before the database
+/// does must not break document sync.
 bool isObjectsUnavailable(Object error) =>
     error is PostgrestException &&
-    (error.code == 'PGRST205' || error.code == '42P01');
+    (error.code == 'PGRST205' ||
+        error.code == 'PGRST202' ||
+        error.code == '42P01');
 
 /// A stable hash of object content: keys sorted at every depth before the
 /// JSON is encoded, so insertion order can never make two equal objects look

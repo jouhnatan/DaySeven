@@ -13,6 +13,12 @@ void main() {
     );
     expect(
       isObjectsUnavailable(
+        const PostgrestException(message: 'no function', code: 'PGRST202'),
+      ),
+      isTrue,
+    );
+    expect(
+      isObjectsUnavailable(
         const PostgrestException(message: 'moved on', code: '40001'),
       ),
       isFalse,
