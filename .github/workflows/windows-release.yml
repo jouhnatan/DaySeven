@@ -75,10 +75,11 @@ jobs:
         shell: pwsh
         run: |
           flutter analyze
-          # The full local gate is `flutter test`; CI runs the suites that do
-          # not depend on the runner's fonts (goldens) or the Rust dylib
-          # (CRDT), which the release job has not built at this point.
-          flutter test test/features/world test/features/economy test/features/views test/shared/world test/shared/backend test/app/workspace
+          # Windows does not run the shell suites: the runner refuses to delete
+          # a temp Knowledge Base while the widget tree's file watchers still
+          # hold a handle, which fails those tests in tear-down. The macOS job
+          # runs them. The full local gate remains `flutter test`.
+          flutter test test/features/world test/features/economy/trade_simulation_test.dart test/features/views test/shared/world test/shared/backend
 
       - name: Build archive
         shell: pwsh
