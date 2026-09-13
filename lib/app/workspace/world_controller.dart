@@ -14,6 +14,7 @@ import 'package:dayseven/app/workspace/kb_session.dart';
 import 'package:dayseven/app/workspace/world_providers.dart';
 import 'package:dayseven/shared/world/data/world_repository.dart';
 import 'package:dayseven/shared/world/domain/dayseven_3d_model.dart';
+import 'package:dayseven/shared/world/domain/economy.dart';
 import 'package:dayseven/shared/world/domain/world.dart';
 import 'package:dayseven/shared/world/domain/world_dimension.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
@@ -240,6 +241,9 @@ class WorldController extends StateNotifier<OpenWorld?> {
   }
 
   /// Removes a landmark pin from the 3D model.
+  ///
+  /// A city is also an Economy location, so its profile and every route or
+  /// node that pointed at it go with it rather than lingering as orphans.
   void removeLandmark(String landmarkId) {
     final current = state;
     if (current == null) return;
@@ -249,7 +253,12 @@ class WorldController extends StateNotifier<OpenWorld?> {
         .where((lm) => lm.id != landmarkId)
         .toList();
     if (landmarks.length == model.landmarks.length) return;
-    edit(current.world.copyWith(model3d: model.copyWith(landmarks: landmarks)));
+    edit(
+      current.world.copyWith(
+        model3d: model.copyWith(landmarks: landmarks),
+        economy: current.world.economy.withoutLandmark(landmarkId),
+      ),
+    );
   }
 
   /// Updates an existing landmark pin in the 3D model.
@@ -263,6 +272,16 @@ class WorldController extends StateNotifier<OpenWorld?> {
     if (index < 0) return;
     landmarks[index] = landmark;
     edit(current.world.copyWith(model3d: model.copyWith(landmarks: landmarks)));
+  }
+
+  /// Replaces the Economy data attached to the open World.
+  ///
+  /// Cities are landmarks, so adding, moving or renaming one goes through
+  /// [addLandmark]/[updateLandmark] like any other pin.
+  void updateEconomy(WorldEconomy next) {
+    final current = state;
+    if (current == null) return;
+    edit(current.world.copyWith(economy: next));
   }
 
   /// Opens the first World in the Knowledge Base if one exists and none is open.
@@ -302,6 +321,7 @@ class WorldController extends StateNotifier<OpenWorld?> {
         id: newId(),
         title: 'World',
         dimension: targetDimension,
+        economy: WorldEconomy.seeded(),
       );
       state = OpenWorld(
         relativePath: 'World$kObjectExtension',
@@ -335,6 +355,7 @@ class WorldController extends StateNotifier<OpenWorld?> {
           id: newId(),
           title: name,
           dimension: targetDimension,
+          economy: WorldEconomy.seeded(),
         ).toJson(),
       );
       if (!mounted) return;

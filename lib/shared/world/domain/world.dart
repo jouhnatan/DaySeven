@@ -3,6 +3,7 @@
 library;
 
 import 'dayseven_3d_model.dart';
+import 'economy.dart';
 import 'world_dimension.dart';
 import 'world_layer.dart';
 
@@ -26,6 +27,7 @@ class World {
     this.layers = const [],
     this.engineSettings = const {},
     this.requiresMigration = false,
+    this.economy = WorldEconomy.empty,
     DaySeven3DModel? model,
     @Deprecated('Use model') DaySeven3DModel? model3d,
   }) : model = model ?? model3d;
@@ -34,7 +36,10 @@ class World {
   static const String kind = 'world';
 
   /// The schema this app writes.
-  static const int version = 3;
+  ///
+  /// Version 4 added `economy`. Version 3 and older files are upgraded on
+  /// the way in and lose nothing.
+  static const int version = 4;
 
   final String id;
   final String title;
@@ -50,6 +55,9 @@ class World {
   /// Geographic data shared by the flat map and globe renderers.
   final DaySeven3DModel? model;
 
+  /// The cities, resources, people and trade routes the Economy view owns.
+  final WorldEconomy economy;
+
   @Deprecated('Use model')
   DaySeven3DModel? get model3d => model;
 
@@ -62,6 +70,7 @@ class World {
     List<WorldLayer>? layers,
     Map<String, Map<String, Object?>>? engineSettings,
     bool? requiresMigration,
+    WorldEconomy? economy,
     DaySeven3DModel? model,
     DaySeven3DModel? model3d,
     bool clearModel3d = false,
@@ -73,6 +82,7 @@ class World {
     layers: layers ?? this.layers,
     engineSettings: engineSettings ?? this.engineSettings,
     requiresMigration: requiresMigration ?? this.requiresMigration,
+    economy: economy ?? this.economy,
     model: clearModel3d ? null : (model ?? model3d ?? this.model),
   );
 
@@ -83,6 +93,7 @@ class World {
     'title': title,
     'renderMode': dimension.id,
     if (model case final model?) 'model': model.toJson(),
+    if (!economy.isEmpty) 'economy': economy.toJson(),
   };
 
   static World fromJson(Map<String, Object?> json) {
@@ -157,6 +168,14 @@ class World {
       );
     }
 
+    // A world written before format 4 has no economy. It gets the three
+    // resources the map can collect from straight away; people and cities
+    // stay empty until somebody adds them.
+    var economy = WorldEconomy.fromJson(json['economy']);
+    if (declaredVersion < 4 && economy.isEmpty) {
+      economy = WorldEconomy.seeded();
+    }
+
     return World(
       id: _string(json['id'], fallback: 'world'),
       title: _string(json['title']),
@@ -172,6 +191,7 @@ class World {
           json.containsKey('layers') ||
           json.containsKey('engineSettings') ||
           json.containsKey('model3d'),
+      economy: economy,
       model: model,
     );
   }

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dayseven/app/workspace/world_providers.dart';
 import 'package:dayseven/shared/world/domain/dayseven_3d_model.dart';
+import 'package:dayseven/shared/world/domain/economy.dart';
 import 'package:dayseven/shared/world/domain/world.dart';
 import 'package:dayseven/shared/world/domain/world_dimension.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
@@ -122,8 +123,43 @@ void main() {
     expect(world.model!.layers.single.id, 'surface');
     expect(world.model!.sourceMapLayerId, 'surface');
     final json = await tester.runAsync(() => kb.readObjectJson(path));
-    expect(json!['version'], 3);
+    expect(json!['version'], 4);
     expect(json['engineId'], isNull);
     expect(json['model'], isA<Map>());
+  });
+
+  testWidgets('saves economy edits with the world and cascades landmark deletion',
+      (tester) async {
+    final (container, kb) = await openWorld(tester);
+    final controller = container.read(openWorldProvider.notifier);
+
+    controller.addLandmark(
+      Model3DLandmark(id: 'city-1', name: 'Aldenmoor', latitude: 1, longitude: 2),
+    );
+    controller.updateEconomy(
+      controller
+          .state!
+          .world
+          .economy
+          .withLocation(
+            EconomyLocation(
+              id: 'e1',
+              landmarkId: 'city-1',
+              population: 400,
+            ),
+          ),
+    );
+
+    await tester.runAsync(() => controller.flush());
+
+    final stored = await tester.runAsync(
+      () => kb.readObjectJson('Aster$kObjectExtension'),
+    );
+    final saved = World.fromJson(stored!);
+    expect(saved.economy.locationForLandmark('city-1')!.population, 400);
+
+    controller.removeLandmark('city-1');
+    expect(controller.state!.world.economy.locations, isEmpty);
+    await tester.runAsync(() => controller.flush());
   });
 }
