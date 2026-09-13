@@ -20,6 +20,7 @@ import 'package:dayseven/features/world/ui/engines/dayseven_3d/landmark_dialog.d
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
+import 'package:dayseven/shared/ui/slider.dart';
 import 'package:dayseven/shared/ui/theme.dart';
 
 enum _WorldMapImportFormat {
@@ -196,29 +197,24 @@ class _DaySeven3DSettingsFormState
                   style: uiTextStyle(size: 12, color: colors.muted),
                 ),
                 const SizedBox(width: DsSpace.xs),
-                SizedBox(
+                DsSlider(
+                  value: model.environment.ocean.seaLevel,
+                  min: -1.0,
+                  max: 1.0,
                   width: 110,
-                  child: SliderTheme(
-                    data: _sliderTheme(context),
-                    child: Slider(
-                      value: model.environment.ocean.seaLevel,
-                      min: -1.0,
-                      max: 1.0,
-                      semanticFormatterCallback: (val) =>
-                          'Sea level ${(val * 100).toStringAsFixed(0)}%',
-                      onChanged: (val) {
-                        controller.updateModel3D(
-                          model.copyWith(
-                            environment: model.environment.copyWith(
-                              ocean: model.environment.ocean.copyWith(
-                                seaLevel: val,
-                              ),
-                            ),
+                  semanticFormatter: (val) =>
+                      'Sea level ${(val * 100).toStringAsFixed(0)}%',
+                  onChanged: (val) {
+                    controller.updateModel3D(
+                      model.copyWith(
+                        environment: model.environment.copyWith(
+                          ocean: model.environment.ocean.copyWith(
+                            seaLevel: val,
                           ),
-                        );
-                      },
-                    ),
-                  ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -235,29 +231,24 @@ class _DaySeven3DSettingsFormState
                 style: uiTextStyle(size: 12, color: colors.muted),
               ),
               const SizedBox(width: DsSpace.xs),
-              SizedBox(
+              DsSlider(
+                value: model.environment.lighting.sunAzimuthDeg,
+                min: 0.0,
+                max: 360.0,
                 width: 110,
-                child: SliderTheme(
-                  data: _sliderTheme(context),
-                  child: Slider(
-                    value: model.environment.lighting.sunAzimuthDeg,
-                    min: 0.0,
-                    max: 360.0,
-                    semanticFormatterCallback: (val) =>
-                        'Sunlight azimuth ${val.toStringAsFixed(0)} degrees',
-                    onChanged: (val) {
-                      controller.updateModel3D(
-                        model.copyWith(
-                          environment: model.environment.copyWith(
-                            lighting: model.environment.lighting.copyWith(
-                              sunAzimuthDeg: val,
-                            ),
-                          ),
+                semanticFormatter: (val) =>
+                    'Sunlight azimuth ${val.toStringAsFixed(0)} degrees',
+                onChanged: (val) {
+                  controller.updateModel3D(
+                    model.copyWith(
+                      environment: model.environment.copyWith(
+                        lighting: model.environment.lighting.copyWith(
+                          sunAzimuthDeg: val,
                         ),
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -343,17 +334,6 @@ class _DaySeven3DSettingsFormState
       ),
     ),
   );
-
-  SliderThemeData _sliderTheme(BuildContext context) {
-    final colors = context.ds;
-    return SliderTheme.of(context).copyWith(
-      activeTrackColor: colors.fern,
-      inactiveTrackColor: colors.border,
-      thumbColor: colors.fern,
-      trackHeight: 3,
-      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-    );
-  }
 
   Future<void> _importLayer() async {
     if (_importing || ref.read(openWorldProvider) == null) return;
@@ -454,6 +434,14 @@ class _LandmarkRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.ds;
     final controller = ref.read(openWorldProvider.notifier);
+    // Read straight from the shared economy model, so an economy pin and a
+    // World pin can never show different numbers for the same city.
+    final economy = ref.watch(openWorldProvider)?.world.economy;
+    final profile = economy?.locationForLandmark(landmark.id);
+    final produced = [
+      for (final id in profile?.resourceIds ?? const <String>[])
+        if (economy?.resourceType(id) case final type?) type.name,
+    ];
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -487,6 +475,14 @@ class _LandmarkRow extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: uiTextStyle(size: 11, color: colors.muted),
                 ),
+                if (profile != null)
+                  Text(
+                    '${profile.population} people'
+                    '${produced.isEmpty ? '' : ' • ${produced.join(', ')}'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: uiTextStyle(size: 11, color: colors.muted),
+                  ),
               ],
             ),
           ),

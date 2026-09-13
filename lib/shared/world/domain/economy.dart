@@ -271,7 +271,10 @@ class ResourceNode {
     final resourceId = _string(json['resourceId']);
     final latitude = _optionalDouble(json['latitude']);
     final longitude = _optionalDouble(json['longitude']);
-    if (id.isEmpty || resourceId.isEmpty || latitude == null || longitude == null) {
+    if (id.isEmpty ||
+        resourceId.isEmpty ||
+        latitude == null ||
+        longitude == null) {
       return null;
     }
     return ResourceNode(
@@ -344,7 +347,8 @@ class WorldEconomy {
     return null;
   }
 
-  PersonType? personType(String id) => _firstWhere(personTypes, (t) => t.id == id);
+  PersonType? personType(String id) =>
+      _firstWhere(personTypes, (t) => t.id == id);
 
   ResourceType? resourceType(String id) =>
       _firstWhere(resourceTypes, (t) => t.id == id);
@@ -518,10 +522,7 @@ T? _firstWhere<T>(List<T> values, bool Function(T) test) {
   return null;
 }
 
-List<T> _parseList<T>(
-  Object? value,
-  T? Function(Map<String, Object?>) parse,
-) {
+List<T> _parseList<T>(Object? value, T? Function(Map<String, Object?>) parse) {
   if (value is! List) return <T>[];
   final parsed = <T>[];
   for (final raw in value) {

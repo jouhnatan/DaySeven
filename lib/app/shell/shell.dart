@@ -44,6 +44,8 @@ import 'package:dayseven/features/timelines/map_renderer/timeline_map_canvas.dar
 import 'package:dayseven/features/timelines/ui/timeline_reader_pane.dart';
 import 'package:dayseven/features/timelines/ui/timeline_strip.dart';
 import 'package:dayseven/features/views/ui/views_menu.dart';
+import 'package:dayseven/features/economy/ui/economy_map_canvas.dart';
+import 'package:dayseven/features/economy/ui/economy_stats_pane.dart';
 import 'package:dayseven/features/world/world_renderer/world_canvas.dart';
 import 'package:dayseven/features/world/ui/world_settings_pane.dart';
 import 'package:dayseven/shared/platform/new_instance.dart';
@@ -93,22 +95,28 @@ class DsShell extends ConsumerWidget {
                   // A slot each side of the centre, holding whichever panes
                   // the placed workspace belongs with, each at its own width
                   // and its own visibility. World fills the left slot too, and
-                  // is the only view with no right-hand pane.
-                  final showingTimelines = view == DsView.timelines;
+                  // is the only view with no right-hand pane; Economy is the
+                  // mirror image — the map fills everything to the left of
+                  // its stats editor.
                   final showingWorld = view == DsView.world;
                   final rightVisible = switch (view) {
                     DsView.timelines => visibility.timelineReader,
+                    DsView.economy => visibility.economy,
                     DsView.world => false,
                     DsView.editor ||
                     DsView.differences => visibility.knowledgeBase,
                   };
-                  final rightWidth = showingTimelines
-                      ? widths.reader
-                      : widths.panel;
+                  final rightWidth = switch (view) {
+                    DsView.timelines => widths.reader,
+                    DsView.economy => widths.economy,
+                    _ => widths.panel,
+                  };
                   final leftVisible = switch (view) {
                     DsView.timelines => visibility.timelineEditor,
                     DsView.world => visibility.world,
-                    DsView.editor || DsView.differences => false,
+                    DsView.economy ||
+                    DsView.editor ||
+                    DsView.differences => false,
                   };
                   final leftWidth = showingWorld ? widths.world : widths.editor;
                   final rightProgress = rightVisible ? 1.0 : 0.0;
@@ -145,6 +153,14 @@ class DsShell extends ConsumerWidget {
                                   label: 'World settings',
                                   visible: visibility.world,
                                   onToggle: paneVisibility.toggleWorld,
+                                ),
+                              ],
+                              DsView.economy => [
+                                ViewsPaneToggle(
+                                  id: 'views-menu-economy-stats',
+                                  label: 'Economy stats',
+                                  visible: visibility.economy,
+                                  onToggle: paneVisibility.toggleEconomy,
                                 ),
                               ],
                               DsView.editor || DsView.differences => [
@@ -201,9 +217,17 @@ class DsShell extends ConsumerWidget {
                               (leftWidth + DsSpace.seam) * leftProgress,
                           onDragRight: rightProgress == 0
                               ? null
-                              : (dx) => showingTimelines
-                                    ? panes.dragReader(dx, available)
-                                    : panes.dragPanel(dx, available),
+                              : (dx) => switch (view) {
+                                  DsView.timelines => panes.dragReader(
+                                    dx,
+                                    available,
+                                  ),
+                                  DsView.economy => panes.dragEconomy(
+                                    dx,
+                                    available,
+                                  ),
+                                  _ => panes.dragPanel(dx, available),
+                                },
                           onDragLeft: leftProgress == 0
                               ? null
                               : (dx) => showingWorld
@@ -227,7 +251,8 @@ class DsShell extends ConsumerWidget {
                                     child: TimelineEditorPane(),
                                   ),
                                   DsView.editor ||
-                                  DsView.differences => const SizedBox.shrink(),
+                                  DsView.differences ||
+                                  DsView.economy => const SizedBox.shrink(),
                                 },
                               ),
                               Expanded(
@@ -251,6 +276,12 @@ class DsShell extends ConsumerWidget {
                                     key: Key('centre-workspace'),
                                     child: WorldCanvas(),
                                   ),
+                                  // The centre is the economy map, and only
+                                  // the map.
+                                  DsView.economy => const KeyedSubtree(
+                                    key: Key('centre-workspace'),
+                                    child: EconomyMapCanvas(),
+                                  ),
                                 },
                               ),
                               _SlidingSidePane(
@@ -261,6 +292,10 @@ class DsShell extends ConsumerWidget {
                                   DsView.timelines => const KeyedSubtree(
                                     key: Key('timeline-reader-pane'),
                                     child: TimelineReaderPane(),
+                                  ),
+                                  DsView.economy => const KeyedSubtree(
+                                    key: Key('economy-stats-pane'),
+                                    child: EconomyStatsPane(),
                                   ),
                                   DsView.world => const SizedBox.shrink(),
                                   DsView.editor ||

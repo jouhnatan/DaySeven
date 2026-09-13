@@ -16,6 +16,7 @@ class PaneWidths {
     this.reader = 320,
     this.editor = 268,
     this.world = 268,
+    this.economy = 320,
   });
 
   /// The Knowledge Base pane, beside the Editor and Differences.
@@ -31,6 +32,9 @@ class PaneWidths {
   /// The settings pane, left of the workspace in the World view.
   final double world;
 
+  /// The stats editor, right of the map in the Economy view.
+  final double economy;
+
   static const double minPanel = 180;
   static const double maxPanel = 560;
 
@@ -43,11 +47,13 @@ class PaneWidths {
     double? reader,
     double? editor,
     double? world,
+    double? economy,
   }) => PaneWidths(
     panel: panel ?? this.panel,
     reader: reader ?? this.reader,
     editor: editor ?? this.editor,
     world: world ?? this.world,
+    economy: economy ?? this.economy,
   );
 }
 
@@ -68,6 +74,7 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
       reader: widths['reader'] ?? state.reader,
       editor: widths['editor'] ?? state.editor,
       world: widths['world'] ?? state.world,
+      economy: widths['economy'] ?? state.economy,
     );
   }
 
@@ -106,6 +113,15 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
     );
   }
 
+  /// The Economy stats pane is right of the map, so a drag to the left widens
+  /// it, the same sign as the Knowledge Base and reader panes.
+  void dragEconomy(double delta, double available) {
+    _set(
+      'economy',
+      state.copyWith(economy: _clamp(state.economy - delta, available)),
+    );
+  }
+
   /// Stops a drag before the workspace beside the pane is squeezed out.
   static double _clamp(double width, double available) {
     final headroom = available - PaneWidths.minEditor;
@@ -126,6 +142,7 @@ class PaneWidthsController extends StateNotifier<PaneWidths> {
         'panel' => state.panel,
         'editor' => state.editor,
         'world' => state.world,
+        'economy' => state.economy,
         _ => state.reader,
       });
     });

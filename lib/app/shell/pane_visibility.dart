@@ -15,6 +15,7 @@ class PaneVisibility {
     this.timelineReader = true,
     this.timelineEditor = true,
     this.world = true,
+    this.economy = true,
   });
 
   /// The Knowledge Base tree, beside the Editor and Differences.
@@ -31,16 +32,21 @@ class PaneVisibility {
   /// The settings pane, left of the World workspace.
   final bool world;
 
+  /// The stats editor, right of the map in the Economy workspace.
+  final bool economy;
+
   PaneVisibility copyWith({
     bool? knowledgeBase,
     bool? timelineReader,
     bool? timelineEditor,
     bool? world,
+    bool? economy,
   }) => PaneVisibility(
     knowledgeBase: knowledgeBase ?? this.knowledgeBase,
     timelineReader: timelineReader ?? this.timelineReader,
     timelineEditor: timelineEditor ?? this.timelineEditor,
     world: world ?? this.world,
+    economy: economy ?? this.economy,
   );
 }
 
@@ -55,6 +61,7 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
   static const _timelineReaderKey = 'timelineReader';
   static const _timelineEditorKey = 'timelineEditor';
   static const _worldKey = 'world';
+  static const _economyKey = 'economy';
 
   Timer? _saveDebounce;
   bool _changedLocally = false;
@@ -68,6 +75,7 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
       timelineReader: saved[_timelineReaderKey] ?? state.timelineReader,
       timelineEditor: saved[_timelineEditorKey] ?? state.timelineEditor,
       world: saved[_worldKey] ?? state.world,
+      economy: saved[_economyKey] ?? state.economy,
     );
   }
 
@@ -101,6 +109,13 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
     _set(state.copyWith(world: visible));
   }
 
+  void toggleEconomy() => setEconomyVisible(!state.economy);
+
+  void setEconomyVisible(bool visible) {
+    if (state.economy == visible) return;
+    _set(state.copyWith(economy: visible));
+  }
+
   void _set(PaneVisibility next) {
     _changedLocally = true;
     state = next;
@@ -111,6 +126,7 @@ class PaneVisibilityController extends StateNotifier<PaneVisibility> {
       await store.setPaneVisibility(_timelineReaderKey, state.timelineReader);
       await store.setPaneVisibility(_timelineEditorKey, state.timelineEditor);
       await store.setPaneVisibility(_worldKey, state.world);
+      await store.setPaneVisibility(_economyKey, state.economy);
     });
   }
 
