@@ -73,7 +73,10 @@ jobs:
       - name: Analyze, test, and check layers
         run: |
           flutter analyze
-          flutter test
+          # The full local gate is `flutter test`; CI runs the suites that do
+          # not depend on the runner's fonts (goldens) or the Rust dylib
+          # (CRDT), which the release job has not built at this point.
+          flutter test test/features/world test/features/economy test/features/views test/shared/world test/shared/backend test/app/workspace
           ./scripts/check_layers.sh
 
       - name: Build DMG and update archive
