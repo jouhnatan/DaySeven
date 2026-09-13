@@ -1,4 +1,4 @@
-import 'package:dayseven/features/world/domain/world_metadata.dart';
+import 'package:dayseven/shared/world/domain/world_metadata.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

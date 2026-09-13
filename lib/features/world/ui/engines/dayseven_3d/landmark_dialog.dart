@@ -3,8 +3,8 @@ library;
 
 import 'package:flutter/material.dart';
 
-import 'package:dayseven/features/world/application/world_controller.dart';
-import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
+import 'package:dayseven/app/workspace/world_controller.dart';
+import 'package:dayseven/shared/world/domain/dayseven_3d_model.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/dialog.dart';
 import 'package:dayseven/shared/ui/theme.dart';

@@ -1,7 +1,7 @@
 /// Reads and writes Worlds as `.unearth` objects in a Knowledge Base.
 library;
 
-import 'package:dayseven/features/world/domain/world.dart';
+import 'package:dayseven/shared/world/domain/world.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 
 /// The World feature's kind-aware edge around the generic object store.

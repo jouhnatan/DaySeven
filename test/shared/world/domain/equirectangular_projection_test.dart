@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-import 'package:dayseven/features/world/domain/equirectangular_projection.dart';
+import 'package:dayseven/shared/world/domain/equirectangular_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

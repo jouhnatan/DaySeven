@@ -4,8 +4,8 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:dayseven/features/world/data/png_metadata_reader.dart';
-import 'package:dayseven/features/world/domain/world_metadata.dart';
+import 'package:dayseven/shared/world/data/png_metadata_reader.dart';
+import 'package:dayseven/shared/world/domain/world_metadata.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 
 class WorldImageMetadataReader {

@@ -3,8 +3,8 @@ library;
 
 import 'dart:io';
 
-import 'package:dayseven/features/world/domain/world_layer.dart';
-import 'package:dayseven/features/world/data/world_image_metadata_reader.dart';
+import 'package:dayseven/shared/world/domain/world_layer.dart';
+import 'package:dayseven/shared/world/data/world_image_metadata_reader.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 
 /// A World layer is a data export, not a general-purpose picture.

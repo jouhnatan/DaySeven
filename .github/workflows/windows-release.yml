@@ -71,11 +71,11 @@ jobs:
         shell: pwsh
         run: flutter pub get
 
-      - name: Analyze and test World
+      - name: Analyze and test
         shell: pwsh
         run: |
           flutter analyze
-          flutter test test/features/world
+          flutter test
 
       - name: Build archive
         shell: pwsh

@@ -4,11 +4,10 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
-import 'package:dayseven/features/world/application/world_controller.dart';
-import 'package:dayseven/features/world/data/world_asset_repository.dart';
-import 'package:dayseven/features/world/data/world_repository.dart';
-import 'package:dayseven/features/world/domain/world_dimension.dart';
-import 'package:dayseven/shared/kb/bundle.dart';
+import 'package:dayseven/app/workspace/world_controller.dart';
+import 'package:dayseven/shared/world/data/world_asset_repository.dart';
+import 'package:dayseven/shared/world/data/world_repository.dart';
+import 'package:dayseven/shared/world/domain/world_dimension.dart';
 
 /// The repository for the currently open Knowledge Base.
 final worldRepositoryProvider = Provider<WorldRepository>((ref) {
@@ -32,13 +31,6 @@ final worldAssetRepositoryProvider = Provider<WorldAssetRepository>((ref) {
 final openWorldProvider = StateNotifierProvider<WorldController, OpenWorld?>(
   WorldController.new,
 );
-
-/// The World objects in the open Knowledge Base.
-final worldObjectsProvider = FutureProvider<List<KbFile>>((ref) async {
-  final session = ref.watch(kbSessionProvider);
-  if (session == null) return const [];
-  return ref.watch(worldRepositoryProvider).list();
-});
 
 /// The dimension selected in the World settings pane.
 final selectedWorldDimensionProvider = StateProvider<WorldDimension>(

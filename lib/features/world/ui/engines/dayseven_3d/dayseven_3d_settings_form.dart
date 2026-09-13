@@ -12,10 +12,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dayseven/app/workspace/kb_session.dart';
-import 'package:dayseven/features/world/application/world_controller.dart';
-import 'package:dayseven/features/world/application/world_providers.dart';
-import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
-import 'package:dayseven/features/world/domain/world_layer.dart';
+import 'package:dayseven/app/workspace/world_controller.dart';
+import 'package:dayseven/app/workspace/world_providers.dart';
+import 'package:dayseven/shared/world/domain/dayseven_3d_model.dart';
+import 'package:dayseven/shared/world/domain/world_layer.dart';
 import 'package:dayseven/features/world/ui/engines/dayseven_3d/landmark_dialog.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:dayseven/shared/ui/controls.dart';

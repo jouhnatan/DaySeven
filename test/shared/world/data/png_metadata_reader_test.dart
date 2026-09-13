@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:dayseven/features/world/data/png_metadata_reader.dart';
+import 'package:dayseven/shared/world/data/png_metadata_reader.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 

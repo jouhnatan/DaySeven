@@ -4,8 +4,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:dayseven/features/world/application/world_providers.dart';
-import 'package:dayseven/features/world/domain/world_dimension.dart';
+import 'package:dayseven/app/workspace/world_providers.dart';
+import 'package:dayseven/shared/world/domain/world_dimension.dart';
 import 'package:dayseven/features/world/world_renderer/engines/dayseven_2d/dayseven_2d_canvas.dart';
 import 'package:dayseven/features/world/world_renderer/engines/dayseven_3d/dayseven_3d_canvas.dart';
 import 'package:dayseven/shared/ui/controls.dart';

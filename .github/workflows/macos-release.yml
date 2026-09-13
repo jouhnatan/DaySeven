@@ -70,10 +70,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze, test World, and check layers
+      - name: Analyze, test, and check layers
         run: |
           flutter analyze
-          flutter test test/features/world
+          flutter test
           ./scripts/check_layers.sh
 
       - name: Build DMG and update archive

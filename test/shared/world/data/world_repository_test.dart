@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:dayseven/features/world/data/world_repository.dart';
-import 'package:dayseven/features/world/domain/world.dart';
-import 'package:dayseven/features/world/domain/world_dimension.dart';
+import 'package:dayseven/shared/world/data/world_repository.dart';
+import 'package:dayseven/shared/world/domain/world.dart';
+import 'package:dayseven/shared/world/domain/world_dimension.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;

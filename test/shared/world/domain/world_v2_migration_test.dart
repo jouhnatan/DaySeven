@@ -1,5 +1,5 @@
-import 'package:dayseven/features/world/domain/dayseven_3d_model.dart';
-import 'package:dayseven/features/world/domain/world.dart';
+import 'package:dayseven/shared/world/domain/dayseven_3d_model.dart';
+import 'package:dayseven/shared/world/domain/world.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
