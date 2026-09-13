@@ -136,6 +136,13 @@ so that every version anyone runs corresponds to a build that exists.
   no revision, and touches no ledger; its failures are swallowed into a health
   value rather than surfaced. It is chrome. If it ever becomes something the
   reviewed-edit path depends on, that is a bug.
+- **Object sync writes only through `publish_object`.** `public.kb_objects`
+  and `public.kb_object_revisions` carry the object and its history; clients
+  have select and nothing else, exactly as with documents. A kind that should
+  reach collaborators is added to `_syncableObjectKinds` in
+  `lib/app/workspace/kb_hierarchy_replicator.dart` — the tables are kind-blind,
+  so that set is the switch, not a migration. The `object_published` wake is
+  sent by the trigger like every other event on `kb:%`.
 - **`public.app_releases` is the only table `anon` may read.** It must stay
   readable signed-out — the person most in need of an update is the one whose
   old build cannot sign in. Nothing client-side may write it; publishing goes

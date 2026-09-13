@@ -13,6 +13,7 @@ import 'package:dayseven/shared/auth/auth_repository.dart';
 import 'package:dayseven/shared/backend/asset_repository.dart';
 import 'package:dayseven/shared/backend/document_protection.dart';
 import 'package:dayseven/shared/backend/document_repository.dart';
+import 'package:dayseven/shared/backend/object_repository.dart';
 import 'package:dayseven/shared/backend/supabase_client.dart';
 import 'package:dayseven/shared/blocks/blocks.dart';
 import 'package:dayseven/shared/kb/bundle.dart';
@@ -27,6 +28,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../support/object_sync_fakes.dart';
+
 User _signedInUser() => User(
   id: '466839ae-d51e-4e44-a8cb-a4d966f14918',
   appMetadata: const {},
@@ -36,9 +39,7 @@ User _signedInUser() => User(
 );
 
 class _InvitationsKbRepository extends KbRepository {
-  _InvitationsKbRepository({
-    this.invitationsList = const [],
-  });
+  _InvitationsKbRepository({this.invitationsList = const []});
 
   final List<KbInvitation> invitationsList;
   String? lastAcceptedKbId;
@@ -253,6 +254,7 @@ void main() {
         recentKbPathsProvider.overrideWith((ref) async => const []),
         documentRepositoryProvider.overrideWithValue(documents),
         assetRepositoryProvider.overrideWithValue(_SyncAssetRepository()),
+        objectRepositoryProvider.overrideWithValue(FakeObjectRepository()),
       ],
     );
     await container.read(kbControllerProvider.notifier).openFolder(temp.path);
@@ -870,6 +872,7 @@ void main() {
           kbRepositoryProvider.overrideWithValue(kbRepository),
           documentRepositoryProvider.overrideWithValue(documents),
           assetRepositoryProvider.overrideWithValue(_SyncAssetRepository()),
+          objectRepositoryProvider.overrideWithValue(FakeObjectRepository()),
         ],
       );
       await container.read(kbControllerProvider.notifier).openFolder(temp.path);
@@ -1036,50 +1039,49 @@ void main() {
     },
   );
 
-  testWidgets(
-    'folders start collapsed and expand one level at a time',
-    (tester) async {
-      await tester.runAsync(() async {
-        await kb.createFolder('Characters');
-        await kb.createFolder('Characters/Houses');
-        await kb.createDocument(
-          title: 'Vane',
-          folderRelativePath: 'Characters/Houses',
-        );
-        await container.read(kbControllerProvider.notifier).refreshTree();
-      });
-
-      tester.view.physicalSize = const Size(500, 700);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: MaterialApp(
-            theme: dsTheme(),
-            home: const Scaffold(body: KnowledgeBaseMenu()),
-          ),
-        ),
+  testWidgets('folders start collapsed and expand one level at a time', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await kb.createFolder('Characters');
+      await kb.createFolder('Characters/Houses');
+      await kb.createDocument(
+        title: 'Vane',
+        folderRelativePath: 'Characters/Houses',
       );
-      await tester.pumpAndSettle();
+      await container.read(kbControllerProvider.notifier).refreshTree();
+    });
 
-      expect(find.text('Characters'), findsOneWidget);
-      expect(find.text('Houses'), findsNothing);
-      expect(find.text('Vane'), findsNothing);
+    tester.view.physicalSize = const Size(500, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
 
-      await tester.tap(find.text('Characters'));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: dsTheme(),
+          home: const Scaffold(body: KnowledgeBaseMenu()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('Houses'), findsOneWidget);
-      expect(find.text('Vane'), findsNothing);
+    expect(find.text('Characters'), findsOneWidget);
+    expect(find.text('Houses'), findsNothing);
+    expect(find.text('Vane'), findsNothing);
 
-      await tester.tap(find.text('Houses'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Characters'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Vane'), findsOneWidget);
-    },
-  );
+    expect(find.text('Houses'), findsOneWidget);
+    expect(find.text('Vane'), findsNothing);
+
+    await tester.tap(find.text('Houses'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vane'), findsOneWidget);
+  });
 
   testWidgets(
     'right-click creates at the root or inside folders, never inside files',
@@ -1473,106 +1475,113 @@ void main() {
     expect(find.text('No pending invitations'), findsOneWidget);
   });
 
-  testWidgets('Pending Invites renders each invitation with KB name and owner', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(700, 700);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+  testWidgets(
+    'Pending Invites renders each invitation with KB name and owner',
+    (tester) async {
+      tester.view.physicalSize = const Size(700, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
 
-    const invite1 = KbInvitation(
-      kbId: '01a01830-9749-7398-9626-dab25d46040e',
-      name: 'Awayside',
-      role: CollaborationRole.coOwner,
-      ownerName: 'Haoyu',
-    );
-    const invite2 = KbInvitation(
-      kbId: '01a01830-9749-7398-9626-dab25d46040f',
-      name: 'Eldermere',
-      role: CollaborationRole.editor,
-      ownerName: 'Aldric',
-    );
+      const invite1 = KbInvitation(
+        kbId: '01a01830-9749-7398-9626-dab25d46040e',
+        name: 'Awayside',
+        role: CollaborationRole.coOwner,
+        ownerName: 'Haoyu',
+      );
+      const invite2 = KbInvitation(
+        kbId: '01a01830-9749-7398-9626-dab25d46040f',
+        name: 'Eldermere',
+        role: CollaborationRole.editor,
+        ownerName: 'Aldric',
+      );
 
-    final repo = _InvitationsKbRepository(
-      invitationsList: const [invite1, invite2],
-    );
+      final repo = _InvitationsKbRepository(
+        invitationsList: const [invite1, invite2],
+      );
 
-    await tester.runAsync(() async {
-      container.dispose();
-      container = ProviderContainer(
+      await tester.runAsync(() async {
+        container.dispose();
+        container = ProviderContainer(
+          overrides: [
+            currentUserProvider.overrideWithValue(_signedInUser()),
+            kbRoleProvider.overrideWith((ref) async => KbRole.owner),
+            recentKbPathsProvider.overrideWith((ref) async => const []),
+            kbRepositoryProvider.overrideWithValue(repo),
+          ],
+        );
+        await container
+            .read(kbControllerProvider.notifier)
+            .openFolder(temp.path);
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: dsTheme(),
+            home: const Scaffold(
+              body: SingleChildScrollView(child: KnowledgeBaseSettingsPanel()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Awayside'), findsOneWidget);
+      expect(find.text('Owned by Haoyu · Co-Owner'), findsOneWidget);
+      expect(find.text('Eldermere'), findsOneWidget);
+      expect(find.text('Owned by Aldric · Editor'), findsOneWidget);
+      expect(find.text('Accept'), findsNWidgets(2));
+      expect(find.text('Decline'), findsNWidgets(2));
+    },
+  );
+
+  test(
+    'SharingController.acceptInvitationIntoFolder accepts and opens',
+    () async {
+      final downloadDir = await Directory.systemTemp.createTemp(
+        'dayseven_download_unit',
+      );
+      addTearDown(() async {
+        if (await downloadDir.exists()) {
+          await downloadDir.delete(recursive: true);
+        }
+      });
+
+      const invite = KbInvitation(
+        kbId: '01a01830-9749-7398-9626-dab25d46040e',
+        name: 'Awayside',
+        role: CollaborationRole.coOwner,
+        ownerName: 'Haoyu',
+      );
+
+      final repo = _InvitationsKbRepository(invitationsList: const [invite]);
+      final docRepo = _SyncDocumentRepository();
+
+      final testContainer = ProviderContainer(
         overrides: [
           currentUserProvider.overrideWithValue(_signedInUser()),
           kbRoleProvider.overrideWith((ref) async => KbRole.owner),
           recentKbPathsProvider.overrideWith((ref) async => const []),
           kbRepositoryProvider.overrideWithValue(repo),
+          documentRepositoryProvider.overrideWithValue(docRepo),
+          assetRepositoryProvider.overrideWithValue(_SyncAssetRepository()),
+          objectRepositoryProvider.overrideWithValue(FakeObjectRepository()),
         ],
       );
-      await container.read(kbControllerProvider.notifier).openFolder(temp.path);
-    });
+      addTearDown(testContainer.dispose);
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: dsTheme(),
-          home: const Scaffold(
-            body: SingleChildScrollView(child: KnowledgeBaseSettingsPanel()),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await testContainer
+          .read(sharingControllerProvider)
+          .acceptInvitationIntoFolder(invite, downloadDir.path);
 
-    expect(find.text('Awayside'), findsOneWidget);
-    expect(find.text('Owned by Haoyu · Co-Owner'), findsOneWidget);
-    expect(find.text('Eldermere'), findsOneWidget);
-    expect(find.text('Owned by Aldric · Editor'), findsOneWidget);
-    expect(find.text('Accept'), findsNWidgets(2));
-    expect(find.text('Decline'), findsNWidgets(2));
-  });
-
-  test('SharingController.acceptInvitationIntoFolder accepts and opens', () async {
-    final downloadDir = await Directory.systemTemp.createTemp(
-      'dayseven_download_unit',
-    );
-    addTearDown(() async {
-      if (await downloadDir.exists()) {
-        await downloadDir.delete(recursive: true);
-      }
-    });
-
-    const invite = KbInvitation(
-      kbId: '01a01830-9749-7398-9626-dab25d46040e',
-      name: 'Awayside',
-      role: CollaborationRole.coOwner,
-      ownerName: 'Haoyu',
-    );
-
-    final repo = _InvitationsKbRepository(invitationsList: const [invite]);
-    final docRepo = _SyncDocumentRepository();
-
-    final testContainer = ProviderContainer(
-      overrides: [
-        currentUserProvider.overrideWithValue(_signedInUser()),
-        kbRoleProvider.overrideWith((ref) async => KbRole.owner),
-        recentKbPathsProvider.overrideWith((ref) async => const []),
-        kbRepositoryProvider.overrideWithValue(repo),
-        documentRepositoryProvider.overrideWithValue(docRepo),
-        assetRepositoryProvider.overrideWithValue(_SyncAssetRepository()),
-      ],
-    );
-    addTearDown(testContainer.dispose);
-
-    await testContainer
-        .read(sharingControllerProvider)
-        .acceptInvitationIntoFolder(invite, downloadDir.path);
-
-    expect(repo.lastAcceptedKbId, '01a01830-9749-7398-9626-dab25d46040e');
-    expect(
-      File('${downloadDir.path}/.settings/dayseven.kb.json').existsSync(),
-      isTrue,
-    );
-  });
+      expect(repo.lastAcceptedKbId, '01a01830-9749-7398-9626-dab25d46040e');
+      expect(
+        File('${downloadDir.path}/.settings/dayseven.kb.json').existsSync(),
+        isTrue,
+      );
+    },
+  );
 
   testWidgets(
     'Pending Invites Decline calls declineInvitation and invalidates providers',

@@ -144,12 +144,13 @@ reference to it is not a trade this app makes anywhere else either.
 
 ## What a World looks like
 
-World format 3 keeps one geographic model and chooses only how to render it:
+World format 4 keeps one geographic model, chooses only how to render it, and
+carries the economy both the World and Economy views read:
 
 ```json
 {
   "kind": "world",
-  "version": 3,
+  "version": 4,
   "id": "0192f3aa-6a1c-7c3d-9b2e-4f0d61a2c8e1",
   "title": "Aster",
   "renderMode": "2d",
@@ -170,6 +171,35 @@ World format 3 keeps one geographic model and chooses only how to render it:
       "latitude": 52.4,
       "longitude": -3.1,
       "document": "Places/Aldenmoor.md"
+    }]
+  },
+  "economy": {
+    "resourceTypes": [
+      { "id": "stone", "name": "Stone", "color": "slate" }
+    ],
+    "personTypes": [
+      { "id": "0192f3aa-…", "name": "Soldiers", "color": "teal" }
+    ],
+    "locations": [{
+      "id": "0192f3aa-…",
+      "landmarkId": "aldenmoor",
+      "population": 1200,
+      "personCounts": { "0192f3aa-…": 40 },
+      "resourceIds": ["stone"]
+    }],
+    "tradeRoutes": [{
+      "id": "0192f3aa-…",
+      "from": "aldenmoor",
+      "to": "oakhaven",
+      "resourceId": "stone",
+      "controlPoints": [[0.34, 0.46], [0.66, 0.54]]
+    }],
+    "resourceNodes": [{
+      "id": "0192f3aa-…",
+      "resourceId": "stone",
+      "latitude": 50.1,
+      "longitude": -4.2,
+      "homeLandmarkId": "aldenmoor"
     }]
   }
 }
@@ -192,7 +222,30 @@ $$
 
 Version 2 World files used an engine id and could carry Orogen layers. They are
 read into the shared model, keep their existing asset ids, and are written back
-as version 3. No image is rewritten or deleted during migration.
+as the current version. No image is rewritten or deleted during migration.
+Version 3 files gain an empty economy plus the three built-in resources (Stone,
+Timber, Gold).
+
+### The economy
+
+A **location** is a World landmark's economic profile, keyed by `landmarkId`.
+Cities are landmarks: adding one in Economy adds a pin to the World, renaming
+it renames the pin, and deleting it removes both. Only `category: "city"`
+landmarks appear in Economy.
+
+**Person types** and **resource types** are defined once on the World and
+referenced by id, so renaming a type is a single edit. Deleting one removes it
+from every city, node and route that used it.
+
+**Trade routes** join two city landmarks. `controlPoints` are two `[u, v]`
+pairs in the unit square of the equirectangular map, which keeps the curve
+stable when the map image is replaced at a different pixel size. **Resource
+nodes** are deposits at their own latitude and longitude; `homeLandmarkId`
+names the city whose workers collect from them. Which resources a city
+produces is `resourceIds` on its location.
+
+The simulation itself — workers, cargo, stockpiles — is never written here. It
+is rebuilt from this network each time the Simulate tab runs.
 
 ### The main document
 
@@ -254,11 +307,29 @@ would be parsed as Markdown by all three.** So objects are listed by
 `test/shared/kb/objects_test.dart` asserts this in both directions, and that
 test exists to catch exactly this regression.
 
-The consequence today is that **objects are local**: not synced to the server,
-not searchable. That is a known gap rather than a design goal; wiring objects
-through `documents`/`revisions` is separate work, and the reason it has not
-been done casually is that the Realtime notification bus is trusted to be
-server-authored (see the `kb:%` topic notes in `AGENTS.md`).
+The consequence used to be that **objects were local**. That is no longer
+true for Worlds. A World (and therefore its economy and map) replicates through
+the same explicit Sync path documents use:
+
+- `public.kb_objects` and `public.kb_object_revisions` hold live objects and
+  their append-only history; the object id inside the JSON is the row id, so an
+  object keeps its identity across renames and machines.
+- `publish_object` is the only writer, with the same `40001` optimistic-lock
+  conflict documents use. Clients have no insert or update grant.
+- `private.notify_object_published` publishes a metadata-only
+  `object_published` event on the server-authored `kb:<kbId>` topic, which is a
+  wake-up: the peer reads the durable rows before touching its files.
+- The replicator treats objects like documents — never overwriting a divergent
+  local file, counting that as a conflict — and syncs referenced assets through
+  the same `kb-assets` bucket, which is what carries the map image.
+
+Timelines still do not sync: `_syncableObjectKinds` in
+`lib/app/workspace/kb_hierarchy_replicator.dart` names the kinds the build
+replicates, and only `world` is in it. Adding a kind there is the whole switch;
+the replication itself is kind-blind.
+
+`test/shared/kb/objects_test.dart` asserts objects stay out of `readTree` in
+both directions, and that test exists to catch exactly that regression.
 
 ## Where the code is
 
@@ -276,6 +347,13 @@ that shows one — lives under `lib/features/timelines/`.
 | Format tests | `test/features/timelines/timeline_test.dart` |
 | Map tests | `test/features/timelines/map_upload_test.dart` |
 | Filesystem and listing tests | `test/shared/kb/objects_test.dart` |
+| The World and economy models, World v4 upgrade | `lib/shared/world/domain/` |
+| World repositories and image metadata readers | `lib/shared/world/data/` |
+| Open World, debounced save, providers | `lib/app/workspace/world_controller.dart`, `world_providers.dart` |
+| The World view and its renderers | `lib/features/world/` |
+| The Economy view | `lib/features/economy/` |
+| Object sync repository and canonical hash | `lib/shared/backend/object_repository.dart` |
+| Object replication and conflict rules | `lib/app/workspace/kb_hierarchy_replicator.dart` |
 
 ### `map_renderer/`
 
@@ -301,4 +379,8 @@ that shows one — lives under `lib/features/timelines/`.
    listing is deliberately kind-blind.
 4. Refuse an unknown kind and a higher version, for the reason above.
 
-Nothing in `shared/` should need to change.
+A kind that should reach collaborators is one more edit: add its `kind` to
+`_syncableObjectKinds` in `lib/app/workspace/kb_hierarchy_replicator.dart`. The
+server tables are kind-blind, so no migration is needed; assets referenced by
+`assetId` anywhere in the JSON sync automatically. A kind left out of that set
+stays local, and nothing in `shared/` needs to know about it.

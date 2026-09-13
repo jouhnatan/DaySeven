@@ -31,18 +31,22 @@ lib/
   features/      One folder per feature: ui/, plus state/, data/ or domain/
     auth/          The sign-in button
     editor/        The document editor and its rich-text controller
+    economy/       The map of cities, resources, people and trade
     home/          The landing screen
     knowledge_base/The right-side menu, dialogs, and KB repository
     differences/   Review queue, previews, merge, proposals and Realtime state
     search/        Query state and the search bar
     views/         The left-side Home and Editor navigation menu
+    world/         The globe and flat map of the same World object
   shared/        Used by more than one feature; depends on no feature
     blocks/        Block model, revisions, the FTS5 search index — pure Dart
     presence/      Where a collaborator is — pure Dart, and ephemeral
     kb/            Knowledge Base bundle: the folder on disk
+    world/         World and economy models, repositories, projection
     documents/     ODT and DOCX import/export
     auth/          Who is signed in
-    backend/       Supabase client, error vocabulary, document repository
+    backend/       Supabase client, error vocabulary, document and object
+                   repositories
     platform/      Install-location check
     ui/            The palette and type scale, controls, menus, dialogs
 supabase/
@@ -193,10 +197,17 @@ whatever the newer version knew.
 An object is **not** a document, and the two are kept apart deliberately.
 `readTree` lists documents and `documentPathsIn` walks it; everything
 downstream of that — the Supabase mirror, the FTS index, the CRDT workspace —
-reads each path as Markdown. Objects come from `readObjects` instead. The
-consequence today is that objects are local: they are not synced to the server
-and not searchable. Wiring them through `documents`/`revisions` is a separate
-piece of work.
+reads each path as Markdown. Objects come from `readObjects` instead.
+
+Worlds are shared. The World object and its economy replicate through the same
+explicit Sync path documents use: `public.kb_objects` and
+`public.kb_object_revisions` hold the object and its history, `publish_object`
+is the only writer (with the same `40001` conflict on a lost race), and a
+server-authored `object_published` event on `kb:<kbId>` wakes peers, who read
+the durable rows. Referenced assets — the map image — travel through the same
+`kb-assets` bucket. Timelines stay local by choice; adding a kind to
+`_syncableObjectKinds` is what brings another one into the sync, and the server
+needs no change. Objects are still not searchable.
 
 A timeline's events and ages point *outwards* at documents through
 `document`. It used to be the other way around — a timeline was a run of
@@ -333,11 +344,12 @@ server-authored.
 - **Top** — the Views menu and the notifications bell at one end, a persistent
   search bar over the Knowledge Base's local FTS5 index centred on the window,
   and the account control and Menu at the other.
-- **Views** — *Editor*, *Differences* and *Timelines* share the centre slot, so
-  placing one displaces the other and the menu marks whichever holds it;
-  Differences carries the durable pending count. Below the divider are the panes
-  seated beside whatever is placed — *Knowledge Base* for the Editor and
-  Differences, *Events & ages* and *Reader* for Timelines. Those are toggles
+- **Views** — *Editor*, *Differences*, *Timelines*, *World* and *Economy*
+  share the centre slot, so placing one displaces the other and the menu marks
+  whichever holds it; Differences carries the durable pending count. Below the
+  divider are the panes seated beside whatever is placed — *Knowledge Base* for
+  the Editor and Differences, *Events & ages* and *Reader* for Timelines,
+  *World settings* for World, *Economy stats* for Economy. Those are toggles
   rather than placements, and toggle freely.
 - **Notifications** — the bell opens a panel listing the latest five events —
   publishes, sync results, sharing, errors — newest first. A new notification
@@ -376,6 +388,18 @@ server-authored.
   everywhere. Right-click any item to delete it after a permanent-deletion
   confirmation. A collaborator viewing a document shows as a coloured
   initial on its row.
+- **Economy** — the World's own uploaded map, flat, with the stats editor
+  seated to its right; there is no left pane. The editor's *Locations* /
+  *Resources* / *Simulate* control does three jobs. *Locations* lists cities
+  and resource nodes: choosing a city opens its population, the resources it
+  produces and its people, with a back caret to the list. *Resources* owns the
+  shared registries — colour-coded resource and person types, added with a plus
+  and deleted with a confirmation that says what is lost. *Simulate* plays the
+  trade network: click two cities to draw a route, drag its round handles to
+  reshape it, give each node a city whose workers collect from it, then play
+  and watch workers and traders move while each city's received cargo is
+  tallied. A city is a World landmark: deleting it here removes its pin there,
+  so the two views never disagree and no second map upload exists.
 - **Resizing** — drag the gap between the three panes. The editor keeps a
   minimum width however far you drag, and the widths are remembered between
   sessions.
@@ -543,8 +567,9 @@ formatting survival and the conflict case), the Knowledge Base on disk and its
 layout migrations, moving items between folders, live folder watching, FTS5
 search, ODT/DOCX round-trips in
 both directions and across formats, the rich text controller, the editor's block
-behaviour, presence folding and the chrome it drives, and the shell's layout
-rules.
+behaviour, presence folding and the chrome it drives, the World and economy
+models and their migration, object replication and its conflict rules, the
+trade simulation, and the shell's layout rules.
 
 `test/app/appearance_test.dart` renders the shell to `test/app/goldens/`. Those
 images are how the layout is meant to look — they caught a real misalignment

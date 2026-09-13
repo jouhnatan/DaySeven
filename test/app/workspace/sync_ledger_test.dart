@@ -98,4 +98,34 @@ void main() {
     await File('${kb.settingsPath}/sync.json').writeAsString('{not json');
     expect((await SyncLedger.open(kb)).documents, isEmpty);
   });
+
+  test('persists object sync bases beside documents', () async {
+    final document = BlockDocument(
+      id: 'document-1',
+      title: 'Chapter',
+      blocks: const [],
+    );
+    final ledger = await SyncLedger.open(kb);
+    await ledger.record(
+      document: document,
+      revisionId: 'revision-1',
+      path: 'Chapter.md',
+    );
+    await ledger.recordObject(
+      objectId: 'world-1',
+      revisionId: 'object-revision-1',
+      contentHash: 'object-hash',
+      path: 'Aster.unearth',
+    );
+
+    final reopened = await SyncLedger.open(kb);
+    expect(reopened.document(document.id)?.revisionId, 'revision-1');
+    expect(reopened.object('world-1')?.revisionId, 'object-revision-1');
+    expect(reopened.object('world-1')?.contentHash, 'object-hash');
+    expect(reopened.object('world-1')?.path, 'Aster.unearth');
+
+    await reopened.removeObject('world-1');
+    expect((await SyncLedger.open(kb)).object('world-1'), isNull);
+    expect((await SyncLedger.open(kb)).document(document.id), isNotNull);
+  });
 }
